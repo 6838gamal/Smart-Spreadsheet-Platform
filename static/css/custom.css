@@ -1,0 +1,44 @@
+/* Smart Spreadsheet Platform — Custom CSS */
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Table styles */
+table { border-collapse: collapse; }
+th, td { white-space: nowrap; }
+
+/* Transition improvements */
+* { transition-property: background-color, border-color, color, opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+
+/* HTMX loading states */
+.htmx-swapping { opacity: 0; }
+.htmx-settling { opacity: 1; transition: opacity 300ms; }
+
+/* Alert components */
+.alert-success {
+  padding: 0.75rem 1rem;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 0.75rem;
+  color: #6ee7b7;
+  font-size: 0.875rem;
+}
+
+.alert-error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 0.75rem;
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+/* Number formatting */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Smooth page transitions */
+body { animation: fadeIn 200ms ease-in; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

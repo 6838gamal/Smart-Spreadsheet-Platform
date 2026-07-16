@@ -1,0 +1,673 @@
+أنت مهندس برمجيات Senior Software Architect وخبير Python/FastAPI ومتخصص في بناء منتجات SaaS عالية الأداء.
+
+أريد بناء منصة ويب احترافية لإدارة وتحويل ومعالجة ملفات Excel وملفات البيانات المختلفة، تكون قابلة للتوسع مستقبلاً لتصبح المنتج الأشمل في مجال معالجة البيانات والجداول الإلكترونية.
+
+========================
+اسم المشروع
+========================
+
+Smart Spreadsheet Platform
+
+========================
+هدف المشروع
+========================
+
+إنشاء منصة ويب حديثة تسمح للمستخدمين باستيراد وتحويل وتنظيف ودمج وتحليل وإدارة ملفات البيانات مهما كانت صيغتها، مع المحافظة على الأداء العالي عند التعامل مع الملفات الكبيرة، وبنية قابلة للتوسع والإضافات.
+
+========================
+التقنيات المطلوبة
+========================
+
+Python
+
+FastAPI
+
+PostgreSQL
+
+SQLAlchemy
+
+Alembic
+
+Docker
+
+Docker Compose
+
+Polars كمحرك أساسي لمعالجة البيانات
+
+Pandas فقط عند الحاجة
+
+PyArrow
+
+OpenPyXL
+
+Python Calamine
+
+Pyxlsb
+
+XlsxWriter
+
+Odfpy
+
+DuckDB
+
+SQLite
+
+Python-docx
+
+pdfplumber
+
+Camelot
+
+OCR (مرحلة مستقبلية)
+
+Jinja2 Templates
+
+HTMX
+
+Alpine.js
+
+TailwindCSS
+
+بدون React
+
+بدون Vue
+
+بدون Angular
+
+بدون Node Backend
+
+بدون Redis
+
+بدون Celery
+
+بدون RabbitMQ
+
+بدون Firebase
+
+بدون Supabase
+
+بدون خدمات سحابية إجبارية.
+
+========================
+المعمارية
+========================
+
+اتباع Clean Architecture بالكامل.
+
+طبقة Presentation
+
+طبقة Application
+
+طبقة Domain
+
+طبقة Infrastructure
+
+Repository Pattern
+
+Service Layer
+
+Dependency Injection
+
+DTO
+
+Validation
+
+Centralized Error Handling
+
+Global Exception Handler
+
+Logging
+
+Configuration Management
+
+Feature Based Structure
+
+كل ميزة داخل Module مستقل.
+
+========================
+الواجهة
+========================
+
+واجهة احترافية تشبه منتجات SaaS العالمية.
+
+Sidebar
+
+Topbar
+
+Dark Mode
+
+Light Mode
+
+Responsive
+
+RTL
+
+LTR
+
+Drag and Drop
+
+Multiple Tabs
+
+Progress Bars
+
+Notifications
+
+Context Menu
+
+Keyboard Shortcuts
+
+========================
+الصفحة الرئيسية
+========================
+
+إحصائيات
+
+آخر الملفات
+
+آخر العمليات
+
+الملفات المفضلة
+
+آخر Workflows
+
+التحويلات الأخيرة
+
+المهام الحالية
+
+الاستخدام
+
+========================
+إدارة الملفات
+========================
+
+رفع ملفات متعددة.
+
+رفع مجلد كامل.
+
+السحب والإفلات.
+
+عرض تفاصيل الملف.
+
+إعادة تسمية.
+
+نسخ.
+
+نقل.
+
+حذف.
+
+تحميل.
+
+ضغط الملفات.
+
+فك الضغط.
+
+معاينة الملف.
+
+========================
+الصيغ المدعومة للاستيراد
+========================
+
+xlsx
+
+xls
+
+xlsm
+
+xlsb
+
+csv
+
+tsv
+
+txt
+
+json
+
+xml
+
+yaml
+
+sqlite
+
+sql
+
+mdb
+
+accdb
+
+ods
+
+html tables
+
+pdf tables
+
+docx tables
+
+parquet
+
+feather
+
+clipboard
+
+========================
+الصيغ المدعومة للتصدير
+========================
+
+xlsx
+
+xls
+
+xlsm
+
+xlsb
+
+csv
+
+json
+
+xml
+
+yaml
+
+sqlite
+
+sql
+
+postgresql
+
+mysql
+
+html
+
+pdf
+
+docx
+
+ods
+
+parquet
+
+feather
+
+========================
+محرك التحويل
+========================
+
+أي صيغة إلى أي صيغة إذا كان ذلك ممكناً.
+
+الحفاظ على:
+
+أسماء الأعمدة
+
+أنواع البيانات
+
+التنسيقات
+
+التواريخ
+
+الصيغ إن كانت مدعومة
+
+الجداول
+
+الترميز
+
+Encoding
+
+Unicode
+
+========================
+دمج الملفات
+========================
+
+دمج ملفات غير محدودة.
+
+دمج أوراق.
+
+دمج مجلدات.
+
+دمج حسب اسم الورقة.
+
+دمج حسب الأعمدة المشتركة.
+
+دمج حسب المفتاح الأساسي.
+
+========================
+مقارنة الملفات
+========================
+
+مقارنة ملفين أو أكثر.
+
+إظهار:
+
+الصفوف الجديدة
+
+الصفوف المحذوفة
+
+القيم المعدلة
+
+اختلافات الخلايا
+
+تلوين الاختلافات
+
+تقرير نهائي
+
+========================
+تنظيف البيانات
+========================
+
+Remove Duplicates
+
+Trim Spaces
+
+Normalize Arabic
+
+Normalize English
+
+Replace Values
+
+Regex Replace
+
+Split Columns
+
+Merge Columns
+
+Convert Data Types
+
+Fill Missing Values
+
+Remove Empty Rows
+
+Remove Empty Columns
+
+Standardize Dates
+
+Standardize Currency
+
+Detect Outliers
+
+Detect Invalid Values
+
+========================
+الفلترة
+========================
+
+Builder احترافي.
+
+AND
+
+OR
+
+NOT
+
+Contains
+
+Starts With
+
+Ends With
+
+Regex
+
+Between
+
+Greater Than
+
+Less Than
+
+Date Filters
+
+Custom Expressions
+
+========================
+الفرز
+========================
+
+Sort متعدد الأعمدة.
+
+Natural Sort
+
+Custom Sort
+
+========================
+إدارة الأعمدة
+========================
+
+Rename
+
+Move
+
+Hide
+
+Freeze
+
+Delete
+
+Duplicate
+
+Calculated Column
+
+========================
+إدارة الأوراق
+========================
+
+Create
+
+Rename
+
+Duplicate
+
+Delete
+
+Merge
+
+Move
+
+Hide
+
+========================
+Pivot
+========================
+
+Pivot Tables
+
+Grouping
+
+Aggregations
+
+Calculated Fields
+
+========================
+Charts
+========================
+
+Bar
+
+Column
+
+Pie
+
+Line
+
+Scatter
+
+Area
+
+Histogram
+
+Heatmap
+
+========================
+Workflow Builder
+========================
+
+إنشاء Pipeline بالسحب والإفلات.
+
+مثال:
+
+Read CSV
+
+↓
+
+Clean
+
+↓
+
+Merge
+
+↓
+
+Filter
+
+↓
+
+Sort
+
+↓
+
+Export Excel
+
+↓
+
+Generate Report
+
+↓
+
+Download
+
+كل خطوة تحفظ.
+
+يمكن إعادة استخدامها.
+
+========================
+Batch Processing
+========================
+
+تشغيل نفس العملية على آلاف الملفات.
+
+مع Queue داخلي بدون Redis.
+
+========================
+Logs
+========================
+
+حفظ كل عملية.
+
+اسم الملف.
+
+الوقت.
+
+المدة.
+
+المستخدم.
+
+النتيجة.
+
+الأخطاء.
+
+========================
+التقارير
+========================
+
+تقارير PDF.
+
+تقارير Excel.
+
+تقارير Word.
+
+تقارير HTML.
+
+========================
+البحث
+========================
+
+بحث سريع.
+
+بحث متقدم.
+
+بحث داخل الملفات.
+
+========================
+الأمان
+========================
+
+CSRF
+
+XSS
+
+SQL Injection Protection
+
+Rate Limiting
+
+JWT Authentication
+
+RBAC
+
+Audit Log
+
+========================
+الإعدادات
+========================
+
+لغة
+
+ثيم
+
+تنسيق التاريخ
+
+تنسيق الوقت
+
+Encoding
+
+Timezone
+
+Default Export Format
+
+========================
+واجهة المطور
+========================
+
+Plugin System.
+
+كل Plugin يمكنه إضافة:
+
+صيغة جديدة.
+
+محول جديد.
+
+أداة جديدة.
+
+Workflow Node جديد.
+
+Connector جديد.
+
+========================
+الأداء
+========================
+
+يجب أن يستطيع النظام التعامل مع ملفات تتجاوز 2GB دون استهلاك الذاكرة بالكامل، باستخدام المعالجة المتدفقة (Streaming) والقراءة على دفعات (Chunking) كلما أمكن، مع استغلال Polars وPyArrow وDuckDB لتحقيق أعلى أداء.
+
+========================
+قابلية التوسع
+========================
+
+كل ميزة عبارة عن Module مستقل.
+
+إمكانية تحويل المشروع لاحقاً إلى:
+
+Desktop
+
+API
+
+CLI
+
+Mobile Backend
+
+SaaS متعدد المؤسسات (Multi-Tenant)
+
+دون إعادة كتابة الكود.
+
+========================
+الكود
+========================
+
+اكتب كوداً احترافياً بمستوى الشركات الكبرى، مع توثيق كامل، وتعليقات عند الحاجة فقط، واختبارات، وهيكلية واضحة، والالتزام بمبادئ SOLID وDRY وKISS، مع التركيز على الأداء، وسهولة الصيانة، وقابلية التوسع.

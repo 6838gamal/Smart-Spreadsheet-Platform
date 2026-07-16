@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}الإعدادات — Smart Spreadsheet{% endblock %}
+{% block page_title %}الإعدادات{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl space-y-5">
+
+  <!-- Profile -->
+  <div class="card p-6">
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">الملف الشخصي</h3>
+    <div class="flex items-center gap-4 mb-6">
+      <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
+        {{ user.username[0].upper() }}
+      </div>
+      <div>
+        <p class="font-semibold text-slate-900 dark:text-white">{{ user.username }}</p>
+        <p class="text-sm text-slate-400">{{ user.email }}</p>
+        <span class="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 text-xs mt-1">
+          {{ user.role.value }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences -->
+  <div class="card p-6">
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">التفضيلات</h3>
+    <form hx-post="/settings/preferences"
+          hx-target="#prefs-result"
+          hx-swap="innerHTML"
+          class="space-y-5">
+
+      <div class="grid grid-cols-2 gap-5">
+        <div>
+          <label class="label">السمة</label>
+          <select name="theme" class="input">
+            <option value="dark" {% if user.default_theme == 'dark' %}selected{% endif %}>🌙 داكنة</option>
+            <option value="light" {% if user.default_theme == 'light' %}selected{% endif %}>☀️ فاتحة</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">اللغة</label>
+          <select name="language" class="input">
+            <option value="ar" {% if user.default_lang == 'ar' %}selected{% endif %}>🇸🇦 العربية</option>
+            <option value="en" {% if user.default_lang == 'en' %}selected{% endif %}>🇺🇸 English</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">حفظ التفضيلات</button>
+        <div id="prefs-result"></div>
+      </div>
+    </form>
+  </div>
+
+  <!-- App Info -->
+  <div class="card p-6">
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">معلومات التطبيق</h3>
+    <dl class="space-y-3 text-sm">
+      {% set info = [
+        ('اسم المنصة', 'Smart Spreadsheet Platform'),
+        ('الإصدار', '1.0.0'),
+        ('محرك البيانات', 'Polars + PyArrow + DuckDB'),
+        ('الواجهة', 'FastAPI + HTMX + Alpine.js + TailwindCSS'),
+      ] %}
+      {% for label, value in info %}
+      <div class="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+        <dt class="text-slate-500 dark:text-slate-400">{{ label }}</dt>
+        <dd class="font-medium text-slate-700 dark:text-slate-300">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </div>
+
+  <!-- Storage -->
+  <div class="card p-6">
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">التخزين</h3>
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-slate-600 dark:text-slate-400">نوع التخزين</span>
+      <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">Local Filesystem</span>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
