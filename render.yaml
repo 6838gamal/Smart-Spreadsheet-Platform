@@ -1,0 +1,32 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy with one click: connect your repo and Render picks this up automatically.
+
+services:
+  - type: web
+    name: smart-spreadsheet
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render sets PORT automatically; the Dockerfile CMD reads it.
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smart-spreadsheet-db
+          property: connectionString
+      # Render generates a random value for secrets marked generateValue: true
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: MAX_FILE_SIZE_MB
+        value: "100"
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 5
+
+databases:
+  - name: smart-spreadsheet-db
+    databaseName: smartspreadsheet
+    plan: free

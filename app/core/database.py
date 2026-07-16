@@ -12,8 +12,9 @@ _connect_args: dict = {}
 if "sqlite" in _db_url:
     _connect_args = {"check_same_thread": False}
 else:
-    # Replit's internal PostgreSQL does not support SSL upgrades
-    _connect_args = {"ssl": False}
+    # use_ssl is True when the original DATABASE_URL contained sslmode=require
+    # (e.g. Render / Supabase / Railway); False for Replit's internal PostgreSQL.
+    _connect_args = {"ssl": settings.use_ssl}
 
 engine = create_async_engine(
     _db_url,

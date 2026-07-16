@@ -1,0 +1,16 @@
+.git
+.local
+.agents
+.cache
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+uploads/
+outputs/
+data/
+attached_assets/
+*.db
+*.sqlite
