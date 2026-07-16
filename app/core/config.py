@@ -23,17 +23,15 @@ class Settings(BaseSettings):
     PORT: int = 5000
 
     # Security
-    SECRET_KEY: str = "change-this-in-production-use-a-long-random-string"
-    SESSION_SECRET: str = ""
+    SECRET_KEY: str = "a3f8d2e1c4b7e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4"
+    SESSION_SECRET: str = "s3s5i0n-s3cr3t-k3y-f0r-sm4rt-spr34dsh33t-pl4tf0rm-2024"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # Database
     # Priority: POSTGRES_URL (explicit override) > DATABASE_URL (Replit-injected or default)
-    # Use POSTGRES_URL to point to an external PostgreSQL without touching the
-    # Replit-managed DATABASE_URL key.
-    POSTGRES_URL: str = ""
+    POSTGRES_URL: str = "postgresql://gamalalmaqtary:p89mb7i45Un9Yo9Qnbm8A2nq1ZapDiyQ@dpg-d9chrvvavr4c73aaan50-a.virginia-postgres.render.com/smart_spreadsheet_platform_db"
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/app.db"
 
     @property
