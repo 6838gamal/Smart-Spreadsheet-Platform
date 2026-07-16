@@ -60,8 +60,19 @@ class Settings(BaseSettings):
 
     @property
     def use_ssl(self) -> bool:
-        """Whether the active database URL originally contained sslmode=require."""
-        return "sslmode" in self._raw_db_url
+        """Whether to use SSL for the database connection.
+
+        Rules:
+        - SQLite: never.
+        - sslmode=disable: never (explicit opt-out).
+        - Any other PostgreSQL URL: yes (Render / Supabase / Railway all require it).
+        """
+        url = self._raw_db_url
+        if "sqlite" in url:
+            return False
+        if "sslmode=disable" in url:
+            return False
+        return url.startswith("postgresql") or url.startswith("postgres")
 
     # File storage
     UPLOAD_DIR: str = "uploads"
