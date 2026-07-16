@@ -29,16 +29,24 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # Database — Replit injects DATABASE_URL as postgresql://... (psycopg2 dialect)
-    # We rewrite it to asyncpg at startup in the property below.
+    # Database
+    # Priority: POSTGRES_URL (explicit override) > DATABASE_URL (Replit-injected or default)
+    # Use POSTGRES_URL to point to an external PostgreSQL without touching the
+    # Replit-managed DATABASE_URL key.
+    POSTGRES_URL: str = ""
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/app.db"
 
     @property
+    def _raw_db_url(self) -> str:
+        """Return whichever database URL is active (POSTGRES_URL takes priority)."""
+        return self.POSTGRES_URL or self.DATABASE_URL
+
+    @property
     def async_database_url(self) -> str:
-        """Return the DATABASE_URL normalised for SQLAlchemy async drivers."""
+        """Return the active DATABASE_URL normalised for SQLAlchemy async drivers."""
         from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-        url = self.DATABASE_URL
-        # Replit provides postgresql:// or postgres:// — rewrite to asyncpg
+        url = self._raw_db_url
+        # Rewrite postgresql:// / postgres:// to the asyncpg dialect
         if url.startswith("postgresql://") or url.startswith("postgres://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -52,8 +60,8 @@ class Settings(BaseSettings):
 
     @property
     def use_ssl(self) -> bool:
-        """Whether the original DATABASE_URL contained sslmode=require."""
-        return "sslmode" in self.DATABASE_URL
+        """Whether the active database URL originally contained sslmode=require."""
+        return "sslmode" in self._raw_db_url
 
     # File storage
     UPLOAD_DIR: str = "uploads"
