@@ -173,9 +173,16 @@
           </button>
         </form>
 
-        <p class="mt-4 text-center text-xs text-slate-600">
-          هذا الباب مخصص للمسؤولين فقط
-        </p>
+        <div class="mt-4 flex items-center justify-center">
+          <button @click="close()"
+                  type="button"
+                  class="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            العودة إلى تسجيل دخول العميل
+          </button>
+        </div>
       </div>
     </div>
   </div>
