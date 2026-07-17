@@ -280,39 +280,82 @@ class DataEngine:
         doc.save(path)
 
     def _write_pdf(self, df: pl.DataFrame, path: str) -> None:
-        """Write DataFrame as a real PDF table using fpdf2."""
-        from fpdf import FPDF
+        """Write DataFrame as a PDF table using PyMuPDF — full Unicode/Arabic support."""
+        import pymupdf as fitz
+
+        # DejaVu Sans ships with the Replit NixOS image and covers Arabic + Latin
+        FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        FONT_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
         n_cols = len(df.columns)
-        orientation = "L" if n_cols > 7 else "P"
-        pdf = FPDF(orientation=orientation, unit="mm", format="A4")
-        pdf.set_auto_page_break(auto=True, margin=10)
-        pdf.add_page()
+        n_rows = min(len(df), 2000)
 
-        page_w = pdf.epw  # effective page width
-        col_w  = max(page_w / n_cols, 15)
-        row_h  = 7
+        # Page size in points (A4): landscape for wide tables
+        PAGE_W, PAGE_H = (842, 595) if n_cols > 7 else (595, 842)
 
-        # Header row
-        pdf.set_fill_color(79, 70, 229)   # indigo-600
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", style="B", size=8)
-        for col in df.columns:
-            pdf.cell(col_w, row_h, str(col)[:25], border=1, fill=True, align="C")
-        pdf.ln()
+        MARGIN   = 28
+        ROW_H    = 16
+        HDR_H    = 18
+        FONT_HDR = 8
+        FONT_DAT = 7
+        col_w    = max((PAGE_W - 2 * MARGIN) / n_cols, 40)
 
-        # Data rows (cap at 2000 for performance)
-        pdf.set_text_color(30, 30, 30)
-        pdf.set_font("Helvetica", size=7)
-        for i, row in enumerate(df.head(2000).iter_rows()):
-            fill = i % 2 == 0
-            pdf.set_fill_color(243, 244, 246) if fill else pdf.set_fill_color(255, 255, 255)
-            for val in row:
-                cell_text = str(val if val is not None else "")[:30]
-                pdf.cell(col_w, row_h, cell_text, border=1, fill=True)
-            pdf.ln()
+        C_HDR_BG  = (79/255,  70/255,  229/255)
+        C_HDR_TXT = (1.0, 1.0, 1.0)
+        C_EVEN    = (0.953, 0.957, 0.965)
+        C_ODD     = (1.0,  1.0,  1.0)
+        C_DAT_TXT = (0.118, 0.118, 0.118)
+        C_BORDER  = (0.8,  0.8,  0.8)
 
-        pdf.output(path)
+        rows_per_page = int((PAGE_H - MARGIN * 2 - HDR_H) / ROW_H)
+        row_data  = list(df.head(n_rows).iter_rows())
+        col_names = df.columns
+
+        def _new_page(document: fitz.Document) -> fitz.Page:
+            pg = document.new_page(width=PAGE_W, height=PAGE_H)
+            pg.insert_font(fontname="dvr", fontfile=FONT_REGULAR)
+            pg.insert_font(fontname="dvb", fontfile=FONT_BOLD)
+            return pg
+
+        def _draw_row(pg: fitz.Page, y: float, cells, is_header: bool, row_idx: int = 0) -> None:
+            h          = HDR_H if is_header else ROW_H
+            fn         = "dvb" if is_header else "dvr"
+            fs         = FONT_HDR if is_header else FONT_DAT
+            txt_color  = C_HDR_TXT if is_header else C_DAT_TXT
+            for c_idx, text in enumerate(cells):
+                x0         = MARGIN + c_idx * col_w
+                rect       = fitz.Rect(x0, y, x0 + col_w, y + h)
+                fill_color = C_HDR_BG if is_header else (C_EVEN if row_idx % 2 == 0 else C_ODD)
+                pg.draw_rect(rect, color=C_BORDER, fill=fill_color, width=0.4, overlay=True)
+                inner = fitz.Rect(rect.x0 + 2, rect.y0 + 2, rect.x1 - 2, rect.y1 - 2)
+                pg.insert_textbox(
+                    inner, str(text)[:32],
+                    fontname=fn, fontsize=fs,
+                    color=txt_color, align=fitz.TEXT_ALIGN_CENTER, overlay=True,
+                )
+
+        doc      = fitz.open()
+        page     = _new_page(doc)
+        data_idx = 0
+
+        while True:
+            y = MARGIN
+            _draw_row(page, y, col_names, is_header=True)
+            y += HDR_H
+            for _ in range(rows_per_page):
+                if data_idx >= n_rows:
+                    break
+                _draw_row(page, y,
+                          [str(v) if v is not None else "" for v in row_data[data_idx]],
+                          is_header=False, row_idx=data_idx)
+                y      += ROW_H
+                data_idx += 1
+            if data_idx >= n_rows:
+                break
+            page = _new_page(doc)
+
+        doc.save(path)
+        doc.close()
 
     def _write_pptx(self, df: pl.DataFrame, path: str) -> None:
         """Write DataFrame as a PPTX slide with a data table."""
