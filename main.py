@@ -111,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(web_merger.router, tags=["web:merger"])
     app.include_router(web_logs.router, tags=["web:logs"])
     app.include_router(web_settings.router, tags=["web:settings"])
+    app.include_router(web_admin.router, tags=["web:admin"])
 
     # API routes
     app.include_router(api_auth.router, prefix="/api/v1/auth", tags=["api:auth"])
