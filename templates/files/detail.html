@@ -18,7 +18,7 @@
       </div>
       <div>
         <h2 class="font-semibold text-slate-900 dark:text-white">{{ file.original_name }}</h2>
-        <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
+        <div class="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
           <span>{{ file.size_human }}</span>
           {% if file.meta.rows %}<span>·</span><span>{{ "{:,}".format(file.meta.rows) }} صف</span>{% endif %}
           {% if file.meta.columns %}<span>·</span><span>{{ file.meta.columns }} عمود</span>{% endif %}
@@ -51,7 +51,7 @@
     <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
       <h3 class="font-semibold text-slate-900 dark:text-white">معاينة البيانات</h3>
       {% if preview.total_rows is defined %}
-      <span class="text-xs text-slate-400">
+      <span class="text-xs text-slate-500 dark:text-slate-400">
         عرض أول 200 صف من {{ "{:,}".format(preview.total_rows) }} صف
       </span>
       {% endif %}
@@ -66,12 +66,12 @@
       <table class="w-full text-xs text-right">
         <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0">
           <tr>
-            <th class="px-3 py-2.5 text-slate-400 font-medium text-center w-10">#</th>
+            <th class="px-3 py-2.5 text-slate-500 dark:text-slate-400 font-medium text-center w-10">#</th>
             {% for col in preview.columns %}
             <th class="px-3 py-2.5 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start">
               {{ col }}
               {% if preview.dtypes %}
-              <span class="text-slate-300 dark:text-slate-600 ms-1 font-normal">{{ preview.dtypes[loop.index0] }}</span>
+              <span class="text-slate-400 dark:text-slate-500 ms-1 font-normal">{{ preview.dtypes[loop.index0] }}</span>
               {% endif %}
             </th>
             {% endfor %}
@@ -80,7 +80,7 @@
         <tbody class="divide-y divide-slate-50 dark:divide-slate-700/30">
           {% for row in preview.rows %}
           <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-            <td class="px-3 py-2 text-slate-300 dark:text-slate-600 text-center">{{ loop.index }}</td>
+            <td class="px-3 py-2 text-slate-400 dark:text-slate-500 text-center">{{ loop.index }}</td>
             {% for col in preview.columns %}
             <td class="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap max-w-[200px] truncate" title="{{ row[col] }}">
               {{ row[col] if row[col] is not none else '' }}
@@ -92,7 +92,7 @@
       </table>
     </div>
     {% else %}
-    <div class="p-12 text-center text-slate-400">
+    <div class="p-12 text-center text-slate-500 dark:text-slate-400">
       <p>الملف فارغ أو لا يحتوي على بيانات قابلة للعرض</p>
     </div>
     {% endif %}

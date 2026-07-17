@@ -53,7 +53,7 @@
           </div>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-slate-800 dark:text-white truncate">{{ f.original_name }}</p>
-            <p class="text-xs text-slate-400">{{ f.size_human }}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ f.size_human }}</p>
           </div>
           <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -90,7 +90,7 @@
               {% elif op.status.value == 'running' %}bg-yellow-500 animate-pulse
               {% else %}bg-slate-400{% endif %}"></div>
             <span class="text-slate-600 dark:text-slate-300 capitalize">{{ op.type.value }}</span>
-            <span class="text-xs text-slate-400 ms-auto">
+            <span class="text-xs text-slate-500 dark:text-slate-400 ms-auto">
               {% if op.duration_ms %}{{ op.duration_ms }}ms{% endif %}
             </span>
           </div>
