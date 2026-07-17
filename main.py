@@ -6,7 +6,11 @@ Entry point for the FastAPI application.
 import os
 import asyncio
 import logging
+import threading
+import time
+import urllib.request
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +46,90 @@ from app.presentation.api.v1 import cleaner as api_cleaner
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+# ── Keep-alive global state ───────────────────────────────────────────────────
+_SERVER_START = datetime.utcnow()
+_keepalive_state: dict = {
+    "url":         None,
+    "last_ping":   None,
+    "last_status": None,
+    "ping_count":  0,
+    "fail_count":  0,
+    "history":     [],   # last 10 results
+    "db_ok":       None, # None = not yet checked
+}
+
+_KEEPALIVE_INTERVAL = 7 * 60  # 7 minutes
+
+
+def _detect_app_url() -> str:
+    """Auto-detect the public app URL from common hosting platforms."""
+    candidates = [
+        os.environ.get("RENDER_EXTERNAL_URL"),
+        (f"https://{os.environ['REPLIT_DEV_DOMAIN']}"
+         if os.environ.get("REPLIT_DEV_DOMAIN") else None),
+        (f"https://{os.environ['REPLIT_DOMAINS'].split(',')[0].strip()}"
+         if os.environ.get("REPLIT_DOMAINS") else None),
+        (f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN']}"
+         if os.environ.get("RAILWAY_PUBLIC_DOMAIN") else None),
+        (f"https://{os.environ['FLY_APP_NAME']}.fly.dev"
+         if os.environ.get("FLY_APP_NAME") else None),
+        os.environ.get("APP_URL"),
+    ]
+    for url in candidates:
+        if url:
+            return url.rstrip("/")
+    return f"http://localhost:{settings.PORT}"
+
+
+def _start_keepalive() -> None:
+    """Thread target: ping /health + DB every 7 min to prevent free-tier sleep."""
+    time.sleep(20)  # let uvicorn finish startup first
+
+    url = _detect_app_url() + "/health"
+    _keepalive_state["url"] = url
+    logger.info("Keep-alive ready — pinging every %ds → %s", _KEEPALIVE_INTERVAL, url)
+
+    while True:
+        now = datetime.utcnow()
+        entry: dict = {"time": now.isoformat(), "ok": False, "status": None}
+
+        # 1. HTTP ping
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                entry["ok"] = True
+                entry["status"] = resp.status
+                _keepalive_state["ping_count"] += 1
+                _keepalive_state["last_ping"] = now.isoformat()
+                _keepalive_state["last_status"] = resp.status
+                logger.debug("Keep-alive: server OK (HTTP %d)", resp.status)
+        except Exception as exc:
+            entry["error"] = str(exc)
+            _keepalive_state["fail_count"] += 1
+            logger.warning("Keep-alive: server ping failed: %s", exc)
+
+        # 2. DB ping
+        try:
+            from sqlalchemy import text as _text
+            import asyncio as _asyncio
+
+            async def _db_ping():
+                async with AsyncSessionLocal() as session:
+                    await session.execute(_text("SELECT 1"))
+
+            _asyncio.run(_db_ping())
+            _keepalive_state["db_ok"] = True
+            logger.debug("Keep-alive: DB OK")
+        except Exception as exc:
+            _keepalive_state["db_ok"] = False
+            logger.warning("Keep-alive: DB ping failed: %s", exc)
+
+        hist = _keepalive_state["history"]
+        hist.append(entry)
+        if len(hist) > 10:
+            hist.pop(0)
+
+        time.sleep(_KEEPALIVE_INTERVAL)
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -84,37 +172,6 @@ async def seed_admin() -> None:
             logger.info("Default admin user created: admin@spreadsheet.com")
 
 
-async def _keepalive_loop() -> None:
-    """Ping localhost /health + the database every 4 minutes to prevent sleep."""
-    import httpx
-    from sqlalchemy import text
-
-    local_url = f"http://127.0.0.1:{settings.PORT}/health"
-    interval = 4 * 60  # 4 minutes
-
-    logger.info("Keep-alive started → pinging server + DB every %ds", interval)
-    await asyncio.sleep(20)  # let the server finish starting up first
-
-    while True:
-        # 1. HTTP ping (keeps the web process awake)
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(local_url)
-            logger.debug("Keep-alive: server OK (HTTP %d)", r.status_code)
-        except Exception as exc:
-            logger.warning("Keep-alive: server ping failed: %s", exc)
-
-        # 2. DB ping (keeps the PostgreSQL connection pool awake)
-        try:
-            async with AsyncSessionLocal() as session:
-                await session.execute(text("SELECT 1"))
-            logger.debug("Keep-alive: DB OK")
-        except Exception as exc:
-            logger.warning("Keep-alive: DB ping failed: %s", exc)
-
-        await asyncio.sleep(interval)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: setup on startup, teardown on shutdown."""
@@ -130,12 +187,11 @@ async def lifespan(app: FastAPI):
     # Seed default admin account
     await seed_admin()
 
-    # Start server-side keep-alive background task
-    keepalive_task = asyncio.create_task(_keepalive_loop())
+    # Start keep-alive in a daemon thread (no asyncio task — survives event-loop pauses)
+    threading.Thread(target=_start_keepalive, daemon=True, name="keepalive").start()
 
-    logger.info(f"Smart Spreadsheet Platform starting on port {settings.PORT}")
+    logger.info("Smart Spreadsheet Platform starting on port %s", settings.PORT)
     yield
-    keepalive_task.cancel()
     logger.info("Application shutting down")
 
 
@@ -196,6 +252,38 @@ async def health_check():
     to keep the server alive: GET /health every 5 minutes.
     """
     return JSONResponse({"ok": True, "service": "smart-spreadsheet"})
+
+
+@app.get("/api/v1/system/keepalive-status")
+async def keepalive_status():
+    """Keep-alive metrics — read-only, no auth required."""
+    now = datetime.utcnow()
+    uptime_secs = int((now - _SERVER_START).total_seconds())
+    hours, rem = divmod(uptime_secs, 3600)
+    minutes, secs = divmod(rem, 60)
+
+    last_ping = _keepalive_state["last_ping"]
+    next_ping_in: int | None = None
+    if last_ping:
+        try:
+            elapsed = int((now - datetime.fromisoformat(last_ping)).total_seconds())
+            next_ping_in = max(0, _KEEPALIVE_INTERVAL - elapsed)
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "server_ok":       True,
+        "uptime":          f"{hours:02d}:{minutes:02d}:{secs:02d}",
+        "uptime_seconds":  uptime_secs,
+        "ping_url":        _keepalive_state["url"],
+        "ping_count":      _keepalive_state["ping_count"],
+        "fail_count":      _keepalive_state["fail_count"],
+        "last_ping":       last_ping,
+        "last_status":     _keepalive_state["last_status"],
+        "next_ping_in_sec": next_ping_in,
+        "db_ok":           _keepalive_state["db_ok"],
+        "history":         _keepalive_state["history"][-10:],
+    })
 
 
 if __name__ == "__main__":
