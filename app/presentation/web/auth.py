@@ -29,6 +29,21 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
+def _clear_auth_cookie(response: Response) -> None:
+    """Delete the access_token cookie.
+
+    All attributes must match those used in _set_auth_cookie, otherwise
+    the browser treats them as different cookies and ignores the deletion.
+    """
+    response.delete_cookie(
+        "access_token",
+        path="/",
+        httponly=True,
+        samesite="none",
+        secure=True,
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     token = request.cookies.get("access_token")
@@ -102,6 +117,11 @@ async def register_submit(
 @router.post("/auth/logout")
 @router.get("/auth/logout")
 async def logout():
-    response = RedirectResponse(url="/auth/login", status_code=302)
-    response.delete_cookie("access_token")
+    response = RedirectResponse(url="/auth/login", status_code=303)
+    # Must match every attribute used in set_cookie, otherwise the browser
+    # treats them as different cookies and ignores the deletion.
+    _clear_auth_cookie(response)
+    # Prevent the browser from caching this redirect.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     return response

@@ -13,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
 from app.core.config import settings
 from app.core.database import engine, Base, AsyncSessionLocal
@@ -39,6 +41,30 @@ from app.presentation.api.v1 import cleaner as api_cleaner
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Prevent browsers from caching authenticated pages.
+
+    Without this, pressing the browser Back button after logout shows the
+    previous page from cache without hitting the server, bypassing auth.
+    Static assets are excluded so they can still be cached normally.
+    """
+
+    _SKIP_PREFIXES = ("/static",)
+
+    async def dispatch(self, request: Request, call_next) -> StarletteResponse:
+        response = await call_next(request)
+        if any(request.url.path.startswith(p) for p in self._SKIP_PREFIXES):
+            return response
+        content_type = response.headers.get("content-type", "")
+        is_html = "text/html" in content_type
+        is_redirect = response.status_code in (301, 302, 303, 307, 308)
+        if is_html or is_redirect:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
 
 async def seed_admin() -> None:
@@ -87,7 +113,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware
+    # Middleware (outermost first — NoCacheMiddleware runs last so it sees
+    # the final response content-type before setting headers)
+    app.add_middleware(NoCacheMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

@@ -12,6 +12,7 @@ from app.core.security import verify_password, create_access_token
 from app.core.templates import templates
 from app.infrastructure.database.models import User, UserRole, File, OperationLog
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.presentation.web.auth import _set_auth_cookie, _clear_auth_cookie
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -76,24 +77,15 @@ async def admin_login(
     token = create_access_token({"sub": str(user.id)})
 
     if is_htmx:
-        # Tell HTMX to redirect the full page after setting cookie
         response = HTMLResponse(
             '<p class="text-green-400 text-sm text-center mt-2">جاري التحويل…</p>'
         )
-        response.set_cookie(
-            "access_token", token,
-            httponly=True, max_age=60 * 60 * 24,
-            samesite="none", secure=True, path="/",
-        )
+        _set_auth_cookie(response, token)
         response.headers["HX-Redirect"] = "/admin"
         return response
 
     response = RedirectResponse("/admin", status_code=302)
-    response.set_cookie(
-        "access_token", token,
-        httponly=True, max_age=60 * 60 * 24,
-        samesite="none", secure=True, path="/",
-    )
+    _set_auth_cookie(response, token)
     return response
 
 
