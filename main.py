@@ -85,26 +85,33 @@ async def seed_admin() -> None:
 
 
 async def _keepalive_loop() -> None:
-    """Ping the app's own /health endpoint every 4 minutes to prevent host sleep.
-
-    Always pings localhost so there is no TLS/SSL to worry about, and the
-    request never leaves the container.
-    """
+    """Ping localhost /health + the database every 4 minutes to prevent sleep."""
     import httpx
+    from sqlalchemy import text
 
     local_url = f"http://127.0.0.1:{settings.PORT}/health"
     interval = 4 * 60  # 4 minutes
 
-    logger.info("Keep-alive started → pinging %s every %ds", local_url, interval)
+    logger.info("Keep-alive started → pinging server + DB every %ds", interval)
     await asyncio.sleep(20)  # let the server finish starting up first
 
     while True:
+        # 1. HTTP ping (keeps the web process awake)
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(local_url)
-            logger.debug("Keep-alive ping OK (HTTP %d)", r.status_code)
+            logger.debug("Keep-alive: server OK (HTTP %d)", r.status_code)
         except Exception as exc:
-            logger.warning("Keep-alive ping failed: %s", exc)
+            logger.warning("Keep-alive: server ping failed: %s", exc)
+
+        # 2. DB ping (keeps the PostgreSQL connection pool awake)
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+            logger.debug("Keep-alive: DB OK")
+        except Exception as exc:
+            logger.warning("Keep-alive: DB ping failed: %s", exc)
+
         await asyncio.sleep(interval)
 
 
