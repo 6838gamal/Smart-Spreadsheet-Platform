@@ -1,4 +1,4 @@
-modules = ["web", "python-3.12", "nodejs-20"]
+modules = ["python-3.12", "web", "nodejs-20"]
 [agent]
 expertMode = true
 
