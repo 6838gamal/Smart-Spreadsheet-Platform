@@ -836,6 +836,27 @@
 
 <script>
 function serverActivityData() {
+  const STORE_KEY = 'srv_activity_v1';
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      // Re-hydrate date strings back to Date objects
+      return {
+        totalPings:  s.totalPings  ?? 0,
+        totalFails:  s.totalFails  ?? 0,
+        history:     (s.history ?? []).map(e => ({ ...e, time: e.time ? new Date(e.time) : null })),
+        status:      s.status      ?? null,
+        statusSince: s.statusSince ? new Date(s.statusSince) : null,
+        lastPingAt:  s.lastPingAt  ? new Date(s.lastPingAt)  : null,
+        latency:     s.latency     ?? null,
+        countdown:   typeof s.countdown === 'number' ? s.countdown : 420,
+      };
+    } catch { return null; }
+  }
+
   return {
     INTERVAL: 420,          // 7 minutes in seconds
     CIRC: 2 * Math.PI * 40, // SVG circle circumference (r = 40)
@@ -850,15 +871,41 @@ function serverActivityData() {
     history: [],
     _timer: null,
 
+    _save() {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({
+          totalPings:  this.totalPings,
+          totalFails:  this.totalFails,
+          history:     this.history,
+          status:      this.status,
+          statusSince: this.statusSince,
+          lastPingAt:  this.lastPingAt,
+          latency:     this.latency,
+          countdown:   this.countdown,
+        }));
+      } catch { /* quota exceeded — ignore */ }
+    },
+
     init() {
-      // Fire first ping immediately, then start the per-second tick
-      this.doPing();
+      // Restore persisted state so counters survive page navigation
+      const saved = loadState();
+      if (saved) {
+        Object.assign(this, saved);
+        // If the saved countdown has expired while away, ping immediately
+        if (this.countdown <= 0) {
+          this.doPing();
+        }
+      } else {
+        // First ever load — ping right away
+        this.doPing();
+      }
       this._timer = setInterval(() => this.tick(), 1000);
     },
 
     tick() {
       if (this.countdown > 0) {
         this.countdown--;
+        this._save();
         if (this.countdown === 0) this.doPing();
       }
     },
@@ -899,6 +946,7 @@ function serverActivityData() {
       } finally {
         this.pinging = false;
         this.countdown = this.INTERVAL; // reset countdown after every ping
+        this._save();
       }
     },
 
