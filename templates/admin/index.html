@@ -1,0 +1,275 @@
+{% set t = get_texts(lang if lang else 'ar') %}
+<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'ar' else 'ltr' }}" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>لوحة الإدارة — Smart Spreadsheet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: { brand: { 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' } } } }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    body { font-family: 'Inter', 'Noto Sans Arabic', sans-serif; }
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen" x-data="{ tab: 'users', confirm: null }">
+
+<!-- ── Top bar ── -->
+<header class="sticky top-0 z-40 bg-slate-900 border-b border-slate-700/60 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <!-- Shield icon -->
+    <div class="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center">
+      <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+      </svg>
+    </div>
+    <div>
+      <p class="text-sm font-bold text-white leading-tight">لوحة الإدارة</p>
+      <p class="text-xs text-slate-400">Smart Spreadsheet Admin</p>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="text-xs text-slate-400">مرحباً، <span class="text-white font-medium">{{ user.username }}</span></span>
+    <a href="/dashboard"
+       class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+      العودة للتطبيق
+    </a>
+    <a href="/auth/logout"
+       class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-900/40 hover:bg-red-900/70 text-red-400 transition-colors">
+      خروج
+    </a>
+  </div>
+</header>
+
+<!-- ── Stats ── -->
+<div class="px-6 py-6">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    {% set stats = [
+      ('إجمالي المستخدمين', total_users,  'text-indigo-400',  'bg-indigo-500/10',  'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
+      ('المستخدمون النشطون', active_users, 'text-emerald-400', 'bg-emerald-500/10', 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
+      ('إجمالي الملفات',     total_files,  'text-sky-400',     'bg-sky-500/10',     'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z'),
+      ('إجمالي العمليات',    total_ops,    'text-violet-400',  'bg-violet-500/10',  'M13 10V3L4 14h7v7l9-11h-7z'),
+    ] %}
+    {% for label, value, text_cls, bg_cls, icon_d in stats %}
+    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 p-5">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-xs text-slate-400 mb-1">{{ label }}</p>
+          <p class="text-3xl font-bold text-white">{{ value }}</p>
+        </div>
+        <div class="{{ bg_cls }} p-2.5 rounded-xl">
+          <svg class="w-5 h-5 {{ text_cls }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ icon_d }}"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Tabs ── -->
+  <div class="flex gap-1 mb-6 bg-slate-900 rounded-xl p-1 w-fit border border-slate-700/50">
+    {% for tab_id, label in [('users','إدارة المستخدمين'), ('logs','آخر العمليات')] %}
+    <button @click="tab = '{{ tab_id }}'"
+            :class="tab === '{{ tab_id }}' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'"
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-all">
+      {{ label }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- ── Users Tab ── -->
+  <div x-show="tab === 'users'" x-cloak>
+    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+        <h2 class="font-semibold text-white">المستخدمون ({{ users|length }})</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-700/50">
+              {% for col in ['#', 'المستخدم', 'البريد', 'الدور', 'الحالة', 'الملفات', 'تاريخ التسجيل', 'إجراءات'] %}
+              <th class="text-start px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700/30">
+            {% for u in users %}
+            <tr class="hover:bg-slate-800/50 transition-colors">
+              <td class="px-4 py-3 text-slate-500 font-mono text-xs">{{ u.id }}</td>
+
+              <!-- User -->
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold
+                              {% if u.role == UserRole.ADMIN %}bg-red-600{% else %}bg-indigo-700{% endif %}">
+                    {{ u.username[0].upper() }}
+                  </div>
+                  <span class="font-medium text-white">{{ u.username }}</span>
+                  {% if u.id == user.id %}
+                  <span class="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">أنت</span>
+                  {% endif %}
+                </div>
+              </td>
+
+              <!-- Email -->
+              <td class="px-4 py-3 text-slate-400 text-xs">{{ u.email }}</td>
+
+              <!-- Role -->
+              <td class="px-4 py-3">
+                {% if u.id == user.id %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-900/40 text-red-400">
+                  {{ u.role.value }}
+                </span>
+                {% else %}
+                <form method="post" action="/admin/users/{{ u.id }}/role" class="inline">
+                  <select name="role" onchange="this.form.submit()"
+                          class="bg-slate-800 border border-slate-600 rounded-lg text-xs text-slate-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    {% for r in UserRole %}
+                    <option value="{{ r.value }}" {% if u.role == r %}selected{% endif %}>{{ r.value }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+                {% endif %}
+              </td>
+
+              <!-- Status -->
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                  {% if u.is_active %}bg-emerald-900/40 text-emerald-400{% else %}bg-red-900/40 text-red-400{% endif %}">
+                  {{ 'مفعّل' if u.is_active else 'معطّل' }}
+                </span>
+              </td>
+
+              <!-- File count -->
+              <td class="px-4 py-3 text-slate-400 text-center">
+                {{ file_counts.get(u.id, 0) }}
+              </td>
+
+              <!-- Date -->
+              <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                {{ u.created_at.strftime('%Y-%m-%d') }}
+              </td>
+
+              <!-- Actions -->
+              <td class="px-4 py-3">
+                {% if u.id != user.id %}
+                <div class="flex items-center gap-1.5">
+                  <!-- Toggle active -->
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle">
+                    <button type="submit"
+                            class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
+                              {% if u.is_active %}bg-red-900/30 hover:bg-red-900/60 text-red-400
+                              {% else %}bg-emerald-900/30 hover:bg-emerald-900/60 text-emerald-400{% endif %}">
+                      {{ 'تعطيل' if u.is_active else 'تفعيل' }}
+                    </button>
+                  </form>
+                  <!-- Delete -->
+                  <button
+                    @click="confirm = {{ u.id }}"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700/50 hover:bg-red-900/40 text-slate-400 hover:text-red-400 transition-colors">
+                    حذف
+                  </button>
+                </div>
+                {% else %}
+                <span class="text-slate-600 text-xs">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Logs Tab ── -->
+  <div x-show="tab === 'logs'" x-cloak>
+    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700/50">
+        <h2 class="font-semibold text-white">آخر 20 عملية على المنصة</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-700/50">
+              {% for col in ['#', 'النوع', 'الحالة', 'المستخدم', 'المدة', 'التاريخ'] %}
+              <th class="text-start px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700/30">
+            {% for op in recent_ops %}
+            <tr class="hover:bg-slate-800/50 transition-colors">
+              <td class="px-4 py-3 text-slate-500 font-mono text-xs">{{ op.id }}</td>
+              <td class="px-4 py-3 font-medium text-white capitalize">{{ op.type.value }}</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                  {% if op.status.value == 'success' %}bg-emerald-900/40 text-emerald-400
+                  {% elif op.status.value == 'failed' %}bg-red-900/40 text-red-400
+                  {% elif op.status.value == 'running' %}bg-yellow-900/40 text-yellow-400
+                  {% else %}bg-slate-700 text-slate-400{% endif %}">
+                  {{ op.status.value }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-slate-400 text-xs">{{ op.user_id }}</td>
+              <td class="px-4 py-3 text-slate-400 text-xs font-mono">
+                {{ op.duration_ms ~ 'ms' if op.duration_ms else '—' }}
+              </td>
+              <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                {{ op.started_at.strftime('%Y-%m-%d %H:%M') if op.started_at else '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not recent_ops %}
+            <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">لا توجد عمليات بعد</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /px-6 -->
+
+<!-- ── Delete confirm modal ── -->
+<div x-show="confirm !== null" x-cloak
+     class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+     x-transition:enter="transition ease-out duration-150"
+     x-transition:enter-start="opacity-0 scale-95"
+     x-transition:enter-end="opacity-100 scale-100">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <div class="w-12 h-12 rounded-full bg-red-900/40 flex items-center justify-center mx-auto mb-4">
+      <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+    </div>
+    <h3 class="text-base font-semibold text-white text-center mb-2">تأكيد الحذف</h3>
+    <p class="text-sm text-slate-400 text-center mb-6">سيتم حذف المستخدم وجميع ملفاته نهائياً. لا يمكن التراجع.</p>
+    <div class="flex gap-3">
+      <button @click="confirm = null"
+              class="flex-1 py-2 rounded-xl text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+        إلغاء
+      </button>
+      <form :action="'/admin/users/' + confirm + '/delete'" method="post" class="flex-1">
+        <button type="submit"
+                class="w-full py-2 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors">
+          حذف نهائياً
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

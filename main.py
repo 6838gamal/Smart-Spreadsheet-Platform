@@ -27,6 +27,7 @@ from app.presentation.web import cleaner as web_cleaner
 from app.presentation.web import merger as web_merger
 from app.presentation.web import logs as web_logs
 from app.presentation.web import settings as web_settings
+from app.presentation.web import admin as web_admin
 
 from app.presentation.api.v1 import auth as api_auth
 from app.presentation.api.v1 import files as api_files
