@@ -4,6 +4,7 @@ Entry point for the FastAPI application.
 """
 
 import os
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -83,6 +84,31 @@ async def seed_admin() -> None:
             logger.info("Default admin user created: admin@spreadsheet.com")
 
 
+async def _keepalive_loop() -> None:
+    """Ping the app's own /health endpoint every 5 minutes to prevent host sleep.
+
+    The target URL is resolved once at startup from the environment so the app
+    works unchanged on Replit, Render, Railway, Fly.io, Heroku, or bare VMs.
+    Set APP_URL explicitly to override auto-detection.
+    """
+    import httpx
+
+    url = f"{settings.public_url}/health"
+    interval = 5 * 60  # 5 minutes
+
+    logger.info("Keep-alive started → pinging %s every %ds", url, interval)
+    await asyncio.sleep(30)  # let the server finish starting up first
+
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url)
+            logger.debug("Keep-alive ping OK (%d ms, HTTP %d)", r.elapsed.microseconds // 1000, r.status_code)
+        except Exception as exc:
+            logger.warning("Keep-alive ping failed: %s", exc)
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: setup on startup, teardown on shutdown."""
@@ -98,8 +124,12 @@ async def lifespan(app: FastAPI):
     # Seed default admin account
     await seed_admin()
 
+    # Start server-side keep-alive background task
+    keepalive_task = asyncio.create_task(_keepalive_loop())
+
     logger.info(f"Smart Spreadsheet Platform starting on port {settings.PORT}")
     yield
+    keepalive_task.cancel()
     logger.info("Application shutting down")
 
 

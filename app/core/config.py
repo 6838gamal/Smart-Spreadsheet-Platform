@@ -22,6 +22,47 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     PORT: int = 5000
 
+    # Public URL — used for server-side keep-alive self-ping.
+    # Set APP_URL explicitly, or leave empty to auto-detect from the host
+    # environment (Replit, Render, Railway, Fly.io, Heroku, or localhost).
+    APP_URL: str = ""
+
+    @property
+    def public_url(self) -> str:
+        """Return the app's own public base URL, auto-detected when APP_URL is unset."""
+        import os
+        if self.APP_URL:
+            return self.APP_URL.rstrip("/")
+        # Replit (dev workspace or deployed)
+        for key in ("REPLIT_DEV_DOMAIN", "REPLIT_DOMAINS"):
+            val = os.environ.get(key, "").split(",")[0].strip()
+            if val:
+                return f"https://{val}"
+        # Render
+        val = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+        if val:
+            return val.rstrip("/")
+        # Railway
+        for key in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_URL"):
+            val = os.environ.get(key, "").strip()
+            if val:
+                return f"https://{val}" if not val.startswith("http") else val.rstrip("/")
+        # Fly.io
+        val = os.environ.get("FLY_APP_NAME", "").strip()
+        if val:
+            return f"https://{val}.fly.dev"
+        # Heroku
+        val = os.environ.get("HEROKU_APP_DEFAULT_DOMAIN_NAME", "").strip()
+        if val:
+            return f"https://{val}"
+        # Generic fallback
+        for key in ("APP_URL", "PUBLIC_URL", "BASE_URL", "HOST_URL"):
+            val = os.environ.get(key, "").strip()
+            if val:
+                return val.rstrip("/")
+        # Local fallback
+        return f"http://localhost:{self.PORT}"
+
     # Security
     SECRET_KEY: str = "a3f8d2e1c4b7e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4"
     SESSION_SECRET: str = "s3s5i0n-s3cr3t-k3y-f0r-sm4rt-spr34dsh33t-pl4tf0rm-2024"
