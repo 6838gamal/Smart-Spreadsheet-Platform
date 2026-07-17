@@ -30,10 +30,39 @@
   <link rel="stylesheet" href="/static/css/custom.css"/>
   <style>
     [x-cloak] { display: none !important; }
-    .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150; }
-    .sidebar-link:hover { @apply bg-white/10 text-white; }
-    .sidebar-link.active { @apply bg-brand-600 text-white shadow-lg shadow-brand-900/50; }
-    .sidebar-link:not(.active) { @apply text-slate-300; }
+
+    /* ── Sidebar — self-contained dark panel, immune to light/dark theme ── */
+    .sidebar-root {
+      background: #13112a;
+      border-color: rgba(255,255,255,0.07);
+    }
+    .sidebar-divider  { border-color: rgba(255,255,255,0.07); }
+    .sidebar-logo-txt { color: #f8fafc; }          /* slate-50  */
+    .sidebar-user-name { color: #f1f5f9; }          /* slate-100 */
+    .sidebar-user-email { color: #94a3b8; }         /* slate-400 */
+
+    .sidebar-link {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.6rem 0.75rem; border-radius: 0.625rem;
+      font-size: 0.875rem; font-weight: 500;
+      color: #a5b3cc;                               /* readable on dark bg */
+      transition: background 150ms, color 150ms;
+      text-decoration: none;
+    }
+    .sidebar-link:hover {
+      background: rgba(255,255,255,0.07);
+      color: #f1f5f9;
+    }
+    .sidebar-link.active {
+      background: #4f46e5;                          /* brand-600 */
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(79,70,229,0.40);
+    }
+    .sidebar-link.active svg { opacity: 1; }
+    .sidebar-link svg { opacity: 0.75; transition: opacity 150ms; }
+    .sidebar-link:hover svg, .sidebar-link.active svg { opacity: 1; }
+
+    /* ── Rest of UI ── */
     .card { @apply bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm; }
     .btn-primary { @apply inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-all; }
     .btn-secondary { @apply inline-flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-lg transition-all; }
@@ -67,10 +96,9 @@
   </div>
 
   <!-- Sidebar -->
-  <aside class="fixed inset-y-0 start-0 z-50 w-72
+  <aside class="sidebar-root fixed inset-y-0 start-0 z-50 w-72
                 md:relative md:inset-y-auto md:start-auto md:z-auto md:w-64
-                flex-shrink-0 flex flex-col
-                bg-slate-900 dark:bg-slate-950 border-e border-slate-700/50
+                flex-shrink-0 flex flex-col border-e
                 transition-all duration-300
                 ltr:-translate-x-full rtl:translate-x-full
                 md:translate-x-0"
@@ -80,17 +108,17 @@
          }">
 
     <!-- Logo -->
-    <div class="flex items-center gap-3 px-4 py-5 border-b border-slate-700/50">
-      <div class="flex-shrink-0 w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+    <div class="sidebar-divider flex items-center gap-3 px-4 py-5 border-b">
+      <div class="flex-shrink-0 w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-900/40">
         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
         </svg>
       </div>
-      <span class="font-bold text-white text-sm leading-tight truncate" x-show="sidebarOpen">Smart Spreadsheet</span>
+      <span class="sidebar-logo-txt font-bold text-sm leading-tight truncate" x-show="sidebarOpen">Smart Spreadsheet</span>
     </div>
 
     <!-- Nav -->
-    <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-1">
+    <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
       {% set nav = [
         ('dashboard', '/dashboard', 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', 'nav_dashboard'),
         ('files',     '/files',     'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z', 'nav_files'),
@@ -109,7 +137,7 @@
       </a>
       {% endfor %}
 
-      <div class="pt-2 mt-2 border-t border-slate-700/50">
+      <div class="sidebar-divider pt-2 mt-2 border-t">
         {% set nav2 = [
           ('logs',     '/logs',     'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', 'nav_logs'),
           ('settings', '/settings', 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', 'nav_settings'),
@@ -127,14 +155,14 @@
     </nav>
 
     <!-- User -->
-    <div class="border-t border-slate-700/50 p-3">
+    <div class="sidebar-divider border-t p-3">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+        <div class="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md shadow-brand-900/40">
           {{ user.username[0].upper() }}
         </div>
         <div class="min-w-0 flex-1" x-show="sidebarOpen">
-          <p class="text-sm font-medium text-white truncate">{{ user.username }}</p>
-          <p class="text-xs text-slate-400 truncate">{{ user.email }}</p>
+          <p class="sidebar-user-name text-sm font-medium truncate">{{ user.username }}</p>
+          <p class="sidebar-user-email text-xs truncate">{{ user.email }}</p>
         </div>
       </div>
     </div>
