@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
@@ -151,6 +151,15 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+@app.get("/health")
+async def health_check():
+    """Public health-check endpoint — no auth required.
+    Use this URL with an external uptime monitor (e.g. UptimeRobot)
+    to keep the server alive: GET /health every 5 minutes.
+    """
+    return JSONResponse({"ok": True, "service": "smart-spreadsheet"})
 
 
 if __name__ == "__main__":
