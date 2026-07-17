@@ -63,6 +63,12 @@ xlsx, csv, json, xml, yaml, parquet, feather, ods, html, tsv, sqlite, docx
 
 See `.env.example` for all available configuration options.
 
+## Default Credentials (dev only)
+
+- **Email**: `admin@spreadsheet.com`
+- **Password**: `Spreadsheet123`
+- **Role**: Admin
+
 ## User Preferences
 
 - Arabic RTL UI by default (configurable per user)
