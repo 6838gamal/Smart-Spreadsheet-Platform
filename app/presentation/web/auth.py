@@ -13,6 +13,23 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """Set the access_token cookie.
+
+    Uses SameSite=None + Secure so the cookie works inside iframes (Replit
+    preview, embedded dashboards) and across redirect chains on Render / HTTPS.
+    """
+    response.set_cookie(
+        "access_token",
+        token,
+        httponly=True,
+        max_age=60 * 60 * 24,   # 24 h
+        samesite="none",
+        secure=True,
+        path="/",
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     token = request.cookies.get("access_token")
@@ -42,13 +59,7 @@ async def login_submit(
         svc = AuthService(db)
         result = await svc.login(LoginDTO(email=email, password=password))
         response = RedirectResponse(url="/dashboard", status_code=302)
-        response.set_cookie(
-            "access_token",
-            result.access_token,
-            httponly=True,
-            max_age=60 * 60 * 24,
-            samesite="lax",
-        )
+        _set_auth_cookie(response, result.access_token)
         return response
     except Exception as e:
         return templates.TemplateResponse(
@@ -77,7 +88,7 @@ async def register_submit(
         from app.core.security import create_access_token
         token = create_access_token({"sub": str(user.id)})
         response = RedirectResponse(url="/dashboard", status_code=302)
-        response.set_cookie("access_token", token, httponly=True, max_age=60 * 60 * 24, samesite="lax")
+        _set_auth_cookie(response, token)
         return response
     except Exception as e:
         return templates.TemplateResponse(
