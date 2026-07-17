@@ -9,7 +9,13 @@
   <script>
     tailwind.config = {
       darkMode: 'class',
-      theme: { extend: { colors: { brand: { 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' } } } }
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500:'#6366f1', 600:'#4f46e5', 700:'#4338ca' }
+          }
+        }
+      }
     }
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -18,252 +24,604 @@
   <style>
     body { font-family: 'Inter', 'Noto Sans Arabic', sans-serif; }
     [x-cloak] { display: none !important; }
+    .sidebar-link {
+      @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-slate-400 hover:text-white hover:bg-slate-700/60;
+    }
+    .sidebar-link.active {
+      @apply bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 hover:text-indigo-300;
+    }
+    .stat-card {
+      @apply bg-slate-800/60 border border-slate-700/50 rounded-2xl p-5 hover:border-slate-600/60 transition-colors;
+    }
+    .section-card {
+      @apply bg-slate-800/60 border border-slate-700/50 rounded-2xl overflow-hidden;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 99px; }
   </style>
 </head>
-<body class="bg-slate-950 text-white min-h-screen" x-data="{ tab: 'users', confirm: null }">
 
-<!-- ── Top bar ── -->
-<header class="sticky top-0 z-40 bg-slate-900 border-b border-slate-700/60 px-6 py-3 flex items-center justify-between">
-  <div class="flex items-center gap-3">
-    <!-- Shield icon -->
-    <div class="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center">
-      <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-      </svg>
-    </div>
-    <div>
-      <p class="text-sm font-bold text-white leading-tight">لوحة الإدارة</p>
-      <p class="text-xs text-slate-400">Smart Spreadsheet Admin</p>
-    </div>
-  </div>
-  <div class="flex items-center gap-3">
-    <span class="text-xs text-slate-400">مرحباً، <span class="text-white font-medium">{{ user.username }}</span></span>
-    <a href="/dashboard"
-       class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
-      العودة للتطبيق
-    </a>
-    <a href="/auth/logout"
-       class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-900/40 hover:bg-red-900/70 text-red-400 transition-colors">
-      خروج
-    </a>
-  </div>
-</header>
+<body class="bg-slate-950 text-white min-h-screen"
+      x-data="{
+        tab: 'overview',
+        sidebarOpen: false,
+        confirm: null,
+        navItems: [
+          { id: 'overview', label: 'نظرة عامة',    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+          { id: 'users',    label: 'المستخدمون',   icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+          { id: 'logs',     label: 'سجل العمليات', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+        ]
+      }">
 
-<!-- ── Stats ── -->
-<div class="px-6 py-6">
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    {% set stats = [
-      ('إجمالي المستخدمين', total_users,  'text-indigo-400',  'bg-indigo-500/10',  'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
-      ('المستخدمون النشطون', active_users, 'text-emerald-400', 'bg-emerald-500/10', 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
-      ('إجمالي الملفات',     total_files,  'text-sky-400',     'bg-sky-500/10',     'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z'),
-      ('إجمالي العمليات',    total_ops,    'text-violet-400',  'bg-violet-500/10',  'M13 10V3L4 14h7v7l9-11h-7z'),
-    ] %}
-    {% for label, value, text_cls, bg_cls, icon_d in stats %}
-    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 p-5">
-      <div class="flex items-start justify-between">
-        <div>
-          <p class="text-xs text-slate-400 mb-1">{{ label }}</p>
-          <p class="text-3xl font-bold text-white">{{ value }}</p>
-        </div>
-        <div class="{{ bg_cls }} p-2.5 rounded-xl">
-          <svg class="w-5 h-5 {{ text_cls }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ icon_d }}"/>
-          </svg>
-        </div>
+<!-- ───────────────────────────────────────────────
+     MOBILE OVERLAY
+──────────────────────────────────────────────── -->
+<div x-show="sidebarOpen"
+     x-cloak
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     @click="sidebarOpen = false"
+     class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"></div>
+
+<!-- ───────────────────────────────────────────────
+     SIDEBAR
+──────────────────────────────────────────────── -->
+<aside :class="sidebarOpen ? 'translate-x-0' : (document.documentElement.dir === 'rtl' ? 'translate-x-full' : '-translate-x-full')"
+       class="fixed top-0 end-0 lg:start-auto lg:translate-x-0 z-40 w-64 h-full
+              bg-slate-900 border-s border-slate-700/50
+              flex flex-col
+              transition-transform duration-300 ease-in-out
+              lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:flex">
+
+  <!-- Logo / Brand -->
+  <div class="px-5 py-5 border-b border-slate-700/50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center flex-shrink-0">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-white leading-tight truncate">لوحة الإدارة</p>
+        <p class="text-xs text-slate-500 truncate">Smart Spreadsheet</p>
       </div>
     </div>
-    {% endfor %}
   </div>
 
-  <!-- ── Tabs ── -->
-  <div class="flex gap-1 mb-6 bg-slate-900 rounded-xl p-1 w-fit border border-slate-700/50">
-    {% for tab_id, label in [('users','إدارة المستخدمين'), ('logs','آخر العمليات')] %}
-    <button @click="tab = '{{ tab_id }}'"
-            :class="tab === '{{ tab_id }}' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'"
-            class="px-4 py-2 rounded-lg text-sm font-medium transition-all">
-      {{ label }}
-    </button>
-    {% endfor %}
-  </div>
+  <!-- Nav -->
+  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+    <p class="px-3 mb-2 text-xs font-semibold text-slate-600 uppercase tracking-wider">القائمة</p>
+    <template x-for="item in navItems" :key="item.id">
+      <button @click="tab = item.id; sidebarOpen = false"
+              :class="tab === item.id ? 'active' : ''"
+              class="sidebar-link w-full text-start">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" :d="item.icon"/>
+        </svg>
+        <span x-text="item.label"></span>
+        <span x-show="tab === item.id"
+              class="me-auto ms-auto w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+      </button>
+    </template>
 
-  <!-- ── Users Tab ── -->
-  <div x-show="tab === 'users'" x-cloak>
-    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
-        <h2 class="font-semibold text-white">المستخدمون ({{ users|length }})</h2>
+    <div class="pt-4 mt-4 border-t border-slate-700/50">
+      <p class="px-3 mb-2 text-xs font-semibold text-slate-600 uppercase tracking-wider">النظام</p>
+      <a href="/dashboard" class="sidebar-link">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+        العودة للتطبيق
+      </a>
+      <a href="/auth/logout" class="sidebar-link text-red-500 hover:text-red-400 hover:bg-red-900/20">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+        تسجيل الخروج
+      </a>
+    </div>
+  </nav>
+
+  <!-- User badge -->
+  <div class="px-4 py-4 border-t border-slate-700/50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-red-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+        {{ user.username[0].upper() }}
       </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-700/50">
-              {% for col in ['#', 'المستخدم', 'البريد', 'الدور', 'الحالة', 'الملفات', 'تاريخ التسجيل', 'إجراءات'] %}
-              <th class="text-start px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">{{ col }}</th>
+      <div class="min-w-0">
+        <p class="text-sm font-medium text-white truncate">{{ user.username }}</p>
+        <p class="text-xs text-red-400 truncate">مدير النظام</p>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ───────────────────────────────────────────────
+     MAIN WRAPPER  (sidebar + content side by side)
+──────────────────────────────────────────────── -->
+<div class="lg:flex lg:min-h-screen">
+
+  <!-- Sidebar placeholder (keeps layout) -->
+  <div class="hidden lg:block w-64 flex-shrink-0"></div>
+
+  <!-- ── Content ── -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- ── Top bar (mobile + desktop) ── -->
+    <header class="sticky top-0 z-20 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50 px-4 sm:px-6 py-3">
+      <div class="flex items-center justify-between gap-3">
+
+        <!-- Mobile: hamburger + title -->
+        <div class="flex items-center gap-3">
+          <button @click="sidebarOpen = !sidebarOpen"
+                  class="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
+          <div>
+            <h1 class="text-sm font-bold text-white" x-text="navItems.find(n => n.id === tab)?.label || 'لوحة الإدارة'"></h1>
+            <p class="text-xs text-slate-500 hidden sm:block">إدارة المنصة والمستخدمين</p>
+          </div>
+        </div>
+
+        <!-- Right side -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Stats summary pills -->
+          <div class="hidden md:flex items-center gap-2">
+            <span class="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700/50 text-xs text-slate-400">
+              <span class="text-white font-semibold">{{ total_users }}</span> مستخدم
+            </span>
+            <span class="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700/50 text-xs text-slate-400">
+              <span class="text-white font-semibold">{{ total_files }}</span> ملف
+            </span>
+          </div>
+          <div class="w-px h-5 bg-slate-700 hidden md:block"></div>
+          <span class="text-xs text-slate-500 hidden sm:block">{{ user.username }}</span>
+          <a href="/auth/logout"
+             class="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+             title="تسجيل الخروج">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Page content ── -->
+    <main class="flex-1 px-4 sm:px-6 py-6 space-y-6">
+
+      <!-- ════════════════════════════════
+           TAB: OVERVIEW
+      ════════════════════════════════ -->
+      <div x-show="tab === 'overview'" x-cloak>
+
+        <!-- Stats grid -->
+        <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          {% set stats = [
+            ('إجمالي المستخدمين', total_users,  'text-indigo-400',  'bg-indigo-500/10',  'border-indigo-500/20', 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
+            ('المستخدمون النشطون', active_users, 'text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/20','M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
+            ('إجمالي الملفات',     total_files,  'text-sky-400',     'bg-sky-500/10',     'border-sky-500/20',    'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z'),
+            ('إجمالي العمليات',    total_ops,    'text-violet-400',  'bg-violet-500/10',  'border-violet-500/20', 'M13 10V3L4 14h7v7l9-11h-7z'),
+          ] %}
+          {% for label, value, text_cls, bg_cls, border_cls, icon_d in stats %}
+          <div class="stat-card {{ border_cls }} border">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-xs text-slate-500 mb-2 truncate">{{ label }}</p>
+                <p class="text-3xl font-bold text-white tabular-nums">{{ value }}</p>
+              </div>
+              <div class="{{ bg_cls }} p-2.5 rounded-xl flex-shrink-0">
+                <svg class="w-5 h-5 {{ text_cls }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ icon_d }}"/>
+                </svg>
+              </div>
+            </div>
+            {% if loop.index == 2 and total_users > 0 %}
+            <div class="mt-3 pt-3 border-t border-slate-700/40">
+              <div class="flex items-center justify-between text-xs text-slate-500 mb-1">
+                <span>النشاط</span>
+                <span class="text-emerald-400">{{ ((active_users / total_users) * 100)|round|int }}%</span>
+              </div>
+              <div class="h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div class="h-full bg-emerald-500 rounded-full"
+                     style="width: {{ ((active_users / total_users) * 100)|round|int }}%"></div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Two-column layout: quick users + recent ops -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          <!-- Recent users (wider) -->
+          <div class="section-card lg:col-span-3">
+            <div class="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-white">آخر المسجّلين</h2>
+                <p class="text-xs text-slate-500 mt-0.5">أحدث 5 مستخدمين</p>
+              </div>
+              <button @click="tab = 'users'"
+                      class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                عرض الكل ←
+              </button>
+            </div>
+            <div class="divide-y divide-slate-700/30">
+              {% for u in users[:5] %}
+              <div class="flex items-center gap-3 px-5 py-3 hover:bg-slate-700/20 transition-colors">
+                <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold
+                            {{ 'bg-red-700' if u.role == UserRole.ADMIN else 'bg-indigo-700' }}">
+                  {{ u.username[0].upper() }}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-white truncate">{{ u.username }}</span>
+                    {% if u.role == UserRole.ADMIN %}
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-red-900/40 text-red-400">admin</span>
+                    {% endif %}
+                    {% if not u.is_active %}
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">معطّل</span>
+                    {% endif %}
+                  </div>
+                  <p class="text-xs text-slate-500 truncate">{{ u.email }}</p>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <p class="text-xs text-slate-400 font-medium">{{ file_counts.get(u.id, 0) }} ملف</p>
+                  <p class="text-xs text-slate-600">{{ u.created_at.strftime('%m/%d') }}</p>
+                </div>
+              </div>
+              {% else %}
+              <div class="px-5 py-10 text-center text-slate-600 text-sm">لا يوجد مستخدمون بعد</div>
               {% endfor %}
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-700/30">
-            {% for u in users %}
-            <tr class="hover:bg-slate-800/50 transition-colors">
-              <td class="px-4 py-3 text-slate-500 font-mono text-xs">{{ u.id }}</td>
+            </div>
+          </div>
 
-              <!-- User -->
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-2">
-                  <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold
-                              {% if u.role == UserRole.ADMIN %}bg-red-600{% else %}bg-indigo-700{% endif %}">
+          <!-- Recent ops (narrower) -->
+          <div class="section-card lg:col-span-2">
+            <div class="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold text-white">آخر العمليات</h2>
+                <p class="text-xs text-slate-500 mt-0.5">{{ recent_ops|length }} عملية</p>
+              </div>
+              <button @click="tab = 'logs'"
+                      class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                عرض الكل ←
+              </button>
+            </div>
+            <div class="divide-y divide-slate-700/30">
+              {% for op in recent_ops[:8] %}
+              <div class="flex items-center gap-3 px-5 py-3">
+                <div class="flex-shrink-0">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                    {% if op.status.value == 'success' %}bg-emerald-900/40 text-emerald-400
+                    {% elif op.status.value == 'failed' %}bg-red-900/40 text-red-400
+                    {% elif op.status.value == 'running' %}bg-yellow-900/40 text-yellow-400
+                    {% else %}bg-slate-700/60 text-slate-400{% endif %}">
+                    {{ op.status.value }}
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-white capitalize">{{ op.type.value }}</p>
+                  <p class="text-xs text-slate-500">م. {{ op.user_id }}</p>
+                </div>
+                <p class="text-xs text-slate-600 flex-shrink-0 font-mono">
+                  {{ op.duration_ms ~ 'ms' if op.duration_ms else '—' }}
+                </p>
+              </div>
+              {% else %}
+              <div class="px-5 py-10 text-center text-slate-600 text-sm">لا توجد عمليات بعد</div>
+              {% endfor %}
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /overview -->
+
+
+      <!-- ════════════════════════════════
+           TAB: USERS
+      ════════════════════════════════ -->
+      <div x-show="tab === 'users'" x-cloak>
+        <div class="section-card">
+          <!-- Header -->
+          <div class="px-5 py-4 border-b border-slate-700/40">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 class="text-sm font-semibold text-white">إدارة المستخدمين</h2>
+                <p class="text-xs text-slate-500 mt-0.5">{{ users|length }} مستخدم مسجّل</p>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-900/30 border border-emerald-700/30 text-xs text-emerald-400">
+                  {{ active_users }} نشط
+                </span>
+                <span class="px-2.5 py-1 rounded-lg bg-slate-700/50 border border-slate-600/30 text-xs text-slate-400">
+                  {{ total_users - active_users }} معطّل
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile cards view (< md) -->
+          <div class="md:hidden divide-y divide-slate-700/30">
+            {% for u in users %}
+            <div class="p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center text-sm font-bold
+                              {{ 'bg-red-700' if u.role == UserRole.ADMIN else 'bg-indigo-700' }}">
                     {{ u.username[0].upper() }}
                   </div>
-                  <span class="font-medium text-white">{{ u.username }}</span>
-                  {% if u.id == user.id %}
-                  <span class="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">أنت</span>
-                  {% endif %}
+                  <div>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="text-sm font-semibold text-white">{{ u.username }}</span>
+                      {% if u.id == user.id %}
+                      <span class="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">أنت</span>
+                      {% endif %}
+                    </div>
+                    <p class="text-xs text-slate-500">{{ u.email }}</p>
+                  </div>
                 </div>
-              </td>
-
-              <!-- Email -->
-              <td class="px-4 py-3 text-slate-400 text-xs">{{ u.email }}</td>
-
-              <!-- Role -->
-              <td class="px-4 py-3">
-                {% if u.id == user.id %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-900/40 text-red-400">
-                  {{ u.role.value }}
-                </span>
-                {% else %}
-                <form method="post" action="/admin/users/{{ u.id }}/role" class="inline">
-                  <select name="role" onchange="this.form.submit()"
-                          class="bg-slate-800 border border-slate-600 rounded-lg text-xs text-slate-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                    {% for r in UserRole %}
-                    <option value="{{ r.value }}" {% if u.role == r %}selected{% endif %}>{{ r.value }}</option>
-                    {% endfor %}
-                  </select>
-                </form>
-                {% endif %}
-              </td>
-
-              <!-- Status -->
-              <td class="px-4 py-3">
                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                  {% if u.is_active %}bg-emerald-900/40 text-emerald-400{% else %}bg-red-900/40 text-red-400{% endif %}">
+                  {{ 'bg-emerald-900/40 text-emerald-400' if u.is_active else 'bg-red-900/40 text-red-400' }}">
                   {{ 'مفعّل' if u.is_active else 'معطّل' }}
                 </span>
-              </td>
-
-              <!-- File count -->
-              <td class="px-4 py-3 text-slate-400 text-center">
-                {{ file_counts.get(u.id, 0) }}
-              </td>
-
-              <!-- Date -->
-              <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
-                {{ u.created_at.strftime('%Y-%m-%d') }}
-              </td>
-
-              <!-- Actions -->
-              <td class="px-4 py-3">
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2 flex-wrap text-xs text-slate-500">
+                  <span class="px-2 py-0.5 rounded bg-slate-700/60 text-slate-300">{{ u.role.value }}</span>
+                  <span>{{ file_counts.get(u.id, 0) }} ملف</span>
+                  <span>{{ u.created_at.strftime('%Y-%m-%d') }}</span>
+                </div>
                 {% if u.id != user.id %}
                 <div class="flex items-center gap-1.5">
-                  <!-- Toggle active -->
                   <form method="post" action="/admin/users/{{ u.id }}/toggle">
                     <button type="submit"
                             class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
-                              {% if u.is_active %}bg-red-900/30 hover:bg-red-900/60 text-red-400
-                              {% else %}bg-emerald-900/30 hover:bg-emerald-900/60 text-emerald-400{% endif %}">
+                              {{ 'bg-red-900/30 hover:bg-red-900/60 text-red-400' if u.is_active else 'bg-emerald-900/30 hover:bg-emerald-900/60 text-emerald-400' }}">
                       {{ 'تعطيل' if u.is_active else 'تفعيل' }}
                     </button>
                   </form>
-                  <!-- Delete -->
-                  <button
-                    @click="confirm = {{ u.id }}"
-                    class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700/50 hover:bg-red-900/40 text-slate-400 hover:text-red-400 transition-colors">
+                  <button @click="confirm = {{ u.id }}"
+                          class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700/50 hover:bg-red-900/40 text-slate-400 hover:text-red-400 transition-colors">
                     حذف
                   </button>
                 </div>
-                {% else %}
-                <span class="text-slate-600 text-xs">—</span>
                 {% endif %}
-              </td>
-            </tr>
+              </div>
+            </div>
             {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+          </div>
 
-  <!-- ── Logs Tab ── -->
-  <div x-show="tab === 'logs'" x-cloak>
-    <div class="bg-slate-900 rounded-2xl border border-slate-700/50 overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-700/50">
-        <h2 class="font-semibold text-white">آخر 20 عملية على المنصة</h2>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-700/50">
-              {% for col in ['#', 'النوع', 'الحالة', 'المستخدم', 'المدة', 'التاريخ'] %}
-              <th class="text-start px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ col }}</th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-700/30">
+          <!-- Desktop table view (≥ md) -->
+          <div class="hidden md:block overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700/40 bg-slate-900/30">
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">#</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">المستخدم</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">البريد</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">الدور</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">الحالة</th>
+                  <th class="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden xl:table-cell">الملفات</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden xl:table-cell">تاريخ التسجيل</th>
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-700/25">
+                {% for u in users %}
+                <tr class="hover:bg-slate-700/15 transition-colors group">
+                  <td class="px-4 py-3.5 text-slate-600 font-mono text-xs">{{ u.id }}</td>
+
+                  <td class="px-4 py-3.5">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold
+                                  {{ 'bg-red-700' if u.role == UserRole.ADMIN else 'bg-indigo-700' }}">
+                        {{ u.username[0].upper() }}
+                      </div>
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="font-medium text-white text-sm truncate">{{ u.username }}</span>
+                          {% if u.id == user.id %}
+                          <span class="text-xs bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded shrink-0">أنت</span>
+                          {% endif %}
+                        </div>
+                        <p class="text-xs text-slate-500 lg:hidden truncate">{{ u.email }}</p>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td class="px-4 py-3.5 text-slate-400 text-xs hidden lg:table-cell">
+                    <span class="truncate max-w-[180px] block">{{ u.email }}</span>
+                  </td>
+
+                  <td class="px-4 py-3.5">
+                    {% if u.id == user.id %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-900/40 text-red-400">
+                      {{ u.role.value }}
+                    </span>
+                    {% else %}
+                    <form method="post" action="/admin/users/{{ u.id }}/role" class="inline">
+                      <select name="role" onchange="this.form.submit()"
+                              class="bg-slate-800 border border-slate-600/60 rounded-lg text-xs text-slate-300 px-2 py-1
+                                     focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+                        {% for r in UserRole %}
+                        <option value="{{ r.value }}" {{ 'selected' if u.role == r }}>{{ r.value }}</option>
+                        {% endfor %}
+                      </select>
+                    </form>
+                    {% endif %}
+                  </td>
+
+                  <td class="px-4 py-3.5">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium
+                      {{ 'bg-emerald-900/30 text-emerald-400' if u.is_active else 'bg-red-900/30 text-red-400' }}">
+                      <span class="w-1.5 h-1.5 rounded-full {{ 'bg-emerald-400' if u.is_active else 'bg-red-400' }}"></span>
+                      {{ 'مفعّل' if u.is_active else 'معطّل' }}
+                    </span>
+                  </td>
+
+                  <td class="px-4 py-3.5 text-center text-slate-400 text-sm font-medium hidden xl:table-cell">
+                    {{ file_counts.get(u.id, 0) }}
+                  </td>
+
+                  <td class="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap hidden xl:table-cell">
+                    {{ u.created_at.strftime('%Y-%m-%d') }}
+                  </td>
+
+                  <td class="px-4 py-3.5">
+                    {% if u.id != user.id %}
+                    <div class="flex items-center gap-1.5">
+                      <form method="post" action="/admin/users/{{ u.id }}/toggle">
+                        <button type="submit"
+                                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap
+                                  {{ 'bg-red-900/25 hover:bg-red-900/50 text-red-400' if u.is_active else 'bg-emerald-900/25 hover:bg-emerald-900/50 text-emerald-400' }}">
+                          {{ 'تعطيل' if u.is_active else 'تفعيل' }}
+                        </button>
+                      </form>
+                      <button @click="confirm = {{ u.id }}"
+                              class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700/40 hover:bg-red-900/40 text-slate-400 hover:text-red-400 transition-colors">
+                        حذف
+                      </button>
+                    </div>
+                    {% else %}
+                    <span class="text-slate-700 text-xs">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /users -->
+
+
+      <!-- ════════════════════════════════
+           TAB: LOGS
+      ════════════════════════════════ -->
+      <div x-show="tab === 'logs'" x-cloak>
+        <div class="section-card">
+          <div class="px-5 py-4 border-b border-slate-700/40">
+            <h2 class="text-sm font-semibold text-white">سجل العمليات</h2>
+            <p class="text-xs text-slate-500 mt-0.5">آخر 20 عملية على المنصة</p>
+          </div>
+
+          <!-- Mobile list -->
+          <div class="md:hidden divide-y divide-slate-700/30">
             {% for op in recent_ops %}
-            <tr class="hover:bg-slate-800/50 transition-colors">
-              <td class="px-4 py-3 text-slate-500 font-mono text-xs">{{ op.id }}</td>
-              <td class="px-4 py-3 font-medium text-white capitalize">{{ op.type.value }}</td>
-              <td class="px-4 py-3">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                  {% if op.status.value == 'success' %}bg-emerald-900/40 text-emerald-400
-                  {% elif op.status.value == 'failed' %}bg-red-900/40 text-red-400
-                  {% elif op.status.value == 'running' %}bg-yellow-900/40 text-yellow-400
-                  {% else %}bg-slate-700 text-slate-400{% endif %}">
-                  {{ op.status.value }}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-slate-400 text-xs">{{ op.user_id }}</td>
-              <td class="px-4 py-3 text-slate-400 text-xs font-mono">
-                {{ op.duration_ms ~ 'ms' if op.duration_ms else '—' }}
-              </td>
-              <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
-                {{ op.started_at.strftime('%Y-%m-%d %H:%M') if op.started_at else '—' }}
-              </td>
-            </tr>
+            <div class="flex items-center gap-3 p-4">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium shrink-0
+                {% if op.status.value == 'success' %}bg-emerald-900/40 text-emerald-400
+                {% elif op.status.value == 'failed' %}bg-red-900/40 text-red-400
+                {% elif op.status.value == 'running' %}bg-yellow-900/40 text-yellow-400
+                {% else %}bg-slate-700/60 text-slate-400{% endif %}">
+                {{ op.status.value }}
+              </span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-white capitalize font-medium">{{ op.type.value }}</p>
+                <p class="text-xs text-slate-500">مستخدم #{{ op.user_id }} · {{ op.started_at.strftime('%Y-%m-%d %H:%M') if op.started_at else '—' }}</p>
+              </div>
+              <p class="text-xs text-slate-600 font-mono shrink-0">{{ op.duration_ms ~ 'ms' if op.duration_ms else '—' }}</p>
+            </div>
+            {% else %}
+            <div class="py-16 text-center text-slate-600 text-sm">لا توجد عمليات بعد</div>
             {% endfor %}
-            {% if not recent_ops %}
-            <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">لا توجد عمليات بعد</td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+          </div>
 
-</div><!-- /px-6 -->
+          <!-- Desktop table -->
+          <div class="hidden md:block overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700/40 bg-slate-900/30">
+                  {% for col in ['#', 'النوع', 'الحالة', 'المستخدم', 'المدة', 'التاريخ'] %}
+                  <th class="text-start px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{{ col }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-700/25">
+                {% for op in recent_ops %}
+                <tr class="hover:bg-slate-700/15 transition-colors">
+                  <td class="px-4 py-3.5 text-slate-600 font-mono text-xs">{{ op.id }}</td>
+                  <td class="px-4 py-3.5 font-medium text-white capitalize">{{ op.type.value }}</td>
+                  <td class="px-4 py-3.5">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium
+                      {% if op.status.value == 'success' %}bg-emerald-900/40 text-emerald-400
+                      {% elif op.status.value == 'failed' %}bg-red-900/40 text-red-400
+                      {% elif op.status.value == 'running' %}bg-yellow-900/40 text-yellow-400
+                      {% else %}bg-slate-700/60 text-slate-400{% endif %}">
+                      <span class="w-1.5 h-1.5 rounded-full
+                        {% if op.status.value == 'success' %}bg-emerald-400
+                        {% elif op.status.value == 'failed' %}bg-red-400
+                        {% elif op.status.value == 'running' %}bg-yellow-400
+                        {% else %}bg-slate-500{% endif %}"></span>
+                      {{ op.status.value }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3.5 text-slate-400 text-xs font-mono">#{{ op.user_id }}</td>
+                  <td class="px-4 py-3.5 text-slate-400 text-xs font-mono">
+                    {{ op.duration_ms ~ 'ms' if op.duration_ms else '—' }}
+                  </td>
+                  <td class="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">
+                    {{ op.started_at.strftime('%Y-%m-%d %H:%M') if op.started_at else '—' }}
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6" class="px-4 py-16 text-center text-slate-600">لا توجد عمليات بعد</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /logs -->
+
+    </main>
+  </div><!-- /flex-1 content -->
+</div><!-- /lg:flex -->
+
 
 <!-- ── Delete confirm modal ── -->
 <div x-show="confirm !== null" x-cloak
-     class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
-     x-transition:enter="transition ease-out duration-150"
-     x-transition:enter-start="opacity-0 scale-95"
-     x-transition:enter-end="opacity-100 scale-100">
-  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-    <div class="w-12 h-12 rounded-full bg-red-900/40 flex items-center justify-center mx-auto mb-4">
+     class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+  <div class="bg-slate-900 border border-slate-700/60 rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 scale-95"
+       x-transition:enter-end="opacity-100 scale-100"
+       @click.stop>
+    <div class="w-12 h-12 rounded-2xl bg-red-900/30 border border-red-800/40 flex items-center justify-center mx-auto mb-4">
       <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
       </svg>
     </div>
-    <h3 class="text-base font-semibold text-white text-center mb-2">تأكيد الحذف</h3>
+    <h3 class="text-base font-semibold text-white text-center mb-1">تأكيد الحذف</h3>
     <p class="text-sm text-slate-400 text-center mb-6">سيتم حذف المستخدم وجميع ملفاته نهائياً. لا يمكن التراجع.</p>
     <div class="flex gap-3">
       <button @click="confirm = null"
-              class="flex-1 py-2 rounded-xl text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+              class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50 transition-colors">
         إلغاء
       </button>
       <form :action="'/admin/users/' + confirm + '/delete'" method="post" class="flex-1">
         <button type="submit"
-                class="w-full py-2 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors">
+                class="w-full py-2.5 rounded-xl text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors">
           حذف نهائياً
         </button>
       </form>
