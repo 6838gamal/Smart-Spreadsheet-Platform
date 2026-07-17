@@ -15,9 +15,12 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, AsyncSessionLocal
 from app.core.exceptions import setup_exception_handlers
 from app.core.logging_config import setup_logging
+from app.core.security import hash_password
+from app.infrastructure.database.models import User, UserRole
+from app.infrastructure.repositories.user_repository import UserRepository
 
 from app.presentation.web import auth as web_auth
 from app.presentation.web import dashboard as web_dashboard
@@ -38,6 +41,22 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+async def seed_admin() -> None:
+    """Create the default admin user if it does not already exist."""
+    async with AsyncSessionLocal() as db:
+        repo = UserRepository(db)
+        if not await repo.email_exists("admin@spreadsheet.com"):
+            await repo.create(
+                email="admin@spreadsheet.com",
+                username="admin",
+                hashed_password=hash_password("Spreadsheet123"),
+                role=UserRole.ADMIN,
+                preferences={"theme": "dark", "language": "ar"},
+            )
+            await db.commit()
+            logger.info("Default admin user created: admin@spreadsheet.com")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: setup on startup, teardown on shutdown."""
@@ -49,6 +68,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
     os.makedirs("data", exist_ok=True)
+
+    # Seed default admin account
+    await seed_admin()
 
     logger.info(f"Smart Spreadsheet Platform starting on port {settings.PORT}")
     yield
