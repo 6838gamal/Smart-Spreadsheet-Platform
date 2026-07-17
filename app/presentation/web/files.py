@@ -3,17 +3,16 @@
 import json
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.templates import templates
 from app.infrastructure.database.models import User
 from app.application.files.service import FileService
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/files", response_class=HTMLResponse)
@@ -48,6 +47,7 @@ async def files_page(
             "search": search,
             "fmt": fmt,
             "current_page": "files",
+            "lang": current_user.default_lang,
         },
     )
 
@@ -95,6 +95,7 @@ async def file_detail(
             "file": f,
             "preview": preview,
             "current_page": "files",
+            "lang": current_user.default_lang,
         },
     )
 

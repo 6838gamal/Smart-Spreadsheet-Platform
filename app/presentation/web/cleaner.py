@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
-from fastapi.templating import Jinja2Templates
+from app.core.templates import templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 
@@ -14,7 +14,6 @@ from app.application.cleaner.service import CleanerService
 from app.application.cleaner.dto import CleanOptionsDTO
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/cleaner", response_class=HTMLResponse)
@@ -28,7 +27,7 @@ async def cleaner_page(
     return templates.TemplateResponse(
         request,
         "cleaner/index.html",
-        {"user": current_user, "files": files, "current_page": "cleaner"},
+        {"user": current_user, "files": files, "current_page": "cleaner", "lang": current_user.default_lang},
     )
 
 

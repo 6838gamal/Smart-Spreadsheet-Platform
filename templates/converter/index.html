@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block title %}محول الصيغ — Smart Spreadsheet{% endblock %}
-{% block page_title %}محول الصيغ{% endblock %}
+{% block title %}{{ t.get('nav_converter') }} — Smart Spreadsheet{% endblock %}
+{% block page_title %}{{ t.get('nav_converter') }}{% endblock %}
 
 {% block content %}
+{% set t = get_texts(lang) %}
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6" x-data="converterPage()">
 
   <!-- Form panel -->
   <div class="lg:col-span-2 space-y-5">
     <div class="card p-6">
-      <h3 class="font-semibold text-slate-900 dark:text-white mb-5">تحويل ملف</h3>
+      <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('convert_file') }}</h3>
 
       <form hx-post="/converter/convert"
             hx-target="#convert-result"
@@ -18,10 +19,10 @@
 
         <!-- Source file -->
         <div>
-          <label class="label">الملف المصدر</label>
+          <label class="label">{{ t.get('source_file') }}</label>
           {% if files %}
           <select name="file_id" required class="input" @change="updateSheets($event)">
-            <option value="">اختر ملفاً...</option>
+            <option value="">{{ t.get('choose_file') }}</option>
             {% for f in files %}
             <option value="{{ f.id }}"
                     data-format="{{ f.format }}"
@@ -32,21 +33,20 @@
           </select>
           {% else %}
           <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center text-sm text-slate-400">
-            <a href="/files" class="text-indigo-400 hover:text-indigo-300">ارفع ملفاً</a> أولاً
+            <a href="/files" class="text-indigo-400 hover:text-indigo-300">{{ t.get('upload_first_link') }}</a> {{ t.get('first_word') }}
           </div>
           {% endif %}
         </div>
 
         <!-- Sheet (for Excel) -->
         <div x-show="isExcel" x-cloak>
-          <label class="label">الورقة (اختياري)</label>
-          <input type="text" name="sheet" placeholder="اسم الورقة أو فارغ للأولى"
-                 class="input"/>
+          <label class="label">{{ t.get('sheet_opt') }}</label>
+          <input type="text" name="sheet" placeholder="{{ t.get('sheet_hint') }}" class="input"/>
         </div>
 
         <!-- Target format -->
         <div>
-          <label class="label">الصيغة المستهدفة</label>
+          <label class="label">{{ t.get('target_format') }}</label>
           <div class="grid grid-cols-3 gap-2">
             {% for fmt in export_formats %}
             <label class="relative cursor-pointer">
@@ -68,7 +68,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
           </svg>
-          بدء التحويل
+          {{ t.get('start_convert') }}
         </button>
       </form>
 
@@ -78,7 +78,7 @@
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
-        جاري التحويل...
+        {{ t.get('converting') }}
       </div>
     </div>
   </div>
@@ -86,30 +86,30 @@
   <!-- Result panel -->
   <div class="lg:col-span-3">
     <div class="card p-6 min-h-64">
-      <h3 class="font-semibold text-slate-900 dark:text-white mb-4">النتيجة</h3>
+      <h3 class="font-semibold text-slate-900 dark:text-white mb-4">{{ t.get('result') }}</h3>
       <div id="convert-result" class="text-slate-400 text-sm text-center py-8">
         <svg class="w-12 h-12 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
         </svg>
-        <p>اختر ملفاً وصيغة لبدء التحويل</p>
+        <p>{{ t.get('choose_to_convert') }}</p>
       </div>
     </div>
 
     <!-- Supported formats info -->
     <div class="card p-5 mt-5">
-      <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3 text-sm">الصيغ المدعومة</h4>
+      <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3 text-sm">{{ t.get('supported_formats') }}</h4>
       <div class="grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400">
         <div>
-          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">استيراد</p>
-          <div class="space-y-1">
+          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">{{ t.get('import_formats') }}</p>
+          <div>
             {% for fmt in ['xlsx','xls','xlsm','xlsb','csv','tsv','json','xml','yaml','parquet','feather','ods','pdf','docx','sqlite'] %}
             <span class="inline-block me-1 mb-1 px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-xs">.{{ fmt }}</span>
             {% endfor %}
           </div>
         </div>
         <div>
-          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">تصدير</p>
-          <div class="space-y-1">
+          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">{{ t.get('export_formats_lbl') }}</p>
+          <div>
             {% for fmt in export_formats %}
             <span class="inline-block me-1 mb-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-xs">.{{ fmt }}</span>
             {% endfor %}

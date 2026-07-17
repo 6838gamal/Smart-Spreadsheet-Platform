@@ -2,15 +2,14 @@
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.templates import templates
 from app.application.auth.dto import RegisterDTO, LoginDTO
 from app.application.auth.service import AuthService
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -39,13 +38,17 @@ async def root(request: Request):
 
 
 @router.get("/auth/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse(request, "auth/login.html", {"error": error})
+async def login_page(request: Request, error: str = "", lang: str = "ar"):
+    return templates.TemplateResponse(
+        request, "auth/login.html", {"error": error, "lang": lang}
+    )
 
 
 @router.get("/auth/register", response_class=HTMLResponse)
-async def register_page(request: Request, error: str = ""):
-    return templates.TemplateResponse(request, "auth/register.html", {"error": error})
+async def register_page(request: Request, error: str = "", lang: str = "ar"):
+    return templates.TemplateResponse(
+        request, "auth/register.html", {"error": error, "lang": lang}
+    )
 
 
 @router.post("/auth/login")
@@ -63,7 +66,7 @@ async def login_submit(
         return response
     except Exception as e:
         return templates.TemplateResponse(
-            request, "auth/login.html", {"error": str(e)}, status_code=400,
+            request, "auth/login.html", {"error": str(e), "lang": "ar"}, status_code=400,
         )
 
 
@@ -92,7 +95,7 @@ async def register_submit(
         return response
     except Exception as e:
         return templates.TemplateResponse(
-            request, "auth/register.html", {"error": str(e)}, status_code=400,
+            request, "auth/register.html", {"error": str(e), "lang": "ar"}, status_code=400,
         )
 
 

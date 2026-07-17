@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
-from fastapi.templating import Jinja2Templates
+from app.core.templates import templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 
@@ -14,7 +14,6 @@ from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.dto import ConvertRequestDTO
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/converter", response_class=HTMLResponse)
@@ -33,6 +32,7 @@ async def converter_page(
             "files": files,
             "export_formats": EXPORT_FORMATS,
             "current_page": "converter",
+            "lang": current_user.default_lang,
         },
     )
 

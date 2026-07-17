@@ -2,16 +2,15 @@
 
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.templates import templates
 from app.infrastructure.database.models import User
 from app.infrastructure.repositories.operation_repository import OperationRepository
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/logs", response_class=HTMLResponse)
@@ -38,5 +37,6 @@ async def logs_page(
             "page": page,
             "total_pages": total_pages,
             "current_page": "logs",
+            "lang": current_user.default_lang,
         },
     )

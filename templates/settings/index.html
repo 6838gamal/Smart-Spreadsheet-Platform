@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}الإعدادات — Smart Spreadsheet{% endblock %}
-{% block page_title %}الإعدادات{% endblock %}
+{% block title %}{{ t.get('nav_settings') }} — Smart Spreadsheet{% endblock %}
+{% block page_title %}{{ t.get('nav_settings') }}{% endblock %}
 
 {% block content %}
+{% set t = get_texts(lang) %}
 <div class="max-w-2xl space-y-5">
 
   <!-- Profile -->
   <div class="card p-6">
-    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">الملف الشخصي</h3>
-    <div class="flex items-center gap-4 mb-6">
-      <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('profile') }}</h3>
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
         {{ user.username[0].upper() }}
       </div>
       <div>
@@ -24,7 +25,7 @@
 
   <!-- Preferences -->
   <div class="card p-6">
-    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">التفضيلات</h3>
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('preferences') }}</h3>
     <form hx-post="/settings/preferences"
           hx-target="#prefs-result"
           hx-swap="innerHTML"
@@ -32,23 +33,23 @@
 
       <div class="grid grid-cols-2 gap-5">
         <div>
-          <label class="label">السمة</label>
+          <label class="label">{{ t.get('theme') }}</label>
           <select name="theme" class="input">
-            <option value="dark" {% if user.default_theme == 'dark' %}selected{% endif %}>🌙 داكنة</option>
-            <option value="light" {% if user.default_theme == 'light' %}selected{% endif %}>☀️ فاتحة</option>
+            <option value="dark" {% if user.default_theme == 'dark' %}selected{% endif %}>{{ t.get('theme_dark') }}</option>
+            <option value="light" {% if user.default_theme == 'light' %}selected{% endif %}>{{ t.get('theme_light') }}</option>
           </select>
         </div>
         <div>
-          <label class="label">اللغة</label>
+          <label class="label">{{ t.get('language') }}</label>
           <select name="language" class="input">
-            <option value="ar" {% if user.default_lang == 'ar' %}selected{% endif %}>🇸🇦 العربية</option>
-            <option value="en" {% if user.default_lang == 'en' %}selected{% endif %}>🇺🇸 English</option>
+            <option value="ar" {% if user.default_lang == 'ar' %}selected{% endif %}>{{ t.get('lang_ar') }}</option>
+            <option value="en" {% if user.default_lang == 'en' %}selected{% endif %}>{{ t.get('lang_en') }}</option>
           </select>
         </div>
       </div>
 
       <div class="flex items-center gap-3">
-        <button type="submit" class="btn-primary">حفظ التفضيلات</button>
+        <button type="submit" class="btn-primary">{{ t.get('save_prefs') }}</button>
         <div id="prefs-result"></div>
       </div>
     </form>
@@ -56,17 +57,17 @@
 
   <!-- App Info -->
   <div class="card p-6">
-    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">معلومات التطبيق</h3>
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">{{ t.get('app_info') }}</h3>
     <dl class="space-y-3 text-sm">
       {% set info = [
-        ('اسم المنصة', 'Smart Spreadsheet Platform'),
-        ('الإصدار', '1.0.0'),
-        ('محرك البيانات', 'Polars + PyArrow + DuckDB'),
-        ('الواجهة', 'FastAPI + HTMX + Alpine.js + TailwindCSS'),
+        ('platform_name', 'Smart Spreadsheet Platform'),
+        ('version',       '1.0.0'),
+        ('data_engine',   'Polars + PyArrow + DuckDB'),
+        ('interface_lbl', 'FastAPI + HTMX + Alpine.js + TailwindCSS'),
       ] %}
-      {% for label, value in info %}
+      {% for label_key, value in info %}
       <div class="flex justify-between py-2 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
-        <dt class="text-slate-500 dark:text-slate-400">{{ label }}</dt>
+        <dt class="text-slate-500 dark:text-slate-400">{{ t.get(label_key) }}</dt>
         <dd class="font-medium text-slate-700 dark:text-slate-300">{{ value }}</dd>
       </div>
       {% endfor %}
@@ -75,9 +76,9 @@
 
   <!-- Storage -->
   <div class="card p-6">
-    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">التخزين</h3>
+    <h3 class="font-semibold text-slate-900 dark:text-white mb-4">{{ t.get('storage') }}</h3>
     <div class="flex items-center justify-between">
-      <span class="text-sm text-slate-600 dark:text-slate-400">نوع التخزين</span>
+      <span class="text-sm text-slate-600 dark:text-slate-400">{{ t.get('storage_type') }}</span>
       <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">Local Filesystem</span>
     </div>
   </div>
