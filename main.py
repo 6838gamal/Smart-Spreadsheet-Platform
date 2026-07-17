@@ -85,25 +85,24 @@ async def seed_admin() -> None:
 
 
 async def _keepalive_loop() -> None:
-    """Ping the app's own /health endpoint every 5 minutes to prevent host sleep.
+    """Ping the app's own /health endpoint every 4 minutes to prevent host sleep.
 
-    The target URL is resolved once at startup from the environment so the app
-    works unchanged on Replit, Render, Railway, Fly.io, Heroku, or bare VMs.
-    Set APP_URL explicitly to override auto-detection.
+    Always pings localhost so there is no TLS/SSL to worry about, and the
+    request never leaves the container.
     """
     import httpx
 
-    url = f"{settings.public_url}/health"
-    interval = 5 * 60  # 5 minutes
+    local_url = f"http://127.0.0.1:{settings.PORT}/health"
+    interval = 4 * 60  # 4 minutes
 
-    logger.info("Keep-alive started → pinging %s every %ds", url, interval)
-    await asyncio.sleep(30)  # let the server finish starting up first
+    logger.info("Keep-alive started → pinging %s every %ds", local_url, interval)
+    await asyncio.sleep(20)  # let the server finish starting up first
 
     while True:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(url)
-            logger.debug("Keep-alive ping OK (%d ms, HTTP %d)", r.elapsed.microseconds // 1000, r.status_code)
+                r = await client.get(local_url)
+            logger.debug("Keep-alive ping OK (HTTP %d)", r.status_code)
         except Exception as exc:
             logger.warning("Keep-alive ping failed: %s", exc)
         await asyncio.sleep(interval)
