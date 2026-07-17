@@ -5,6 +5,10 @@ Handles reading, writing, and previewing all supported formats.
 
 import logging
 import io
+import os
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -15,13 +19,24 @@ logger = logging.getLogger(__name__)
 
 # ─── Format groups ────────────────────────────────────────────────────────────
 
-EXCEL_FORMATS = {"xlsx", "xls", "xlsm", "xlsb"}
-CSV_LIKE = {"csv", "tsv", "txt"}
-ARROW_FORMATS = {"parquet", "feather"}
-STRUCTURED = {"json", "xml", "yaml", "yml"}
-DB_FORMATS = {"sqlite", "db"}
-DOC_FORMATS = {"docx", "pdf"}
-ODS_FORMAT = {"ods"}
+EXCEL_FORMATS  = {"xlsx", "xls", "xlsm", "xlsb"}
+CSV_LIKE       = {"csv", "tsv", "txt"}
+ARROW_FORMATS  = {"parquet", "feather"}
+STRUCTURED     = {"json", "xml", "yaml", "yml"}
+DB_FORMATS     = {"sqlite", "db"}
+DOC_FORMATS    = {"docx", "pdf"}
+ODS_FORMAT     = {"ods"}
+PPTX_FORMATS   = {"pptx"}
+HTML_FORMATS   = {"html", "htm"}
+IMAGE_FORMATS  = {"jpg", "jpeg", "png", "bmp", "gif", "webp"}
+SVG_FORMAT     = {"svg"}
+
+# Conversions that bypass the DataFrame (direct binary transformation)
+DIRECT_PAIRS: set[tuple[str, str]] = (
+    {(img, "pdf")  for img in IMAGE_FORMATS} |
+    {("pdf", img)  for img in ("jpg", "jpeg", "png")} |
+    {("svg", "pdf"), ("pdf", "svg")}
+)
 
 
 class DataEngine:
@@ -73,11 +88,21 @@ class DataEngine:
         if fmt == "ods":
             return self._read_ods(path)
 
+        if fmt in PPTX_FORMATS:
+            return self._read_pptx(path)
+
+        if fmt in HTML_FORMATS:
+            return self._read_html(path)
+
+        if fmt in IMAGE_FORMATS:
+            return self._read_image_meta(path)
+
         raise ValueError(f"Unsupported read format: {fmt}")
+
+    # ── tabular readers ───────────────────────────────────────────────────────
 
     def _read_excel(self, path: str, fmt: str, sheet=None) -> pl.DataFrame:
         try:
-            # python-calamine is fastest for xlsx/xls
             import python_calamine
             return pl.read_excel(path, sheet_name=sheet or 0, engine="calamine")
         except Exception:
@@ -119,7 +144,7 @@ class DataEngine:
     def _read_docx_tables(self, path: str) -> pl.DataFrame:
         from docx import Document
         doc = Document(path)
-        rows = []
+        rows: list[dict] = []
         headers: list[str] = []
         for table in doc.tables:
             if not headers:
@@ -130,7 +155,7 @@ class DataEngine:
 
     def _read_pdf_tables(self, path: str) -> pl.DataFrame:
         import pdfplumber
-        rows = []
+        rows: list[dict] = []
         headers: list[str] = []
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
@@ -147,6 +172,54 @@ class DataEngine:
         import pandas as pd
         df_pd = pd.read_excel(path, engine="odf")
         return pl.from_pandas(df_pd)
+
+    def _read_pptx(self, path: str) -> pl.DataFrame:
+        """Extract text content from each PPTX slide as a DataFrame row."""
+        from pptx import Presentation
+        from pptx.util import Pt
+        prs = Presentation(path)
+        rows: list[dict] = []
+        for i, slide in enumerate(prs.slides, 1):
+            texts: list[str] = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for para in shape.text_frame.paragraphs:
+                        t = para.text.strip()
+                        if t:
+                            texts.append(t)
+            # Also extract tables from slides
+            for shape in slide.shapes:
+                if shape.has_table:
+                    tbl = shape.table
+                    headers = [tbl.cell(0, c).text.strip() for c in range(tbl._tbl.col_count)]
+                    for r in range(1, tbl._tbl.tr_count):
+                        row_dict = {"slide": i}
+                        for c, h in enumerate(headers):
+                            row_dict[h or f"col_{c}"] = tbl.cell(r, c).text.strip()
+                        rows.append(row_dict)
+            if not any(r.get("slide") == i for r in rows):
+                rows.append({"slide": i, "content": " | ".join(texts)})
+        return pl.DataFrame(rows) if rows else pl.DataFrame()
+
+    def _read_html(self, path: str) -> pl.DataFrame:
+        """Read the first table found in an HTML file."""
+        import pandas as pd
+        tables = pd.read_html(path)
+        if not tables:
+            return pl.DataFrame()
+        return pl.from_pandas(tables[0])
+
+    def _read_image_meta(self, path: str) -> pl.DataFrame:
+        """Return basic image metadata as a single-row DataFrame."""
+        from PIL import Image
+        img = Image.open(path)
+        return pl.DataFrame([{
+            "filename": Path(path).name,
+            "format":   img.format or Path(path).suffix.lstrip(".").upper(),
+            "mode":     img.mode,
+            "width":    img.size[0],
+            "height":   img.size[1],
+        }])
 
     # ─── Write ────────────────────────────────────────────────────────────────
 
@@ -168,7 +241,7 @@ class DataEngine:
             df.write_json(path)
         elif fmt == "ndjson":
             df.write_ndjson(path)
-        elif fmt == "html":
+        elif fmt in HTML_FORMATS:
             df.to_pandas().to_html(path, index=False)
         elif fmt == "xml":
             df.to_pandas().to_xml(path, index=False)
@@ -187,8 +260,12 @@ class DataEngine:
             self._write_docx(df, path)
         elif fmt == "pdf":
             self._write_pdf(df, path)
+        elif fmt in PPTX_FORMATS:
+            self._write_pptx(df, path)
+        elif fmt in ("jpg", "jpeg", "png"):
+            # DataFrame → image: render as a styled table image
+            self._write_df_as_image(df, path, fmt)
         else:
-            # Fallback: write as CSV
             df.write_csv(path)
 
     def _write_docx(self, df: pl.DataFrame, path: str) -> None:
@@ -203,11 +280,223 @@ class DataEngine:
         doc.save(path)
 
     def _write_pdf(self, df: pl.DataFrame, path: str) -> None:
-        """Write DataFrame as PDF using HTML conversion."""
-        html = df.to_pandas().to_html(index=False)
-        # Simple HTML-to-text PDF fallback
-        with open(path, "w") as f:
-            f.write(f"<html><body>{html}</body></html>")
+        """Write DataFrame as a real PDF table using fpdf2."""
+        from fpdf import FPDF
+
+        n_cols = len(df.columns)
+        orientation = "L" if n_cols > 7 else "P"
+        pdf = FPDF(orientation=orientation, unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf.add_page()
+
+        page_w = pdf.epw  # effective page width
+        col_w  = max(page_w / n_cols, 15)
+        row_h  = 7
+
+        # Header row
+        pdf.set_fill_color(79, 70, 229)   # indigo-600
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", style="B", size=8)
+        for col in df.columns:
+            pdf.cell(col_w, row_h, str(col)[:25], border=1, fill=True, align="C")
+        pdf.ln()
+
+        # Data rows (cap at 2000 for performance)
+        pdf.set_text_color(30, 30, 30)
+        pdf.set_font("Helvetica", size=7)
+        for i, row in enumerate(df.head(2000).iter_rows()):
+            fill = i % 2 == 0
+            pdf.set_fill_color(243, 244, 246) if fill else pdf.set_fill_color(255, 255, 255)
+            for val in row:
+                cell_text = str(val if val is not None else "")[:30]
+                pdf.cell(col_w, row_h, cell_text, border=1, fill=True)
+            pdf.ln()
+
+        pdf.output(path)
+
+    def _write_pptx(self, df: pl.DataFrame, path: str) -> None:
+        """Write DataFrame as a PPTX slide with a data table."""
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+
+        prs = Presentation()
+        slide_layout = prs.slide_layouts[5]  # blank
+        slide = prs.slides.add_slide(slide_layout)
+
+        rows_count = min(len(df) + 1, 50)  # header + data, cap at 50 rows per slide
+        cols_count = len(df.columns)
+
+        left   = Inches(0.5)
+        top    = Inches(1.0)
+        width  = Inches(9.0)
+        height = Inches(0.4 * rows_count)
+
+        table = slide.shapes.add_table(rows_count, cols_count, left, top, width, height).table
+
+        # Header
+        for c, col_name in enumerate(df.columns):
+            cell = table.cell(0, c)
+            cell.text = str(col_name)
+            cell.text_frame.paragraphs[0].font.bold = True
+            cell.text_frame.paragraphs[0].font.size = Pt(10)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor(0x4F, 0x46, 0xE5)  # indigo
+            cell.text_frame.paragraphs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+        # Data rows
+        for r_idx, row in enumerate(df.head(rows_count - 1).iter_rows()):
+            for c_idx, val in enumerate(row):
+                cell = table.cell(r_idx + 1, c_idx)
+                cell.text = str(val) if val is not None else ""
+                cell.text_frame.paragraphs[0].font.size = Pt(8)
+
+        prs.save(path)
+
+    def _write_df_as_image(self, df: pl.DataFrame, path: str, fmt: str) -> None:
+        """Render a DataFrame as a simple table image using PIL."""
+        from PIL import Image, ImageDraw, ImageFont
+
+        cell_w, cell_h = 120, 28
+        n_cols = len(df.columns)
+        n_rows = min(len(df), 50) + 1  # +1 for header
+
+        img_w = cell_w * n_cols + 2
+        img_h = cell_h * n_rows + 2
+
+        img = Image.new("RGB", (img_w, img_h), color=(255, 255, 255))
+        draw = ImageDraw.Draw(img)
+
+        try:
+            font = ImageFont.load_default(size=12)
+        except TypeError:
+            font = ImageFont.load_default()
+
+        # Header
+        for c, col in enumerate(df.columns):
+            x, y = c * cell_w + 1, 1
+            draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1], fill=(79, 70, 229))
+            draw.text((x + 4, y + 6), str(col)[:16], fill=(255, 255, 255), font=font)
+
+        # Data rows
+        for r_idx, row in enumerate(df.head(50).iter_rows()):
+            bg = (249, 250, 251) if r_idx % 2 == 0 else (255, 255, 255)
+            for c_idx, val in enumerate(row):
+                x = c_idx * cell_w + 1
+                y = (r_idx + 1) * cell_h + 1
+                draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1], fill=bg)
+                draw.text((x + 4, y + 6), str(val if val is not None else "")[:16],
+                          fill=(30, 30, 30), font=font)
+
+        save_fmt = "JPEG" if fmt in ("jpg", "jpeg") else "PNG"
+        img.save(path, save_fmt)
+
+    # ─── Direct (non-tabular) conversions ────────────────────────────────────
+
+    def convert_direct(self, src_path: str, src_fmt: str, dst_path: str, dst_fmt: str) -> str:
+        """
+        Convert between formats that don't pass through a DataFrame.
+        Returns the actual output path (may differ if multi-page → zip).
+        """
+        src_fmt = src_fmt.lower().lstrip(".")
+        dst_fmt = dst_fmt.lower().lstrip(".")
+
+        # Image → PDF
+        if src_fmt in IMAGE_FORMATS and dst_fmt == "pdf":
+            self._image_to_pdf(src_path, dst_path)
+            return dst_path
+
+        # PDF → image(s)
+        if src_fmt == "pdf" and dst_fmt in ("jpg", "jpeg", "png"):
+            return self._pdf_to_images(src_path, dst_path, dst_fmt)
+
+        # SVG → PDF
+        if src_fmt == "svg" and dst_fmt == "pdf":
+            self._svg_to_pdf(src_path, dst_path)
+            return dst_path
+
+        # PDF → SVG (first page)
+        if src_fmt == "pdf" and dst_fmt == "svg":
+            self._pdf_to_svg(src_path, dst_path)
+            return dst_path
+
+        raise ValueError(f"No direct conversion path for {src_fmt} → {dst_fmt}")
+
+    def _image_to_pdf(self, src_path: str, dst_path: str) -> None:
+        """Embed an image into an A4 PDF page, centred and scaled to fit."""
+        from PIL import Image
+        from fpdf import FPDF
+
+        img = Image.open(src_path)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+
+        # Save as temporary JPEG for fpdf
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            img.save(tmp_path, "JPEG", quality=92)
+
+            dpi = 96
+            w_mm = img.size[0] / dpi * 25.4
+            h_mm = img.size[1] / dpi * 25.4
+
+            # Fit inside A4 margins
+            max_w, max_h = 190.0, 270.0
+            if w_mm > max_w or h_mm > max_h:
+                scale = min(max_w / w_mm, max_h / h_mm)
+                w_mm, h_mm = w_mm * scale, h_mm * scale
+
+            pdf = FPDF(unit="mm", format="A4")
+            pdf.add_page()
+            x = (210.0 - w_mm) / 2
+            y = (297.0 - h_mm) / 2
+            pdf.image(tmp_path, x=x, y=y, w=w_mm, h=h_mm)
+            pdf.output(dst_path)
+        finally:
+            os.unlink(tmp_path)
+
+    def _pdf_to_images(self, src_path: str, dst_path: str, fmt: str) -> str:
+        """
+        Render each PDF page as an image.
+        - Single page  → writes image directly to dst_path.
+        - Multi-page   → writes a ZIP archive (dst_path renamed to .zip).
+        Returns the actual path written.
+        """
+        import fitz  # pymupdf
+
+        save_fmt = "jpeg" if fmt in ("jpg", "jpeg") else "png"
+        doc = fitz.open(src_path)
+        mat = fitz.Matrix(2.0, 2.0)  # ~144 DPI
+
+        if len(doc) == 1:
+            pix = doc[0].get_pixmap(matrix=mat, alpha=False)
+            pix.save(dst_path)
+            return dst_path
+
+        # Multi-page: produce ZIP
+        zip_path = str(Path(dst_path).with_suffix(".zip"))
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for i, page in enumerate(doc):
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_bytes = pix.tobytes(save_fmt)
+                zf.writestr(f"page_{i + 1:03d}.{fmt}", img_bytes)
+        return zip_path
+
+    def _svg_to_pdf(self, src_path: str, dst_path: str) -> None:
+        """Convert SVG to PDF using PyMuPDF."""
+        import fitz
+        doc = fitz.open(src_path)   # fitz can open SVG directly
+        pdf_bytes = doc.convert_to_pdf()
+        Path(dst_path).write_bytes(pdf_bytes)
+
+    def _pdf_to_svg(self, src_path: str, dst_path: str) -> None:
+        """Export the first page of a PDF as an SVG file."""
+        import fitz
+        doc = fitz.open(src_path)
+        page = doc[0]
+        svg_text = page.get_svg_image()
+        Path(dst_path).write_text(svg_text, encoding="utf-8")
 
     # ─── Preview ──────────────────────────────────────────────────────────────
 
@@ -247,7 +536,6 @@ class DataEngine:
                 sep = "\t" if fmt == "tsv" else ","
                 df = pl.scan_csv(path, separator=sep, infer_schema_length=100).limit(1).collect()
                 meta["columns"] = len(df.columns)
-                # Count rows via line count
                 with open(path, "rb") as f:
                     meta["rows"] = sum(1 for _ in f)
             elif fmt == "parquet":
@@ -255,6 +543,15 @@ class DataEngine:
                 pf = pq.ParquetFile(path)
                 meta["rows"] = pf.metadata.num_rows
                 meta["columns"] = pf.metadata.num_columns
+            elif fmt in IMAGE_FORMATS:
+                from PIL import Image
+                img = Image.open(path)
+                meta["width"], meta["height"] = img.size
+                meta["mode"] = img.mode
+            elif fmt == "pdf":
+                import fitz
+                doc = fitz.open(path)
+                meta["pages"] = len(doc)
         except Exception as e:
             logger.debug(f"Partial metadata extraction: {e}")
         return meta
