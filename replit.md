@@ -69,3 +69,4 @@ See `.env.example` for all available configuration options.
 - Dark mode by default (toggleable)
 - File uploads stored in `uploads/{user_id}/`
 - Processed outputs stored in `outputs/{user_id}/`
+- Do not replace external CDN/resource links with local ones — keep all external links as-is
