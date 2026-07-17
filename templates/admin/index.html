@@ -51,6 +51,7 @@
           { id: 'overview', label: 'نظرة عامة',    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
           { id: 'users',    label: 'المستخدمون',   icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
           { id: 'logs',     label: 'سجل العمليات', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+          { id: 'server_activity', label: 'نشاط السيرفر', icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01' },
         ]
       }">
 
@@ -587,6 +588,210 @@
         </div>
       </div><!-- /logs -->
 
+
+      <!-- ════════════════════════════════
+           TAB: SERVER ACTIVITY
+      ════════════════════════════════ -->
+      <div x-show="tab === 'server_activity'" x-cloak
+           x-data="serverActivityData()">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-base font-semibold text-white">نشاط السيرفر</h2>
+            <p class="text-xs text-slate-500 mt-0.5">فحص قاعدة البيانات كل 7 دقائق · Keep-Alive مدمج</p>
+          </div>
+          <button @click="triggerNow()"
+                  :disabled="pinging"
+                  class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium
+                         bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 border border-indigo-500/30
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+            <svg class="w-3.5 h-3.5" :class="pinging ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span x-text="pinging ? 'جاري الفحص…' : 'فحص الآن'"></span>
+          </button>
+        </div>
+
+        <!-- Status card + Countdown ring -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+
+          <!-- Status card -->
+          <div class="section-card p-6">
+            <p class="text-xs text-slate-500 mb-4 uppercase tracking-wider font-semibold">حالة الاتصال</p>
+
+            <div class="flex items-center gap-4 mb-5">
+              <!-- Icon + pulse badge -->
+              <div class="relative flex-shrink-0">
+                <div class="w-14 h-14 rounded-2xl flex items-center justify-center transition-colors"
+                     :class="status === null ? 'bg-slate-700/50' : status ? 'bg-emerald-500/10' : 'bg-red-500/10'">
+                  <svg class="w-7 h-7 transition-colors"
+                       :class="status === null ? 'text-slate-500' : status ? 'text-emerald-400' : 'text-red-400'"
+                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                          d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                  </svg>
+                </div>
+                <!-- Live dot -->
+                <template x-if="status === true">
+                  <span class="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-emerald-400 border-2 border-slate-800">
+                    <span class="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-75"></span>
+                  </span>
+                </template>
+                <template x-if="status === false">
+                  <span class="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-400 border-2 border-slate-800"></span>
+                </template>
+              </div>
+              <!-- Label -->
+              <div>
+                <div class="text-xl font-bold mb-1 transition-colors"
+                     :class="status === null ? 'text-slate-400' : status ? 'text-emerald-400' : 'text-red-400'"
+                     x-text="status === null ? 'جاري التهيئة…' : status ? 'متصل ✓' : 'انقطع الاتصال ✗'"></div>
+                <div class="text-xs text-slate-500"
+                     x-text="status !== null ? 'هذه الحالة منذ: ' + elapsed(statusSince) : 'يتم الفحص الأول…'"></div>
+              </div>
+            </div>
+
+            <!-- 4 mini stats -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-slate-900/50 rounded-xl p-3">
+                <p class="text-xs text-slate-500 mb-1">آخر فحص</p>
+                <p class="text-sm font-mono font-semibold text-white" x-text="fmtTime(lastPingAt)"></p>
+              </div>
+              <div class="bg-slate-900/50 rounded-xl p-3">
+                <p class="text-xs text-slate-500 mb-1">مضى على آخر فحص</p>
+                <p class="text-sm font-mono font-semibold"
+                   :class="status ? 'text-emerald-400' : 'text-slate-400'"
+                   x-text="elapsed(lastPingAt)"></p>
+              </div>
+              <div class="bg-slate-900/50 rounded-xl p-3">
+                <p class="text-xs text-slate-500 mb-1">زمن الاستجابة</p>
+                <p class="text-sm font-mono font-semibold text-sky-400"
+                   x-text="latency !== null ? latency + ' ms' : '—'"></p>
+              </div>
+              <div class="bg-slate-900/50 rounded-xl p-3">
+                <p class="text-xs text-slate-500 mb-1">معدل الاتصال</p>
+                <p class="text-sm font-mono font-semibold"
+                   :class="uptimePct >= 90 ? 'text-emerald-400' : 'text-red-400'"
+                   x-text="totalPings ? uptimePct + '%' : '—'"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Countdown ring -->
+          <div class="section-card p-6 flex flex-col items-center justify-center gap-5">
+            <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold self-start">الفحص القادم</p>
+
+            <!-- SVG ring -->
+            <div class="relative">
+              <svg width="148" height="148" viewBox="0 0 100 100" class="-rotate-90">
+                <!-- Track -->
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="7"/>
+                <!-- Arc — depletes as countdown drops -->
+                <circle cx="50" cy="50" r="40" fill="none"
+                        :stroke="status === false ? '#f87171' : '#34d399'"
+                        stroke-width="7"
+                        stroke-linecap="round"
+                        :stroke-dasharray="CIRC"
+                        :stroke-dashoffset="CIRC * (1 - countdown / INTERVAL)"
+                        style="transition: stroke-dashoffset 0.9s linear, stroke 0.3s ease"/>
+              </svg>
+              <!-- Center label -->
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center select-none">
+                <span class="text-2xl font-bold font-mono tabular-nums text-white leading-none"
+                      x-text="fmtCountdown(countdown)"></span>
+                <span class="text-xs text-slate-500 mt-1">متبقٍ للفحص</span>
+              </div>
+            </div>
+
+            <!-- Trio of labels under ring -->
+            <div class="flex items-center gap-5 text-xs text-slate-500">
+              <div class="text-center">
+                <p class="text-white font-semibold font-mono tabular-nums"
+                   x-text="fmtCountdown(INTERVAL - countdown)"></p>
+                <p>مضى</p>
+              </div>
+              <div class="w-px h-8 bg-slate-700/60"></div>
+              <div class="text-center">
+                <p class="text-white font-semibold">07:00</p>
+                <p>الدورة</p>
+              </div>
+              <div class="w-px h-8 bg-slate-700/60"></div>
+              <div class="text-center">
+                <p class="text-white font-semibold tabular-nums" x-text="totalPings"></p>
+                <p>فحوصات</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+          <div class="stat-card border-slate-700/30">
+            <p class="text-xs text-slate-500 mb-2">إجمالي الفحوصات</p>
+            <p class="text-2xl font-bold text-white tabular-nums" x-text="totalPings"></p>
+          </div>
+          <div class="stat-card" :class="totalFails > 0 ? 'border-red-500/20' : 'border-slate-700/30'">
+            <p class="text-xs text-slate-500 mb-2">فحوصات فاشلة</p>
+            <p class="text-2xl font-bold tabular-nums"
+               :class="totalFails > 0 ? 'text-red-400' : 'text-slate-600'"
+               x-text="totalFails"></p>
+          </div>
+          <div class="stat-card border-sky-500/20">
+            <p class="text-xs text-slate-500 mb-2">آخر استجابة</p>
+            <p class="text-2xl font-bold text-sky-400 tabular-nums"
+               x-text="latency !== null ? latency + 'ms' : '—'"></p>
+          </div>
+          <div class="stat-card" :class="uptimePct >= 90 ? 'border-emerald-500/20' : 'border-red-500/20'">
+            <p class="text-xs text-slate-500 mb-2">معدل الاتصال</p>
+            <p class="text-2xl font-bold tabular-nums"
+               :class="uptimePct >= 90 ? 'text-emerald-400' : 'text-red-400'"
+               x-text="totalPings ? uptimePct + '%' : '—'"></p>
+          </div>
+        </div>
+
+        <!-- Ping history -->
+        <div class="section-card">
+          <div class="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-white">سجل الفحوصات</h3>
+              <p class="text-xs text-slate-500 mt-0.5">آخر 30 عملية فحص — تحديث فوري</p>
+            </div>
+            <span class="flex items-center gap-1.5 text-xs text-emerald-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              مباشر
+            </span>
+          </div>
+          <div class="overflow-y-auto max-h-72">
+            <template x-if="history.length === 0">
+              <div class="py-14 text-center text-slate-600 text-sm">في انتظار أول فحص…</div>
+            </template>
+            <template x-for="(entry, i) in history" :key="i">
+              <div class="flex items-center gap-3 px-5 py-3 border-b border-slate-700/20 last:border-0
+                          hover:bg-slate-700/10 transition-colors">
+                <!-- Status dot -->
+                <span class="w-2 h-2 rounded-full flex-shrink-0"
+                      :class="entry.ok ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                <!-- Badge -->
+                <span class="inline-flex px-2 py-0.5 rounded-md text-xs font-medium flex-shrink-0"
+                      :class="entry.ok ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'"
+                      x-text="entry.ok ? 'ناجح' : 'فاشل'"></span>
+                <!-- Detail text -->
+                <span class="flex-1 text-xs text-slate-400 truncate" x-text="entry.detail"></span>
+                <!-- Latency -->
+                <span class="text-xs font-mono text-sky-400 flex-shrink-0"
+                      x-text="entry.lat !== null ? entry.lat + ' ms' : '—'"></span>
+                <!-- Timestamp -->
+                <span class="text-xs font-mono text-slate-600 flex-shrink-0 w-20 text-end"
+                      x-text="fmtTime(entry.time)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+      </div><!-- /server_activity -->
+
     </main>
   </div><!-- /flex-1 content -->
 </div><!-- /lg:flex -->
@@ -629,5 +834,103 @@
   </div>
 </div>
 
+<script>
+function serverActivityData() {
+  return {
+    INTERVAL: 420,          // 7 minutes in seconds
+    CIRC: 2 * Math.PI * 40, // SVG circle circumference (r = 40)
+    countdown: 420,
+    pinging: false,
+    status: null,           // true = connected, false = failed, null = initial
+    latency: null,
+    statusSince: null,      // Date when current status started
+    lastPingAt: null,
+    totalPings: 0,
+    totalFails: 0,
+    history: [],
+    _timer: null,
+
+    init() {
+      // Fire first ping immediately, then start the per-second tick
+      this.doPing();
+      this._timer = setInterval(() => this.tick(), 1000);
+    },
+
+    tick() {
+      if (this.countdown > 0) {
+        this.countdown--;
+        if (this.countdown === 0) this.doPing();
+      }
+    },
+
+    triggerNow() {
+      this.countdown = 0;
+      // tick() will call doPing() on next cycle, but call immediately for UX
+      this.doPing();
+    },
+
+    async doPing() {
+      if (this.pinging) return;
+      this.pinging = true;
+      const t0 = Date.now();
+      try {
+        const res = await fetch('/admin/ping');
+        const data = await res.json();
+        const ok = data.ok === true;
+        const lat = typeof data.latency_ms === 'number' ? data.latency_ms : Math.round(Date.now() - t0);
+        if (this.status !== ok) this.statusSince = new Date();
+        this.status = ok;
+        this.latency = lat;
+        this.lastPingAt = new Date();
+        this.totalPings++;
+        if (!ok) this.totalFails++;
+        this.history.unshift({ ok, lat, detail: data.detail ?? '', time: new Date() });
+        if (this.history.length > 30) this.history.pop();
+      } catch (e) {
+        const prev = this.status;
+        if (prev !== false) this.statusSince = new Date();
+        this.status = false;
+        this.latency = null;
+        this.lastPingAt = new Date();
+        this.totalPings++;
+        this.totalFails++;
+        this.history.unshift({ ok: false, lat: null, detail: 'خطأ في الشبكة — ' + String(e), time: new Date() });
+        if (this.history.length > 30) this.history.pop();
+      } finally {
+        this.pinging = false;
+        this.countdown = this.INTERVAL; // reset countdown after every ping
+      }
+    },
+
+    fmtTime(date) {
+      if (!date) return '—';
+      return date.toLocaleTimeString('ar-SA', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      });
+    },
+
+    elapsed(date) {
+      if (!date) return '—';
+      const s = Math.floor((Date.now() - date) / 1000);
+      // Force Alpine to re-read this every second by depending on countdown
+      void this.countdown;
+      if (s < 60)   return s + ' ث';
+      if (s < 3600) return Math.floor(s / 60) + ' د ' + (s % 60) + ' ث';
+      return Math.floor(s / 3600) + ' س ' + Math.floor((s % 3600) / 60) + ' د';
+    },
+
+    fmtCountdown(s) {
+      const m   = Math.floor(s / 60);
+      const sec = s % 60;
+      return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+    },
+
+    get uptimePct() {
+      if (!this.totalPings) return 100;
+      return Math.round(((this.totalPings - this.totalFails) / this.totalPings) * 100);
+    }
+  };
+}
+</script>
 </body>
 </html>

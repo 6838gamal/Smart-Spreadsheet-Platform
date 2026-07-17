@@ -2,7 +2,7 @@
 
 import logging
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -142,6 +142,41 @@ async def admin_dashboard(
             "UserRole": UserRole,
         },
     )
+
+
+# ── Server Activity / Keep-Alive Ping ────────────────────────────────────────
+
+@router.get("/admin/ping")
+async def admin_ping(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    """DB health-check used by the server-activity panel (keep-alive).
+    Always returns HTTP 200 so the browser fetch() never throws on errors.
+    """
+    import time as _time
+
+    if isinstance(admin, RedirectResponse):
+        return JSONResponse({"ok": False, "latency_ms": 0, "detail": "غير مصرّح"})
+
+    t0 = _time.perf_counter()
+    try:
+        await db.execute(select(func.now()))
+        latency_ms = round((_time.perf_counter() - t0) * 1000)
+        return JSONResponse({
+            "ok": True,
+            "latency_ms": latency_ms,
+            "detail": "اتصال ناجح بقاعدة البيانات",
+        })
+    except Exception as exc:
+        latency_ms = round((_time.perf_counter() - t0) * 1000)
+        logger.warning("admin/ping: DB error — %s", exc)
+        return JSONResponse({
+            "ok": False,
+            "latency_ms": latency_ms,
+            "detail": str(exc),
+        })
 
 
 # ── User Management ──────────────────────────────────────────────────────────
