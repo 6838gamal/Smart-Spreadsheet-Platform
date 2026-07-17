@@ -108,16 +108,32 @@ def _start_keepalive() -> None:
             _keepalive_state["fail_count"] += 1
             logger.warning("Keep-alive: server ping failed: %s", exc)
 
-        # 2. DB ping
+        # 2. DB ping — run asyncpg in a fresh event loop (thread-safe, no pool sharing)
         try:
-            from sqlalchemy import text as _text
-            import asyncio as _asyncio
+            from app.core.config import settings as _cfg
+            _raw_url = _cfg._raw_db_url
+            if "sqlite" in _raw_url:
+                # SQLite: just check the file exists / is readable
+                import sqlite3 as _sqlite3
+                _db_path = _raw_url.split("///")[-1]
+                _c = _sqlite3.connect(_db_path, timeout=5)
+                _c.execute("SELECT 1")
+                _c.close()
+            else:
+                import asyncpg as _asyncpg
+                # Strip driver prefix for asyncpg's own DSN parser
+                _dsn = _raw_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres+asyncpg://", "postgresql://")
 
-            async def _db_ping():
-                async with AsyncSessionLocal() as session:
-                    await session.execute(_text("SELECT 1"))
+                async def _pg_ping():
+                    _conn = await _asyncpg.connect(_dsn, timeout=10, ssl="require")
+                    await _conn.execute("SELECT 1")
+                    await _conn.close()
 
-            _asyncio.run(_db_ping())
+                _loop = asyncio.new_event_loop()
+                try:
+                    _loop.run_until_complete(_pg_ping())
+                finally:
+                    _loop.close()
             _keepalive_state["db_ok"] = True
             logger.debug("Keep-alive: DB OK")
         except Exception as exc:

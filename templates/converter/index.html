@@ -6,22 +6,25 @@
 {% set t = get_texts(lang) %}
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-6" x-data="converterPage()">
 
-  <!-- Form panel -->
-  <div class="lg:col-span-2 space-y-5">
+  <!-- ══ Form panel ══════════════════════════════════════════════════════ -->
+  <div class="lg:col-span-2 space-y-4">
     <div class="card p-6">
       <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('convert_file') }}</h3>
 
-      <form hx-post="/converter/convert"
-            hx-target="#convert-result"
-            hx-swap="innerHTML"
-            hx-indicator="#convert-spinner"
-            class="space-y-5">
+      <form id="convert-form" class="space-y-5" @submit.prevent="startConvert($event)">
 
         <!-- Source file -->
         <div>
           <label class="label">{{ t.get('source_file') }}</label>
           {% if files %}
-          <select name="file_id" required class="input" @change="updateSheets($event)">
+          <select name="file_id" required class="input"
+                  @change="onFileChange($event)"
+                  hx-get="/converter/preview/"
+                  hx-trigger="change"
+                  hx-target="#preview-area"
+                  hx-swap="innerHTML"
+                  hx-indicator="#preview-spinner"
+                  :hx-get="'/converter/preview/' + $el.value">
             <option value="">{{ t.get('choose_file') }}</option>
             {% for f in files %}
             <option value="{{ f.id }}"
@@ -38,13 +41,25 @@
           {% endif %}
         </div>
 
-        <!-- Sheet (for Excel) -->
+        <!-- Preview area -->
+        <div id="preview-wrapper" x-show="hasFile" x-cloak>
+          <div id="preview-spinner" class="htmx-indicator text-xs text-slate-400 flex items-center gap-2 py-1">
+            <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            جاري تحميل المعاينة…
+          </div>
+          <div id="preview-area"></div>
+        </div>
+
+        <!-- Sheet (Excel only) -->
         <div x-show="isExcel" x-cloak>
           <label class="label">{{ t.get('sheet_opt') }}</label>
           <input type="text" name="sheet" placeholder="{{ t.get('sheet_hint') }}" class="input"/>
         </div>
 
-        <!-- Target format -->
+        <!-- Target format grid -->
         <div>
           <label class="label">{{ t.get('target_format') }}</label>
           <div class="grid grid-cols-3 gap-2">
@@ -64,39 +79,34 @@
           </div>
         </div>
 
-        <button type="submit" class="btn-primary w-full justify-center py-3">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-          </svg>
-          {{ t.get('start_convert') }}
+        <!-- Submit -->
+        <button type="submit"
+                class="btn-primary w-full justify-center py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="converting">
+          <template x-if="!converting">
+            <span class="flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+              </svg>
+              {{ t.get('start_convert') }}
+            </span>
+          </template>
+          <template x-if="converting">
+            <span class="flex items-center gap-2">
+              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              جاري التحويل…
+            </span>
+          </template>
         </button>
       </form>
-
-      <!-- Spinner -->
-      <div id="convert-spinner" class="htmx-indicator flex items-center justify-center gap-2 mt-4 text-sm text-slate-400">
-        <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-        </svg>
-        {{ t.get('converting') }}
-      </div>
-    </div>
-  </div>
-
-  <!-- Result panel -->
-  <div class="lg:col-span-3">
-    <div class="card p-6 min-h-64">
-      <h3 class="font-semibold text-slate-900 dark:text-white mb-4">{{ t.get('result') }}</h3>
-      <div id="convert-result" class="text-slate-400 text-sm text-center py-8">
-        <svg class="w-12 h-12 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-        </svg>
-        <p>{{ t.get('choose_to_convert') }}</p>
-      </div>
     </div>
 
     <!-- Supported formats info -->
-    <div class="card p-5 mt-5">
+    <div class="card p-5">
       <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3 text-sm">{{ t.get('supported_formats') }}</h4>
       <div class="grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400">
         <div>
@@ -119,6 +129,144 @@
     </div>
   </div>
 
+  <!-- ══ Result panel ════════════════════════════════════════════════════ -->
+  <div class="lg:col-span-3">
+    <div class="card p-6 min-h-72">
+      <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('result') }}</h3>
+
+      <!-- Idle state -->
+      <div id="result-idle" class="text-slate-400 text-sm text-center py-10">
+        <svg class="w-14 h-14 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+        </svg>
+        <p>{{ t.get('choose_to_convert') }}</p>
+      </div>
+
+      <!-- Progress state -->
+      <div id="result-progress" class="hidden space-y-6 py-4">
+
+        <!-- Step indicators -->
+        <div class="flex items-center justify-between px-2">
+          <template x-for="(s, i) in steps" :key="i">
+            <div class="flex flex-col items-center gap-1.5 flex-1">
+              <!-- connector line before (except first) -->
+              <div class="relative w-full flex items-center justify-center">
+                <!-- left line -->
+                <div x-show="i > 0"
+                     class="absolute right-1/2 top-1/2 -translate-y-1/2 h-0.5 w-1/2 transition-all duration-500"
+                     :class="currentPct >= s.pct ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'"></div>
+                <!-- right line -->
+                <div x-show="i < steps.length - 1"
+                     class="absolute left-1/2 top-1/2 -translate-y-1/2 h-0.5 w-1/2 transition-all duration-500"
+                     :class="currentPct >= s.pct ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'"></div>
+                <!-- circle -->
+                <div class="relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 border-2"
+                     :class="currentPct >= s.pct
+                       ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'">
+                  <span x-html="s.icon" class="w-4 h-4 flex items-center justify-center"></span>
+                </div>
+              </div>
+              <span class="text-xs font-medium text-center leading-tight transition-colors duration-300"
+                    :class="currentPct >= s.pct ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-600'"
+                    x-text="s.label"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Bar + message -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600 dark:text-slate-300 font-medium" x-text="progressMsg">جاري المعالجة…</span>
+            <span class="text-indigo-500 font-bold tabular-nums" x-text="currentPct + '%'"></span>
+          </div>
+          <div class="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-700 ease-out"
+                 :style="'width: ' + currentPct + '%'"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success state -->
+      <div id="result-success" class="hidden">
+        <div class="p-5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50 rounded-2xl space-y-4">
+          <!-- Header -->
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/30">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+            </div>
+            <div>
+              <p class="font-bold text-emerald-800 dark:text-emerald-300">تم التحويل بنجاح</p>
+              <p class="text-xs text-emerald-600 dark:text-emerald-500" x-text="successSubtitle"></p>
+            </div>
+          </div>
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
+              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.rows?.toLocaleString() || '—'"></p>
+              <p class="text-xs text-slate-500 mt-0.5">صف</p>
+            </div>
+            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
+              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.cols || '—'"></p>
+              <p class="text-xs text-slate-500 mt-0.5">عمود</p>
+            </div>
+            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
+              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.duration_ms ? (successData.duration_ms / 1000).toFixed(2) + 's' : '—'"></p>
+              <p class="text-xs text-slate-500 mt-0.5">مدة</p>
+            </div>
+          </div>
+          <!-- Download -->
+          <a :href="'/converter/download/' + successData.filename"
+             class="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-white text-sm font-semibold transition-all shadow-lg shadow-indigo-500/25">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            تحميل <span x-text="successData.filename" class="max-w-[200px] truncate"></span>
+          </a>
+          <!-- Convert again -->
+          <button @click="resetResult()"
+                  class="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+            تحويل ملف آخر ←
+          </button>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div id="result-error" class="hidden">
+        <div class="p-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-2xl space-y-4">
+          <!-- Header -->
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/30 mt-0.5">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-bold text-red-800 dark:text-red-300" x-text="errorTitle">فشل التحويل</p>
+              <p class="text-sm text-red-700 dark:text-red-400 mt-1 leading-relaxed" x-text="errorDetail"></p>
+            </div>
+          </div>
+          <!-- Suggestions -->
+          <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-4 text-sm text-slate-600 dark:text-slate-400 space-y-1.5">
+            <p class="font-medium text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wide mb-2">اقتراحات</p>
+            <p>• تحقق من أن الملف غير تالف وقابل للفتح</p>
+            <p>• جرّب تحويله إلى صيغة وسيطة (CSV ثم الهدف)</p>
+            <p>• تأكد من اختيار ورقة العمل الصحيحة إن كان Excel</p>
+          </div>
+          <!-- Retry -->
+          <button @click="resetResult()"
+                  class="w-full py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors">
+            حاول مجدداً
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
@@ -126,11 +274,111 @@
 <script>
 function converterPage() {
   return {
-    isExcel: false,
-    updateSheets(e) {
-      const fmt = e.target.options[e.target.selectedIndex]?.dataset.format || '';
+    isExcel:    false,
+    hasFile:    false,
+    converting: false,
+    currentPct: 0,
+    progressMsg: 'جاري المعالجة…',
+    successData: {},
+    successSubtitle: '',
+    errorTitle:  '',
+    errorDetail: '',
+
+    steps: [
+      { pct: 8,  label: 'التحقق',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
+      { pct: 28, label: 'القراءة',  icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10"/></svg>' },
+      { pct: 62, label: 'التحويل',  icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>' },
+      { pct: 90, label: 'الحفظ',    icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>' },
+      { pct: 100, label: 'اكتمل',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' },
+    ],
+
+    onFileChange(e) {
+      const opt = e.target.options[e.target.selectedIndex];
+      const fmt = opt?.dataset.format || '';
       this.isExcel = ['xlsx','xls','xlsm','xlsb','ods'].includes(fmt);
-    }
+      this.hasFile = !!e.target.value;
+      this.resetResult();
+
+      // Trigger HTMX programmatically with correct URL
+      const sel = e.target;
+      if (sel.value) {
+        sel.setAttribute('hx-get', `/converter/preview/${sel.value}`);
+        htmx.process(sel);
+        htmx.trigger(sel, 'change');
+      } else {
+        document.getElementById('preview-area').innerHTML = '';
+      }
+    },
+
+    getTargetFormat() {
+      const checked = document.querySelector('input[name="target_format"]:checked');
+      return checked ? checked.value : '';
+    },
+
+    showState(state) {
+      ['idle','progress','success','error'].forEach(s => {
+        const el = document.getElementById(`result-${s}`);
+        if (el) el.classList.toggle('hidden', s !== state);
+      });
+    },
+
+    resetResult() {
+      this.converting = false;
+      this.currentPct = 0;
+      this.progressMsg = 'جاري المعالجة…';
+      this.showState('idle');
+    },
+
+    startConvert(e) {
+      const form   = e.target;
+      const fileId = form.file_id?.value;
+      const fmt    = this.getTargetFormat();
+      const sheet  = form.sheet?.value || '';
+
+      if (!fileId || !fmt) return;
+
+      this.converting = true;
+      this.currentPct = 0;
+      this.progressMsg = 'جارٍ التحضير…';
+      this.showState('progress');
+
+      const params = new URLSearchParams({ file_id: fileId, target_format: fmt });
+      if (sheet) params.set('sheet', sheet);
+
+      const es = new EventSource(`/converter/convert-sse?${params}`);
+
+      es.addEventListener('progress', (ev) => {
+        const d = JSON.parse(ev.data);
+        this.currentPct  = d.pct;
+        this.progressMsg = d.msg;
+      });
+
+      es.addEventListener('done', (ev) => {
+        es.close();
+        this.converting = false;
+        const d = JSON.parse(ev.data);
+
+        if (d.ok) {
+          this.currentPct  = 100;
+          this.progressMsg = 'اكتملت العملية بنجاح';
+          this.successData = d;
+          this.successSubtitle = `${d.src_name} ← .${d.target_fmt}`;
+          setTimeout(() => this.showState('success'), 400);
+        } else {
+          this.errorTitle  = d.title  || 'فشل التحويل';
+          this.errorDetail = d.detail || 'حدث خطأ غير متوقع.';
+          this.showState('error');
+        }
+      });
+
+      es.onerror = () => {
+        es.close();
+        this.converting = false;
+        this.errorTitle  = 'انقطع الاتصال';
+        this.errorDetail = 'انقطع الاتصال بالخادم أثناء التحويل. تحقق من اتصالك وأعد المحاولة.';
+        this.showState('error');
+      };
+    },
   }
 }
 </script>
