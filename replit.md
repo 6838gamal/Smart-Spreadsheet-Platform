@@ -10,19 +10,32 @@ A professional SaaS web application for managing, converting, cleaning, and anal
 - **Frontend**: Jinja2 templates + HTMX + Alpine.js + TailwindCSS CDN
 - **Architecture**: Clean Architecture (Presentation → Application → Domain → Infrastructure)
 
-## How to Run
+## How to Run on Replit
+
+The **"Start application"** workflow runs the server automatically:
 
 ```bash
-python main.py
+uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-Or via uvicorn directly:
+The app runs on **port 5000**. Dependencies are managed with `uv` and installed automatically on first run.
 
-```bash
-uvicorn main:app --host 0.0.0.0 --port 5000 --reload
-```
+### Required Secrets (Replit Secrets tab)
 
-The app runs on **port 5000**.
+| Secret | Purpose |
+|---|---|
+| `SESSION_SECRET` | Signs JWT access tokens — must be a long random string |
+
+### Non-secret environment variables (already configured)
+
+| Variable | Value |
+|---|---|
+| `PORT` | `5000` |
+| `DEBUG` | `true` |
+| `APP_NAME` | `Smart Spreadsheet Platform` |
+| `MAX_FILE_SIZE_MB` | `500` |
+| `DEFAULT_LANGUAGE` | `ar` |
+| `DEFAULT_THEME` | `dark` |
 
 ## Project Structure
 
