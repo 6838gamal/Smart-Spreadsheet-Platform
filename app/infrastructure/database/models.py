@@ -142,6 +142,19 @@ class OperationLog(Base):
     file: Mapped["File | None"] = relationship("File", back_populates="operations")
 
 
+class ServerPing(Base):
+    """Persisted record of every server/DB health-check ping."""
+    __tablename__ = "server_pings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[str] = mapped_column(String(500), default="")
+    pinged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
 class Workflow(Base):
     __tablename__ = "workflows"
 

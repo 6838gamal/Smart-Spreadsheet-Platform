@@ -886,20 +886,41 @@ function serverActivityData() {
       } catch { /* quota exceeded — ignore */ }
     },
 
-    init() {
-      // Restore persisted state so counters survive page navigation
-      const saved = loadState();
-      if (saved) {
-        Object.assign(this, saved);
-        // If the saved countdown has expired while away, ping immediately
-        if (this.countdown <= 0) {
-          this.doPing();
+    async init() {
+      // 1. Try to restore from DB (survives server restarts + page navigation)
+      let loadedFromDB = false;
+      try {
+        const res = await fetch('/admin/activity/history');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.total_pings === 'number') {
+            this.totalPings  = data.total_pings;
+            this.totalFails  = data.total_fails;
+            this.history     = (data.history ?? []).map(e => ({ ...e, time: e.time ? new Date(e.time) : null }));
+            this.latency     = data.last_latency_ms ?? null;
+            this.lastPingAt  = data.last_ping_at ? new Date(data.last_ping_at) : null;
+            this.status      = data.last_status    ?? null;
+            this.statusSince = this.lastPingAt;
+            loadedFromDB = true;
+          }
         }
-      } else {
-        // First ever load — ping right away
-        this.doPing();
+      } catch { /* network error — fall through to localStorage */ }
+
+      // 2. If DB load failed, fall back to localStorage (offline/error resilience)
+      if (!loadedFromDB) {
+        const saved = loadState();
+        if (saved) Object.assign(this, saved);
       }
+
+      // 3. Restore countdown from localStorage (not stored in DB)
+      const lsSaved = loadState();
+      if (lsSaved && typeof lsSaved.countdown === 'number' && lsSaved.countdown > 0) {
+        this.countdown = lsSaved.countdown;
+      }
+
+      // 4. Start tick; ping immediately if countdown expired while away
       this._timer = setInterval(() => this.tick(), 1000);
+      if (this.countdown <= 0) this.doPing();
     },
 
     tick() {

@@ -10,8 +10,9 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.security import verify_password, create_access_token
 from app.core.templates import templates
-from app.infrastructure.database.models import User, UserRole, File, OperationLog
+from app.infrastructure.database.models import User, UserRole, File, OperationLog, ServerPing
 from app.infrastructure.repositories.user_repository import UserRepository
+from app.infrastructure.repositories.server_ping_repository import ServerPingRepository
 from app.presentation.web.auth import _set_auth_cookie, _clear_auth_cookie
 
 router = APIRouter()
@@ -153,6 +154,7 @@ async def admin_ping(
     admin: User = Depends(get_admin_user),
 ):
     """DB health-check used by the server-activity panel (keep-alive).
+    Each call is persisted to server_pings so counters survive restarts.
     Always returns HTTP 200 so the browser fetch() never throws on errors.
     """
     import time as _time
@@ -160,23 +162,64 @@ async def admin_ping(
     if isinstance(admin, RedirectResponse):
         return JSONResponse({"ok": False, "latency_ms": 0, "detail": "غير مصرّح"})
 
+    ping_repo = ServerPingRepository(db)
     t0 = _time.perf_counter()
     try:
         await db.execute(select(func.now()))
         latency_ms = round((_time.perf_counter() - t0) * 1000)
-        return JSONResponse({
-            "ok": True,
-            "latency_ms": latency_ms,
-            "detail": "اتصال ناجح بقاعدة البيانات",
-        })
+        detail = "اتصال ناجح بقاعدة البيانات"
+        await ping_repo.add_ping(ok=True, latency_ms=latency_ms, detail=detail)
+        await db.commit()
+        return JSONResponse({"ok": True, "latency_ms": latency_ms, "detail": detail})
     except Exception as exc:
         latency_ms = round((_time.perf_counter() - t0) * 1000)
+        detail = str(exc)
         logger.warning("admin/ping: DB error — %s", exc)
-        return JSONResponse({
-            "ok": False,
-            "latency_ms": latency_ms,
-            "detail": str(exc),
-        })
+        try:
+            await ping_repo.add_ping(ok=False, latency_ms=latency_ms, detail=detail)
+            await db.commit()
+        except Exception:
+            pass
+        return JSONResponse({"ok": False, "latency_ms": latency_ms, "detail": detail})
+
+
+@router.get("/admin/activity/history")
+async def admin_activity_history(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    """Return aggregated ping stats + last 30 records from the DB.
+    Used by the server-activity panel on init to restore persisted counters.
+    """
+    if isinstance(admin, RedirectResponse):
+        return JSONResponse({"ok": False})
+
+    ping_repo = ServerPingRepository(db)
+    stats = await ping_repo.get_stats()
+    history_rows = await ping_repo.get_history(limit=30)
+
+    history = [
+        {
+            "ok": row.ok,
+            "lat": row.latency_ms,
+            "detail": row.detail,
+            "time": row.pinged_at.isoformat(),
+        }
+        for row in history_rows
+    ]
+
+    # Derive last ping info from most-recent record
+    last = history_rows[0] if history_rows else None
+
+    return JSONResponse({
+        "total_pings": stats["total_pings"],
+        "total_fails": stats["total_fails"],
+        "history": history,
+        "last_ping_at": last.pinged_at.isoformat() if last else None,
+        "last_latency_ms": last.latency_ms if last else None,
+        "last_status": last.ok if last else None,
+    })
 
 
 # ── User Management ──────────────────────────────────────────────────────────
