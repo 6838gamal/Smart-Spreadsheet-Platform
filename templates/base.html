@@ -1,3 +1,4 @@
+{% set t = get_texts(lang if lang else 'ar') %}
 <!DOCTYPE html>
 <html lang="{{ lang if lang else 'ar' }}" 
       dir="{{ 'rtl' if (lang if lang else 'ar') == 'ar' else 'ltr' }}"
@@ -48,7 +49,6 @@
       :class="darkMode ? 'dark' : ''">
 
 {% if user %}
-{% set t = get_texts(lang) %}
 
 <!-- ─── App Shell ─────────────────────────────────────────────────── -->
 <div class="flex h-screen overflow-hidden">
