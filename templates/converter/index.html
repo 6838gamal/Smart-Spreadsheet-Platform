@@ -53,10 +53,61 @@
           <div id="preview-area"></div>
         </div>
 
-        <!-- Sheet (Excel only) -->
-        <div x-show="isExcel" x-cloak>
-          <label class="label">{{ t.get('sheet_opt') }}</label>
-          <input type="text" name="sheet" placeholder="{{ t.get('sheet_hint') }}" class="input"/>
+        <!-- Sheet selector (Excel source) -->
+        <div x-show="isExcel" x-cloak class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="label mb-0">أوراق العمل</label>
+            <div class="flex gap-2 text-xs" x-show="sheets.length > 1">
+              <button type="button" @click="selectAllSheets(true)"
+                      class="text-indigo-400 hover:text-indigo-300 transition-colors">تحديد الكل</button>
+              <span class="text-slate-600">·</span>
+              <button type="button" @click="selectAllSheets(false)"
+                      class="text-slate-400 hover:text-slate-300 transition-colors">إلغاء الكل</button>
+            </div>
+          </div>
+
+          <!-- Loading state -->
+          <div x-show="loadingSheets" class="flex items-center gap-2 text-xs text-slate-400 py-1">
+            <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            جاري تحميل أوراق العمل…
+          </div>
+
+          <!-- Sheet checkboxes -->
+          <div x-show="!loadingSheets && sheets.length > 0"
+               class="max-h-40 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 divide-y divide-slate-100 dark:divide-slate-700/50">
+            <template x-for="(s, i) in sheets" :key="i">
+              <label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
+                <input type="checkbox" :value="s" x-model="selectedSheets"
+                       class="rounded text-indigo-600 border-slate-300 dark:border-slate-600 focus:ring-indigo-500"/>
+                <span class="text-sm text-slate-700 dark:text-slate-300 truncate" x-text="s"></span>
+              </label>
+            </template>
+          </div>
+
+          <!-- Single sheet (no checkboxes needed) -->
+          <div x-show="!loadingSheets && sheets.length === 1"
+               class="text-xs text-slate-400 px-1">
+            ورقة عمل واحدة: <span class="text-slate-600 dark:text-slate-300 font-medium" x-text="sheets[0]"></span>
+          </div>
+
+          <!-- Multi-sheet hint -->
+          <p x-show="!loadingSheets && selectedSheets.length > 1"
+             class="text-xs text-indigo-400 px-1">
+            سيتم دمج <span x-text="selectedSheets.length"></span> أوراق في ملف واحد (xlsx/pdf) أو ملف مضغوط zip لباقي الصيغ.
+          </p>
+        </div>
+
+        <!-- PDF → xlsx hint -->
+        <div x-show="isPdf && getTargetFormat() === 'xlsx'" x-cloak
+             class="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700/50 rounded-lg text-xs text-indigo-700 dark:text-indigo-300">
+          <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>كل صفحة في ملف PDF ستُستخرج كورقة عمل مستقلة في ملف Excel الناتج.</span>
         </div>
 
         <!-- Target format grid -->
@@ -274,15 +325,21 @@
 <script>
 function converterPage() {
   return {
-    isExcel:    false,
-    hasFile:    false,
-    converting: false,
-    currentPct: 0,
-    progressMsg: 'جاري المعالجة…',
-    successData: {},
+    isExcel:       false,
+    isPdf:         false,
+    hasFile:       false,
+    converting:    false,
+    currentPct:    0,
+    progressMsg:   'جاري المعالجة…',
+    successData:   {},
     successSubtitle: '',
-    errorTitle:  '',
-    errorDetail: '',
+    errorTitle:    '',
+    errorDetail:   '',
+
+    // Sheet selection state
+    sheets:        [],    // all available sheet names
+    selectedSheets: [],   // checked sheet names
+    loadingSheets: false,
 
     steps: [
       { pct: 8,  label: 'التحقق',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
@@ -292,22 +349,46 @@ function converterPage() {
       { pct: 100, label: 'اكتمل',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' },
     ],
 
-    onFileChange(e) {
+    async onFileChange(e) {
       const opt = e.target.options[e.target.selectedIndex];
       const fmt = opt?.dataset.format || '';
+      const id  = e.target.value;
+
       this.isExcel = ['xlsx','xls','xlsm','xlsb','ods'].includes(fmt);
-      this.hasFile = !!e.target.value;
+      this.isPdf   = fmt === 'pdf';
+      this.hasFile = !!id;
+      this.sheets         = [];
+      this.selectedSheets = [];
       this.resetResult();
 
-      // Trigger HTMX programmatically with correct URL
+      // Trigger HTMX preview
       const sel = e.target;
-      if (sel.value) {
-        sel.setAttribute('hx-get', `/converter/preview/${sel.value}`);
+      if (id) {
+        sel.setAttribute('hx-get', `/converter/preview/${id}`);
         htmx.process(sel);
         htmx.trigger(sel, 'change');
       } else {
         document.getElementById('preview-area').innerHTML = '';
       }
+
+      // Load sheet names for Excel files
+      if (this.isExcel && id) {
+        this.loadingSheets = true;
+        try {
+          const res  = await fetch(`/converter/sheets/${id}`);
+          const data = await res.json();
+          this.sheets         = data.sheets || [];
+          this.selectedSheets = [...this.sheets];   // all checked by default
+        } catch (_) {
+          this.sheets = [];
+        } finally {
+          this.loadingSheets = false;
+        }
+      }
+    },
+
+    selectAllSheets(checked) {
+      this.selectedSheets = checked ? [...this.sheets] : [];
     },
 
     getTargetFormat() {
@@ -333,17 +414,27 @@ function converterPage() {
       const form   = e.target;
       const fileId = form.file_id?.value;
       const fmt    = this.getTargetFormat();
-      const sheet  = form.sheet?.value || '';
 
       if (!fileId || !fmt) return;
+
+      // Validate: at least one sheet must be selected for Excel
+      if (this.isExcel && this.sheets.length > 0 && this.selectedSheets.length === 0) {
+        this.errorTitle  = 'لم تحدد أي ورقة عمل';
+        this.errorDetail = 'يرجى تحديد ورقة عمل واحدة على الأقل قبل التحويل.';
+        this.showState('error');
+        return;
+      }
 
       this.converting = true;
       this.currentPct = 0;
       this.progressMsg = 'جارٍ التحضير…';
       this.showState('progress');
 
+      // Build query params — sheets as repeated param
       const params = new URLSearchParams({ file_id: fileId, target_format: fmt });
-      if (sheet) params.set('sheet', sheet);
+      if (this.isExcel && this.selectedSheets.length > 0) {
+        this.selectedSheets.forEach(s => params.append('sheets', s));
+      }
 
       const es = new EventSource(`/converter/convert-sse?${params}`);
 

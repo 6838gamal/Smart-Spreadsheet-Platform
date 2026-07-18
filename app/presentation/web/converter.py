@@ -72,6 +72,30 @@ async def converter_page(
     )
 
 
+# ── Sheet names endpoint ─────────────────────────────────────────────────────
+
+@router.get("/converter/sheets/{file_id}")
+async def get_file_sheets(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the list of worksheet names for an Excel file (JSON)."""
+    from fastapi.responses import JSONResponse
+    file_repo = FileRepository(db)
+    f = await file_repo.get_by_id(file_id)
+    if not f or f.owner_id != current_user.id:
+        return JSONResponse({"sheets": []})
+    fmt = f.format.lower().lstrip(".")
+    engine = DataEngine()
+    loop = asyncio.get_event_loop()
+    try:
+        sheets = await loop.run_in_executor(None, lambda: engine.get_excel_sheets(f.path, fmt))
+    except Exception:
+        sheets = []
+    return JSONResponse({"sheets": sheets})
+
+
 # ── Preview endpoint (HTMX fragment) ────────────────────────────────────────
 
 @router.get("/converter/preview/{file_id}", response_class=HTMLResponse)
@@ -171,6 +195,7 @@ async def convert_sse(
     file_id: int = Query(...),
     target_format: str = Query(...),
     sheet: str = Query(""),
+    sheets: list[str] = Query([]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -208,8 +233,15 @@ async def convert_sse(
             yield _sse("done", {"ok": False, "title": t, "detail": d})
             return
 
-        src_fmt = f.format.lower().lstrip(".")
+        src_fmt   = f.format.lower().lstrip(".")
         is_direct = (src_fmt, target_fmt) in DIRECT_PAIRS
+
+        # Decide conversion mode
+        selected_sheets = [s for s in sheets if s]  # non-empty strings only
+        is_excel_src    = src_fmt in {"xlsx", "xls", "xlsm", "xlsb", "ods"}
+        is_pdf_src      = src_fmt == "pdf"
+        multi_sheet_mode = is_excel_src and len(selected_sheets) > 1
+        pdf_pages_mode   = is_pdf_src and target_fmt == "xlsx"
 
         # --- Log operation ---
         op = await op_repo.create(
@@ -217,7 +249,8 @@ async def convert_sse(
             user_id=current_user.id,
             file_id=f.id,
             input_path=f.path,
-            params={"file_id": file_id, "target_format": target_fmt, "sheet": sheet},
+            params={"file_id": file_id, "target_format": target_fmt,
+                    "sheet": sheet, "sheets": selected_sheets},
         )
         t0 = time.time()
 
@@ -228,10 +261,25 @@ async def convert_sse(
         try:
             if is_direct:
                 df = None
+                sheets_dict = None
+            elif multi_sheet_mode:
+                df = None
+                sheets_dict = await loop.run_in_executor(
+                    None,
+                    lambda: engine.read_all_sheets(f.path, src_fmt, selected_sheets),
+                )
+            elif pdf_pages_mode:
+                df = None
+                sheets_dict = await loop.run_in_executor(
+                    None,
+                    lambda: engine.read_pdf_pages(f.path),
+                )
             else:
+                sheets_dict = None
                 df = await loop.run_in_executor(
                     None,
-                    lambda: engine.read(f.path, src_fmt, sheet=sheet or None),
+                    lambda: engine.read(f.path, src_fmt,
+                                        sheet=selected_sheets[0] if selected_sheets else (sheet or None)),
                 )
         except Exception as exc:
             t, d = _friendly_error(str(exc))
@@ -240,8 +288,13 @@ async def convert_sse(
             yield _sse("done", {"ok": False, "title": t, "detail": d})
             return
 
-        rows_count = df.shape[0] if df is not None else 0
-        cols_count = df.shape[1] if df is not None else 0
+        if df is not None:
+            rows_count, cols_count = df.shape
+        elif sheets_dict:
+            rows_count = sum(d.shape[0] for d in sheets_dict.values())
+            cols_count = max((d.shape[1] for d in sheets_dict.values()), default=0)
+        else:
+            rows_count = cols_count = 0
 
         # --- Convert ---
         yield _sse("progress", {"pct": 62, "step": "converting",
@@ -249,7 +302,15 @@ async def convert_sse(
         await asyncio.sleep(0)
 
         stem = Path(f.original_name).stem
-        out_name = f"{stem}_{uuid.uuid4().hex[:6]}.{target_fmt}"
+        uid  = uuid.uuid4().hex[:6]
+
+        # Multi-sheet → zip for non-xlsx/pdf targets
+        if (multi_sheet_mode or pdf_pages_mode) and target_fmt not in {"xlsx", "pdf"}:
+            out_ext  = "zip"
+        else:
+            out_ext  = target_fmt
+
+        out_name = f"{stem}_{uid}.{out_ext}"
         out_path = storage.get_output_path(current_user.id, out_name)
 
         try:
@@ -258,6 +319,23 @@ async def convert_sse(
                     None,
                     lambda: engine.convert_direct(f.path, src_fmt, str(out_path), target_fmt),
                 )
+                actual_name = Path(actual_path).name
+            elif (multi_sheet_mode or pdf_pages_mode) and sheets_dict:
+                if target_fmt == "xlsx":
+                    await loop.run_in_executor(
+                        None, lambda: engine.write_excel_multi_sheet(sheets_dict, str(out_path))
+                    )
+                    actual_path = str(out_path)
+                elif target_fmt == "pdf":
+                    await loop.run_in_executor(
+                        None, lambda: engine.write_pdf_multi_sheet(sheets_dict, str(out_path))
+                    )
+                    actual_path = str(out_path)
+                else:
+                    actual_path = await loop.run_in_executor(
+                        None,
+                        lambda: engine.write_zip_multi_sheet(sheets_dict, str(out_path), target_fmt),
+                    )
                 actual_name = Path(actual_path).name
             else:
                 await loop.run_in_executor(None, lambda: engine.write(df, str(out_path), target_fmt))

@@ -45,6 +45,62 @@ class DataEngine:
     Falls back to pandas / openpyxl where Polars lacks native support.
     """
 
+    # ─── Sheet helpers ────────────────────────────────────────────────────────
+
+    def get_excel_sheets(self, path: str, fmt: str) -> list[str]:
+        """Return the list of worksheet names in an Excel file."""
+        try:
+            from python_calamine import CalamineWorkbook
+            return CalamineWorkbook.from_path(path).sheet_names
+        except Exception:
+            pass
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            names = wb.sheetnames
+            wb.close()
+            return names
+        except Exception:
+            pass
+        try:
+            import pandas as pd
+            return pd.ExcelFile(path).sheet_names
+        except Exception:
+            return []
+
+    def read_all_sheets(
+        self, path: str, fmt: str, sheets: list[str] | None = None
+    ) -> dict[str, pl.DataFrame]:
+        """Read selected (or all) sheets from an Excel file into a dict."""
+        available = self.get_excel_sheets(path, fmt)
+        to_read   = [s for s in sheets if s in available] if sheets else available
+        return {name: self._read_excel(path, fmt, sheet=name) for name in to_read}
+
+    def read_pdf_pages(self, path: str) -> dict[str, pl.DataFrame]:
+        """Extract each PDF page as its own DataFrame (table or plain text)."""
+        import pdfplumber
+        result: dict[str, pl.DataFrame] = {}
+        with pdfplumber.open(path) as pdf:
+            for i, page in enumerate(pdf.pages, 1):
+                label = f"صفحة {i}"
+                rows: list[dict] = []
+                headers: list[str] = []
+                for tbl in page.extract_tables():
+                    if not tbl:
+                        continue
+                    if not headers:
+                        headers = [str(c or f"col_{j}") for j, c in enumerate(tbl[0])]
+                    for row in tbl[1:]:
+                        rows.append({h: str(c or "") for h, c in zip(headers, row)})
+                if rows:
+                    result[label] = pl.DataFrame(rows)
+                else:
+                    text  = page.extract_text() or ""
+                    lines = [ln for ln in text.split("\n") if ln.strip()]
+                    if lines:
+                        result[label] = pl.DataFrame({"النص": lines})
+        return result
+
     # ─── Read ─────────────────────────────────────────────────────────────────
 
     def read(self, path: str, fmt: str, sheet: str | int | None = None) -> pl.DataFrame:
@@ -267,6 +323,156 @@ class DataEngine:
             self._write_df_as_image(df, path, fmt)
         else:
             df.write_csv(path)
+
+    def write_excel_multi_sheet(self, sheets_dict: dict[str, pl.DataFrame], path: str) -> None:
+        """Write multiple DataFrames as separate worksheets in one xlsx file."""
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)                       # drop the default blank sheet
+        HDR_FILL = PatternFill("solid", fgColor="4F46E5")
+        HDR_FONT = Font(bold=True, color="FFFFFF")
+        for sheet_name, df in sheets_dict.items():
+            ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet-name limit
+            ws.append(list(df.columns))
+            for cell in ws[1]:
+                cell.fill = HDR_FILL
+                cell.font = HDR_FONT
+                cell.alignment = Alignment(horizontal="center")
+            for row in df.iter_rows(named=False):
+                ws.append([v if v is not None else "" for v in row])
+        wb.save(path)
+
+    def write_pdf_multi_sheet(self, sheets_dict: dict[str, pl.DataFrame], path: str) -> None:
+        """Write multiple DataFrames as labelled sections in a single PDF."""
+        import pymupdf as fitz
+        import unicodedata
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+
+        FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        FONT_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+        MARGIN   = 28
+        ROW_H    = 16
+        HDR_H    = 18
+        SEC_H    = 20          # section-title bar height
+        FONT_HDR = 8
+        FONT_DAT = 7
+        FONT_SEC = 10
+        C_HDR_BG  = (79/255,  70/255,  229/255)
+        C_HDR_TXT = (1.0, 1.0, 1.0)
+        C_SEC_BG  = (30/255,  27/255,  75/255)
+        C_EVEN    = (0.953, 0.957, 0.965)
+        C_ODD     = (1.0,  1.0,  1.0)
+        C_DAT_TXT = (0.118, 0.118, 0.118)
+        C_BORDER  = (0.8,  0.8,  0.8)
+
+        def _is_rtl(text: str) -> bool:
+            rtl = sum(1 for ch in text if unicodedata.bidirectional(ch) in ("R", "AL", "AN"))
+            ltr = sum(1 for ch in text if unicodedata.bidirectional(ch) == "L")
+            return rtl > ltr
+
+        def _prep(text: str) -> tuple[str, bool]:
+            rtl = _is_rtl(text)
+            return (get_display(arabic_reshaper.reshape(text)), True) if rtl else (text, False)
+
+        # First pass: compute uniform page width based on max columns
+        max_cols = max((len(df.columns) for df in sheets_dict.values()), default=1)
+        PAGE_W, PAGE_H = (842, 595) if max_cols > 7 else (595, 842)
+        rows_per_page  = int((PAGE_H - MARGIN * 2 - HDR_H) / ROW_H)
+
+        doc  = fitz.open()
+
+        def _new_page():
+            pg = doc.new_page(width=PAGE_W, height=PAGE_H)
+            pg.insert_font(fontname="dvr", fontfile=FONT_REGULAR)
+            pg.insert_font(fontname="dvb", fontfile=FONT_BOLD)
+            return pg
+
+        def _draw_section(pg, y, title):
+            col_w_full = PAGE_W - 2 * MARGIN
+            rect = fitz.Rect(MARGIN, y, MARGIN + col_w_full, y + SEC_H)
+            pg.draw_rect(rect, color=None, fill=C_SEC_BG, width=0, overlay=True)
+            txt, rtl = _prep(title)
+            pg.insert_textbox(
+                fitz.Rect(rect.x0 + 4, rect.y0 + 3, rect.x1 - 4, rect.y1 - 3),
+                txt, fontname="dvb", fontsize=FONT_SEC, color=C_HDR_TXT,
+                align=fitz.TEXT_ALIGN_RIGHT if rtl else fitz.TEXT_ALIGN_LEFT,
+                overlay=True,
+            )
+            return y + SEC_H + 4
+
+        def _draw_row(pg, y, cells, col_w, n_cols, is_header, row_idx=0):
+            h  = HDR_H if is_header else ROW_H
+            fn = "dvb" if is_header else "dvr"
+            fs = FONT_HDR if is_header else FONT_DAT
+            tc = C_HDR_TXT if is_header else C_DAT_TXT
+            for c_idx, text in enumerate(cells):
+                x0   = MARGIN + c_idx * col_w
+                rect = fitz.Rect(x0, y, x0 + col_w, y + h)
+                fill = C_HDR_BG if is_header else (C_EVEN if row_idx % 2 == 0 else C_ODD)
+                pg.draw_rect(rect, color=C_BORDER, fill=fill, width=0.4, overlay=True)
+                inner = fitz.Rect(rect.x0 + 2, rect.y0 + 2, rect.x1 - 2, rect.y1 - 2)
+                s, rtl = _prep(str(text)[:64])
+                pg.insert_textbox(inner, s, fontname=fn, fontsize=fs, color=tc,
+                                  align=fitz.TEXT_ALIGN_RIGHT if rtl else fitz.TEXT_ALIGN_LEFT,
+                                  overlay=True)
+
+        page = _new_page()
+        y    = MARGIN
+
+        for sheet_name, df in sheets_dict.items():
+            n_cols    = len(df.columns)
+            col_w     = max((PAGE_W - 2 * MARGIN) / n_cols, 40)
+            n_rows    = min(len(df), 2000)
+            row_data  = list(df.head(n_rows).iter_rows())
+            col_names = list(df.columns)
+
+            # If not enough room for section title + header + 1 data row → new page
+            if y + SEC_H + HDR_H + ROW_H > PAGE_H - MARGIN:
+                page = _new_page()
+                y    = MARGIN
+
+            y = _draw_section(page, y, sheet_name)
+            _draw_row(page, y, col_names, col_w, n_cols, is_header=True)
+            y += HDR_H
+
+            data_idx = 0
+            while data_idx < n_rows:
+                if y + ROW_H > PAGE_H - MARGIN:
+                    page = _new_page()
+                    y    = MARGIN
+                    _draw_row(page, y, col_names, col_w, n_cols, is_header=True)
+                    y += HDR_H
+                _draw_row(page, y,
+                          [str(v) if v is not None else "" for v in row_data[data_idx]],
+                          col_w, n_cols, is_header=False, row_idx=data_idx)
+                y        += ROW_H
+                data_idx += 1
+
+            y += 10   # gap between sections
+
+        doc.save(path)
+        doc.close()
+
+    def write_zip_multi_sheet(
+        self, sheets_dict: dict[str, pl.DataFrame], base_path: str, fmt: str
+    ) -> str:
+        """Write each sheet as a separate file then zip them. Returns the zip path."""
+        zip_path = str(base_path).rsplit(".", 1)[0] + ".zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for sheet_name, df in sheets_dict.items():
+                safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in sheet_name)
+                fname     = f"{safe_name}.{fmt}"
+                with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
+                    tmp_path = tmp.name
+                try:
+                    self.write(df, tmp_path, fmt)
+                    zf.write(tmp_path, fname)
+                finally:
+                    os.unlink(tmp_path)
+        return zip_path
 
     def _write_docx(self, df: pl.DataFrame, path: str) -> None:
         from docx import Document
