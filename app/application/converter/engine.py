@@ -175,13 +175,25 @@ class DataEngine:
         try:
             return pl.read_excel(path, sheet_name=sheet or 0, engine="openpyxl")
         except Exception:
-            import pandas as pd
-            if fmt == "xlsb":
-                df_pd = pd.read_excel(path, sheet_name=sheet or 0, engine="pyxlsb")
-            elif fmt == "xls":
-                df_pd = pd.read_excel(path, sheet_name=sheet or 0, engine="xlrd")
-            else:
-                df_pd = pd.read_excel(path, sheet_name=sheet or 0)
+            pass
+        import pandas as pd
+        if fmt == "xlsb":
+            df_pd = pd.read_excel(path, sheet_name=sheet or 0, engine="pyxlsb")
+        elif fmt == "xls":
+            df_pd = pd.read_excel(path, sheet_name=sheet or 0, engine="xlrd")
+        else:
+            df_pd = pd.read_excel(path, sheet_name=sheet or 0)
+        try:
+            return pl.from_pandas(df_pd)
+        except Exception:
+            # Mixed-type columns (e.g. bytes + int in the same column) cause PyArrow
+            # to throw "Expected bytes, got a 'int' object".  Coerce every object/mixed
+            # column to string so the data is preserved without crashing.
+            for col in df_pd.columns:
+                if df_pd[col].dtype == object:
+                    df_pd[col] = df_pd[col].apply(
+                        lambda v: str(v) if v is not None and not (isinstance(v, float) and __import__('math').isnan(v)) else None
+                    )
             return pl.from_pandas(df_pd)
 
     def _read_yaml(self, path: str) -> pl.DataFrame:
