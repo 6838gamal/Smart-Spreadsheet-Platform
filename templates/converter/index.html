@@ -4,348 +4,587 @@
 
 {% block content %}
 {% set t = get_texts(lang) %}
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-6" x-data="converterPage()">
+<div x-data="converterPage()" class="space-y-6">
 
-  <!-- ══ Form panel ══════════════════════════════════════════════════════ -->
-  <div class="lg:col-span-2 space-y-4">
-    <div class="card p-6">
-      <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('convert_file') }}</h3>
-
-      <form id="convert-form" class="space-y-5" @submit.prevent="startConvert($event)">
-
-        <!-- Source file -->
-        <div>
-          <label class="label">{{ t.get('source_file') }}</label>
-          {% if files %}
-          <select name="file_id" required class="input"
-                  @change="onFileChange($event)"
-                  hx-get="/converter/preview/"
-                  hx-trigger="change"
-                  hx-target="#preview-area"
-                  hx-swap="innerHTML"
-                  hx-indicator="#preview-spinner"
-                  :hx-get="'/converter/preview/' + $el.value">
-            <option value="">{{ t.get('choose_file') }}</option>
-            {% for f in files %}
-            <option value="{{ f.id }}"
-                    data-format="{{ f.format }}"
-                    {% if request.query_params.get('file_id') == f.id|string %}selected{% endif %}>
-              {{ f.original_name }} ({{ f.size_human }})
-            </option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center text-sm text-slate-400">
-            <a href="/files" class="text-indigo-400 hover:text-indigo-300">{{ t.get('upload_first_link') }}</a> {{ t.get('first_word') }}
-          </div>
-          {% endif %}
-        </div>
-
-        <!-- Preview area -->
-        <div id="preview-wrapper" x-show="hasFile" x-cloak>
-          <div id="preview-spinner" class="htmx-indicator text-xs text-slate-400 flex items-center gap-2 py-1">
-            <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            جاري تحميل المعاينة…
-          </div>
-          <div id="preview-area"></div>
-        </div>
-
-        <!-- Sheet selector (Excel source) -->
-        <div x-show="isExcel" x-cloak class="space-y-2">
-          <div class="flex items-center justify-between">
-            <label class="label mb-0">أوراق العمل</label>
-            <div class="flex gap-2 text-xs" x-show="sheets.length > 1">
-              <button type="button" @click="selectAllSheets(true)"
-                      class="text-indigo-400 hover:text-indigo-300 transition-colors">تحديد الكل</button>
-              <span class="text-slate-600">·</span>
-              <button type="button" @click="selectAllSheets(false)"
-                      class="text-slate-400 hover:text-slate-300 transition-colors">إلغاء الكل</button>
-            </div>
-          </div>
-
-          <!-- Loading state -->
-          <div x-show="loadingSheets" class="flex items-center gap-2 text-xs text-slate-400 py-1">
-            <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            جاري تحميل أوراق العمل…
-          </div>
-
-          <!-- Sheet checkboxes -->
-          <div x-show="!loadingSheets && sheets.length > 0"
-               class="max-h-40 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 divide-y divide-slate-100 dark:divide-slate-700/50">
-            <template x-for="(s, i) in sheets" :key="i">
-              <label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors">
-                <input type="checkbox" :value="s" x-model="selectedSheets"
-                       class="rounded text-indigo-600 border-slate-300 dark:border-slate-600 focus:ring-indigo-500"/>
-                <span class="text-sm text-slate-700 dark:text-slate-300 truncate" x-text="s"></span>
-              </label>
-            </template>
-          </div>
-
-          <!-- Single sheet (no checkboxes needed) -->
-          <div x-show="!loadingSheets && sheets.length === 1"
-               class="text-xs text-slate-400 px-1">
-            ورقة عمل واحدة: <span class="text-slate-600 dark:text-slate-300 font-medium" x-text="sheets[0]"></span>
-          </div>
-
-          <!-- Multi-sheet hint -->
-          <p x-show="!loadingSheets && selectedSheets.length > 1"
-             class="text-xs text-indigo-400 px-1">
-            سيتم دمج <span x-text="selectedSheets.length"></span> أوراق في ملف واحد (xlsx/pdf) أو ملف مضغوط zip لباقي الصيغ.
-          </p>
-        </div>
-
-        <!-- PDF → xlsx hint -->
-        <div x-show="isPdf && getTargetFormat() === 'xlsx'" x-cloak
-             class="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700/50 rounded-lg text-xs text-indigo-700 dark:text-indigo-300">
-          <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <span>كل صفحة في ملف PDF ستُستخرج كورقة عمل مستقلة في ملف Excel الناتج.</span>
-        </div>
-
-        <!-- Target format grid -->
-        <div>
-          <label class="label">{{ t.get('target_format') }}</label>
-          <div class="grid grid-cols-3 gap-2">
-            {% for fmt in export_formats %}
-            <label class="relative cursor-pointer">
-              <input type="radio" name="target_format" value="{{ fmt }}" class="sr-only peer"
-                     {% if fmt == 'xlsx' %}checked{% endif %}/>
-              <div class="py-2 px-3 text-center rounded-lg border border-slate-200 dark:border-slate-600
-                          peer-checked:border-indigo-500 peer-checked:bg-indigo-50 dark:peer-checked:bg-indigo-900/30
-                          peer-checked:text-indigo-700 dark:peer-checked:text-indigo-300
-                          text-slate-500 dark:text-slate-400 text-xs font-medium
-                          hover:border-slate-300 dark:hover:border-slate-500 transition-all">
-                .{{ fmt | upper }}
-              </div>
-            </label>
-            {% endfor %}
-          </div>
-        </div>
-
-        <!-- Submit -->
-        <button type="submit"
-                class="btn-primary w-full justify-center py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                :disabled="converting">
-          <template x-if="!converting">
-            <span class="flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-              </svg>
-              {{ t.get('start_convert') }}
-            </span>
-          </template>
-          <template x-if="converting">
-            <span class="flex items-center gap-2">
-              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-              جاري التحويل…
-            </span>
-          </template>
-        </button>
-      </form>
-    </div>
-
-    <!-- Supported formats info -->
-    <div class="card p-5">
-      <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3 text-sm">{{ t.get('supported_formats') }}</h4>
-      <div class="grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400">
-        <div>
-          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">{{ t.get('import_formats') }}</p>
-          <div>
-            {% for fmt in ['xlsx','xls','xlsm','xlsb','csv','tsv','json','xml','yaml','parquet','feather','ods','pdf','docx','sqlite','pptx','html','jpg','jpeg','png','bmp','gif','webp','svg'] %}
-            <span class="inline-block me-1 mb-1 px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-xs">.{{ fmt }}</span>
-            {% endfor %}
-          </div>
-        </div>
-        <div>
-          <p class="font-medium text-slate-600 dark:text-slate-300 mb-2">{{ t.get('export_formats_lbl') }}</p>
-          <div>
-            {% for fmt in export_formats %}
-            <span class="inline-block me-1 mb-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-xs">.{{ fmt }}</span>
-            {% endfor %}
-          </div>
-        </div>
+  <!-- ══ Hero banner ══════════════════════════════════════════════════════════ -->
+  <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 via-brand-600 to-violet-600 p-6 shadow-xl shadow-brand-900/30">
+    <!-- decorative circles -->
+    <div class="pointer-events-none absolute -top-10 -end-10 w-48 h-48 rounded-full bg-white/5"></div>
+    <div class="pointer-events-none absolute -bottom-6 -start-6 w-32 h-32 rounded-full bg-white/5"></div>
+    <div class="relative z-10 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div class="flex-1">
+        <h2 class="text-xl font-bold text-white">{{ t.get('nav_converter') }}</h2>
+        <p class="text-brand-200 text-sm mt-1 leading-relaxed">
+          تحويل الملفات بين أكثر من ٢٠ صيغة مع الحفاظ على المخططات والمعادلات والبيانات
+        </p>
+      </div>
+      <!-- format pill badges -->
+      <div class="flex flex-wrap gap-1.5 sm:max-w-xs">
+        {% for fmt in ['xlsx','pdf','csv','json','docx','pptx','png'] %}
+        <span class="px-2.5 py-1 rounded-full bg-white/15 text-white/90 text-xs font-medium tracking-wide">.{{ fmt }}</span>
+        {% endfor %}
+        <span class="px-2.5 py-1 rounded-full bg-white/15 text-white/90 text-xs font-medium">+١٣</span>
       </div>
     </div>
   </div>
 
-  <!-- ══ Result panel ════════════════════════════════════════════════════ -->
-  <div class="lg:col-span-3">
-    <div class="card p-6 min-h-72">
-      <h3 class="font-semibold text-slate-900 dark:text-white mb-5">{{ t.get('result') }}</h3>
+  <!-- ══ Main grid ════════════════════════════════════════════════════════════ -->
+  <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
 
-      <!-- Idle state -->
-      <div id="result-idle" class="text-slate-400 text-sm text-center py-10">
-        <svg class="w-14 h-14 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-        </svg>
-        <p>{{ t.get('choose_to_convert') }}</p>
+    <!-- ── Left column: controls ───────────────────────────────────────────── -->
+    <div class="xl:col-span-5 space-y-4">
+
+      <!-- ─ Source file card ─────────────────────────────────────────────── -->
+      <div class="card p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-7 h-7 rounded-lg bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center">
+            <svg class="w-4 h-4 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-slate-800 dark:text-white text-sm">{{ t.get('source_file') }}</h3>
+        </div>
+
+        {% if files %}
+        <div class="relative">
+          <select name="file_id" required
+                  class="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                         rounded-xl px-4 py-3 pe-10 text-sm text-slate-800 dark:text-white
+                         focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
+                         transition cursor-pointer"
+                  @change="onFileChange($event)"
+                  :hx-get="'/converter/preview/' + $el.value"
+                  hx-trigger="change"
+                  hx-target="#preview-area"
+                  hx-swap="innerHTML"
+                  hx-indicator="#preview-spinner">
+            <option value="">— {{ t.get('choose_file') }} —</option>
+            {% for f in files %}
+            <option value="{{ f.id }}" data-format="{{ f.format }}"
+                    {% if request.query_params.get('file_id') == f.id|string %}selected{% endif %}>
+              {{ f.original_name }}  ·  {{ f.size_human }}
+            </option>
+            {% endfor %}
+          </select>
+          <!-- custom arrow -->
+          <div class="pointer-events-none absolute inset-y-0 end-3 flex items-center">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Selected file info pill -->
+        <div x-show="hasFile" x-cloak class="mt-3 flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-medium">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            تم اختيار الملف
+          </span>
+          <span x-show="isExcel" x-cloak class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 6h18M3 14h18M3 18h18"/></svg>
+            Excel
+          </span>
+          <span x-show="isPdf" x-cloak class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            PDF
+          </span>
+        </div>
+
+        {% else %}
+        <!-- Empty state -->
+        <div class="flex flex-col items-center gap-3 py-8 px-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+          <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+          </div>
+          <div class="text-center">
+            <p class="text-sm text-slate-500 dark:text-slate-400">لا توجد ملفات محملة بعد</p>
+            <a href="/files" class="mt-1 inline-block text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium">ارفع ملفاً الآن ←</a>
+          </div>
+        </div>
+        {% endif %}
       </div>
 
-      <!-- Progress state -->
-      <div id="result-progress" class="hidden space-y-6 py-4">
-
-        <!-- Step indicators -->
-        <div class="flex items-center justify-between px-2">
-          <template x-for="(s, i) in steps" :key="i">
-            <div class="flex flex-col items-center gap-1.5 flex-1">
-              <!-- connector line before (except first) -->
-              <div class="relative w-full flex items-center justify-center">
-                <!-- left line -->
-                <div x-show="i > 0"
-                     class="absolute right-1/2 top-1/2 -translate-y-1/2 h-0.5 w-1/2 transition-all duration-500"
-                     :class="currentPct >= s.pct ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'"></div>
-                <!-- right line -->
-                <div x-show="i < steps.length - 1"
-                     class="absolute left-1/2 top-1/2 -translate-y-1/2 h-0.5 w-1/2 transition-all duration-500"
-                     :class="currentPct >= s.pct ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'"></div>
-                <!-- circle -->
-                <div class="relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-500 border-2"
-                     :class="currentPct >= s.pct
-                       ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/30'
-                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600'">
-                  <span x-html="s.icon" class="w-4 h-4 flex items-center justify-center"></span>
-                </div>
-              </div>
-              <span class="text-xs font-medium text-center leading-tight transition-colors duration-300"
-                    :class="currentPct >= s.pct ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-600'"
-                    x-text="s.label"></span>
+      <!-- ─ Sheet selector (Excel only) ───────────────────────────────────── -->
+      <div x-show="isExcel" x-cloak
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 -translate-y-2"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+              <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/>
+              </svg>
             </div>
+            <h3 class="font-semibold text-slate-800 dark:text-white text-sm">أوراق العمل</h3>
+            <span x-show="sheets.length > 0" x-cloak
+                  class="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs tabular-nums"
+                  x-text="selectedSheets.length + '/' + sheets.length"></span>
+          </div>
+          <div x-show="sheets.length > 1" x-cloak class="flex gap-2">
+            <button type="button" @click="selectAllSheets(true)"
+                    class="text-xs text-brand-500 hover:text-brand-600 dark:hover:text-brand-300 font-medium transition-colors">الكل</button>
+            <span class="text-slate-300 dark:text-slate-700">|</span>
+            <button type="button" @click="selectAllSheets(false)"
+                    class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">لا شيء</button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div x-show="loadingSheets" class="flex items-center gap-2.5 py-3 text-xs text-slate-400">
+          <svg class="animate-spin w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          جاري تحميل الأوراق…
+        </div>
+
+        <!-- Sheet pill checkboxes -->
+        <div x-show="!loadingSheets && sheets.length > 0" x-cloak class="flex flex-wrap gap-2 mt-1">
+          <template x-for="(s, i) in sheets" :key="i">
+            <label class="relative cursor-pointer">
+              <input type="checkbox" :value="s" x-model="selectedSheets" class="sr-only peer"/>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-150
+                           peer-checked:bg-brand-600 peer-checked:border-brand-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-brand-500/25
+                           border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300
+                           hover:border-brand-400 dark:hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400">
+                <svg class="w-3 h-3 opacity-0 peer-checked:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span x-text="s"></span>
+              </span>
+            </label>
           </template>
         </div>
 
-        <!-- Bar + message -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="text-slate-600 dark:text-slate-300 font-medium" x-text="progressMsg">جاري المعالجة…</span>
-            <span class="text-indigo-500 font-bold tabular-nums" x-text="currentPct + '%'"></span>
+        <!-- Multi-sheet info -->
+        <p x-show="!loadingSheets && selectedSheets.length > 1" x-cloak
+           class="mt-3 text-xs text-brand-600 dark:text-brand-400 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span x-text="selectedSheets.length + ' أوراق — ستُدمج في ملف واحد (xlsx/pdf) أو ملف مضغوط لبقية الصيغ'"></span>
+        </p>
+      </div>
+
+      <!-- ─ PDF → xlsx hint ────────────────────────────────────────────────── -->
+      <div x-show="isPdf && getTargetFormat() === 'xlsx'" x-cloak
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           class="flex items-start gap-3 p-4 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700/40">
+        <div class="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <p class="text-xs text-violet-700 dark:text-violet-300 leading-relaxed">
+          كل صفحة في ملف PDF ستُستخرج كورقة عمل مستقلة في ملف Excel الناتج.
+        </p>
+      </div>
+
+      <!-- ─ Target format card ─────────────────────────────────────────────── -->
+      <div class="card p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-7 h-7 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+            <svg class="w-4 h-4 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+            </svg>
           </div>
-          <div class="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-700 ease-out"
-                 :style="'width: ' + currentPct + '%'"></div>
+          <h3 class="font-semibold text-slate-800 dark:text-white text-sm">{{ t.get('target_format') }}</h3>
+        </div>
+
+        <div class="space-y-3">
+          <!-- Group: Spreadsheets -->
+          <div>
+            <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">📊 جداول البيانات</p>
+            <div class="flex flex-wrap gap-1.5">
+              {% for fmt in ['xlsx','ods','csv','tsv'] %}
+              {% if fmt in export_formats %}
+              <label class="cursor-pointer">
+                <input type="radio" name="target_format" value="{{ fmt }}" class="sr-only peer"
+                       {% if fmt == 'xlsx' %}checked{% endif %}/>
+                <span class="inline-block px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150
+                             peer-checked:bg-emerald-600 peer-checked:border-emerald-600 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-emerald-500/30
+                             border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400
+                             hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-600 dark:hover:text-emerald-400">.{{ fmt | upper }}</span>
+              </label>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Group: Documents -->
+          <div>
+            <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">📄 وثائق</p>
+            <div class="flex flex-wrap gap-1.5">
+              {% for fmt in ['pdf','docx','pptx','html'] %}
+              {% if fmt in export_formats %}
+              <label class="cursor-pointer">
+                <input type="radio" name="target_format" value="{{ fmt }}" class="sr-only peer"/>
+                <span class="inline-block px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150
+                             peer-checked:bg-red-500 peer-checked:border-red-500 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-red-500/30
+                             border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400
+                             hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400">.{{ fmt | upper }}</span>
+              </label>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Group: Data -->
+          <div>
+            <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">🗄️ بيانات</p>
+            <div class="flex flex-wrap gap-1.5">
+              {% for fmt in ['json','xml','yaml','parquet','feather','sqlite'] %}
+              {% if fmt in export_formats %}
+              <label class="cursor-pointer">
+                <input type="radio" name="target_format" value="{{ fmt }}" class="sr-only peer"/>
+                <span class="inline-block px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150
+                             peer-checked:bg-amber-500 peer-checked:border-amber-500 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-amber-500/30
+                             border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400
+                             hover:border-amber-400 hover:text-amber-600 dark:hover:border-amber-500 dark:hover:text-amber-400">.{{ fmt | upper }}</span>
+              </label>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Group: Images -->
+          <div>
+            <p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">🖼️ صور</p>
+            <div class="flex flex-wrap gap-1.5">
+              {% for fmt in ['png','jpg','svg'] %}
+              {% if fmt in export_formats %}
+              <label class="cursor-pointer">
+                <input type="radio" name="target_format" value="{{ fmt }}" class="sr-only peer"/>
+                <span class="inline-block px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150
+                             peer-checked:bg-sky-500 peer-checked:border-sky-500 peer-checked:text-white peer-checked:shadow-md peer-checked:shadow-sky-500/30
+                             border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400
+                             hover:border-sky-400 hover:text-sky-600 dark:hover:border-sky-500 dark:hover:text-sky-400">.{{ fmt | upper }}</span>
+              </label>
+              {% endif %}
+              {% endfor %}
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Success state -->
-      <div id="result-success" class="hidden">
-        <div class="p-5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50 rounded-2xl space-y-4">
-          <!-- Header -->
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/30">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <!-- ─ Convert button ──────────────────────────────────────────────────── -->
+      <button type="button"
+              @click="startConvert()"
+              :disabled="converting || !hasFile"
+              class="w-full relative overflow-hidden rounded-2xl py-4 font-bold text-white text-base
+                     shadow-xl transition-all duration-200
+                     disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none
+                     enabled:hover:scale-[1.01] enabled:active:scale-[0.99]"
+              :class="converting
+                ? 'bg-slate-400 dark:bg-slate-600'
+                : 'bg-gradient-to-r from-brand-600 to-violet-600 shadow-brand-500/40 hover:shadow-brand-500/50'">
+
+        <!-- Shimmer sweep while converting -->
+        <span x-show="converting" class="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite]
+                                         bg-gradient-to-r from-transparent via-white/10 to-transparent"></span>
+
+        <span class="relative flex items-center justify-center gap-2.5">
+          <template x-if="!converting">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+            </svg>
+          </template>
+          <template x-if="converting">
+            <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          </template>
+          <span x-text="converting ? 'جاري التحويل…' : '{{ t.get('start_convert') }}'"></span>
+        </span>
+      </button>
+    </div>
+
+    <!-- ── Right column: preview + result ──────────────────────────────────── -->
+    <div class="xl:col-span-7 space-y-4">
+
+      <!-- ─ Preview area ───────────────────────────────────────────────────── -->
+      <div x-show="hasFile" x-cloak
+           x-transition:enter="transition ease-out duration-300"
+           x-transition:enter-start="opacity-0 translate-y-2"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           class="card p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+            <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold text-slate-800 dark:text-white text-sm">معاينة البيانات</h3>
+          <div id="preview-spinner" class="htmx-indicator flex items-center gap-1.5 ms-auto text-xs text-slate-400">
+            <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            تحميل…
+          </div>
+        </div>
+        <div id="preview-area" class="text-sm"></div>
+      </div>
+
+      <!-- ─ Result card ─────────────────────────────────────────────────────── -->
+      <div class="card overflow-hidden">
+
+        <!-- ── Idle ── -->
+        <div id="result-idle" class="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
+          <div class="relative">
+            <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shadow-inner">
+              <svg class="w-10 h-10 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25"
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+              </svg>
+            </div>
+            <!-- pulsing ring -->
+            <div class="absolute inset-0 rounded-3xl ring-2 ring-slate-200 dark:ring-slate-700 animate-pulse"></div>
+          </div>
+          <div>
+            <p class="font-semibold text-slate-600 dark:text-slate-300">{{ t.get('choose_to_convert') }}</p>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">اختر ملفاً وصيغة الهدف ثم اضغط تحويل</p>
+          </div>
+        </div>
+
+        <!-- ── Progress ── -->
+        <div id="result-progress" class="hidden p-6 space-y-6">
+          <!-- Step pipeline -->
+          <div class="flex items-center">
+            <template x-for="(s, i) in steps" :key="i">
+              <div class="flex items-center flex-1 last:flex-none">
+                <!-- node -->
+                <div class="flex flex-col items-center gap-1.5">
+                  <div class="w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 flex-shrink-0"
+                       :class="currentPct >= s.pct
+                         ? 'bg-brand-600 border-brand-600 text-white shadow-lg shadow-brand-500/35'
+                         : currentPct >= (steps[i-1]?.pct || 0)
+                           ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/20 text-brand-500 animate-pulse'
+                           : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600'">
+                    <span x-html="currentPct >= s.pct
+                      ? '<svg fill=&quot;none&quot; stroke=&quot;currentColor&quot; viewBox=&quot;0 0 24 24&quot; class=&quot;w-4 h-4&quot;><path stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot; stroke-width=&quot;2.5&quot; d=&quot;M5 13l4 4L19 7&quot;/></svg>'
+                      : s.icon"
+                      class="w-4 h-4 flex items-center justify-center"></span>
+                  </div>
+                  <span class="text-[10px] font-medium transition-colors duration-300 whitespace-nowrap"
+                        :class="currentPct >= s.pct ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-600'"
+                        x-text="s.label"></span>
+                </div>
+                <!-- connector -->
+                <div x-show="i < steps.length - 1"
+                     class="flex-1 h-0.5 mx-1 mb-4 rounded-full transition-all duration-700"
+                     :class="currentPct >= steps[i+1]?.pct ? 'bg-brand-500' : 'bg-slate-200 dark:bg-slate-700'"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-600 dark:text-slate-300 font-medium" x-text="progressMsg"></span>
+              <span class="font-bold tabular-nums text-brand-600 dark:text-brand-400" x-text="currentPct + '%'"></span>
+            </div>
+            <div class="h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
+              <div class="h-full rounded-full transition-all duration-700 ease-out relative overflow-hidden"
+                   :class="currentPct === 100 ? 'bg-emerald-500' : 'bg-gradient-to-r from-brand-500 to-violet-500'"
+                   :style="'width: ' + currentPct + '%'">
+                <!-- shimmer -->
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent
+                            -translate-x-full animate-[shimmer_1.5s_ease-in-out_infinite]"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Animated step label -->
+          <div class="flex items-center gap-2 p-3 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/50">
+            <svg class="animate-spin w-4 h-4 text-brand-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span class="text-xs text-brand-700 dark:text-brand-300 font-medium" x-text="progressMsg"></span>
+          </div>
+        </div>
+
+        <!-- ── Success ── -->
+        <div id="result-success" class="hidden p-6 space-y-4">
+          <!-- Celebratory header -->
+          <div class="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30">
+            <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
               </svg>
             </div>
-            <div>
-              <p class="font-bold text-emerald-800 dark:text-emerald-300">تم التحويل بنجاح</p>
-              <p class="text-xs text-emerald-600 dark:text-emerald-500" x-text="successSubtitle"></p>
+            <div class="min-w-0">
+              <p class="font-bold text-lg">تم التحويل بنجاح! 🎉</p>
+              <p class="text-emerald-100 text-xs truncate" x-text="successSubtitle"></p>
             </div>
           </div>
-          <!-- Stats -->
+
+          <!-- Stats row -->
           <div class="grid grid-cols-3 gap-3">
-            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
-              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.rows?.toLocaleString() || '—'"></p>
-              <p class="text-xs text-slate-500 mt-0.5">صف</p>
+            <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 p-3 text-center">
+              <p class="text-2xl font-bold text-slate-800 dark:text-white tabular-nums"
+                 x-text="(successData.rows ?? '—').toLocaleString?.() ?? successData.rows ?? '—'"></p>
+              <p class="text-xs text-slate-400 mt-0.5">صف</p>
             </div>
-            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
-              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.cols || '—'"></p>
-              <p class="text-xs text-slate-500 mt-0.5">عمود</p>
+            <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 p-3 text-center">
+              <p class="text-2xl font-bold text-slate-800 dark:text-white tabular-nums"
+                 x-text="successData.cols || '—'"></p>
+              <p class="text-xs text-slate-400 mt-0.5">عمود</p>
             </div>
-            <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-3 text-center">
-              <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="successData.duration_ms ? (successData.duration_ms / 1000).toFixed(2) + 's' : '—'"></p>
-              <p class="text-xs text-slate-500 mt-0.5">مدة</p>
+            <div class="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 p-3 text-center">
+              <p class="text-2xl font-bold text-slate-800 dark:text-white tabular-nums"
+                 x-text="successData.duration_ms ? (successData.duration_ms/1000).toFixed(2)+'s' : '—'"></p>
+              <p class="text-xs text-slate-400 mt-0.5">مدة</p>
             </div>
           </div>
-          <!-- Download -->
+
+          <!-- Download button -->
           <a :href="'/converter/download/' + successData.filename"
-             class="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl text-white text-sm font-semibold transition-all shadow-lg shadow-indigo-500/25">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+             class="group flex items-center justify-center gap-3 w-full py-4 rounded-2xl
+                    bg-gradient-to-r from-brand-600 to-violet-600 hover:from-brand-500 hover:to-violet-500
+                    text-white font-bold text-sm transition-all shadow-lg shadow-brand-500/30
+                    hover:shadow-brand-500/50 hover:scale-[1.01] active:scale-[0.99]">
+            <svg class="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
-            تحميل <span x-text="successData.filename" class="max-w-[200px] truncate"></span>
+            <span>تحميل الملف</span>
+            <span class="max-w-[180px] truncate text-brand-200 text-xs font-normal" x-text="successData.filename"></span>
           </a>
+
           <!-- Convert again -->
           <button @click="resetResult()"
-                  class="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-            تحويل ملف آخر ←
+                  class="w-full py-2.5 rounded-xl text-xs text-slate-400 dark:text-slate-500
+                         hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800
+                         transition-all font-medium">
+            ← تحويل ملف آخر
           </button>
         </div>
-      </div>
 
-      <!-- Error state -->
-      <div id="result-error" class="hidden">
-        <div class="p-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-2xl space-y-4">
-          <!-- Header -->
-          <div class="flex items-start gap-3">
-            <div class="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/30 mt-0.5">
+        <!-- ── Error ── -->
+        <div id="result-error" class="hidden p-6 space-y-4">
+          <div class="flex items-start gap-4 p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50">
+            <div class="w-10 h-10 rounded-2xl bg-red-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/30">
               <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="font-bold text-red-800 dark:text-red-300" x-text="errorTitle">فشل التحويل</p>
+              <p class="font-bold text-red-800 dark:text-red-300" x-text="errorTitle"></p>
               <p class="text-sm text-red-700 dark:text-red-400 mt-1 leading-relaxed" x-text="errorDetail"></p>
             </div>
           </div>
-          <!-- Suggestions -->
-          <div class="bg-white/60 dark:bg-slate-800/60 rounded-xl p-4 text-sm text-slate-600 dark:text-slate-400 space-y-1.5">
-            <p class="font-medium text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wide mb-2">اقتراحات</p>
-            <p>• تحقق من أن الملف غير تالف وقابل للفتح</p>
-            <p>• جرّب تحويله إلى صيغة وسيطة (CSV ثم الهدف)</p>
-            <p>• تأكد من اختيار ورقة العمل الصحيحة إن كان Excel</p>
+
+          <div class="rounded-xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/50 overflow-hidden">
+            <div class="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60">
+              <p class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">اقتراحات</p>
+            </div>
+            {% for tip in ['تحقق من أن الملف غير تالف وقابل للفتح','جرّب تحويله إلى صيغة وسيطة (مثل CSV ثم الهدف)','تأكد من اختيار ورقة العمل الصحيحة إن كان Excel'] %}
+            <div class="flex items-start gap-2 px-4 py-2.5 text-sm text-slate-600 dark:text-slate-400">
+              <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m1.636 6.364l.707-.707M12 21v-1"/>
+              </svg>
+              {{ tip }}
+            </div>
+            {% endfor %}
           </div>
-          <!-- Retry -->
+
           <button @click="resetResult()"
-                  class="w-full py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors">
+                  class="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600
+                         text-sm font-semibold text-slate-700 dark:text-slate-300 transition-colors">
             حاول مجدداً
           </button>
         </div>
+
+      </div><!-- /result card -->
+
+      <!-- ─ Supported formats reference ────────────────────────────────────── -->
+      <div class="card p-5">
+        <button type="button"
+                @click="formatsOpen = !formatsOpen"
+                class="w-full flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-300 group">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            {{ t.get('supported_formats') }}
+          </div>
+          <svg class="w-4 h-4 text-slate-400 transition-transform duration-200"
+               :class="formatsOpen ? 'rotate-180' : ''"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <div x-show="formatsOpen" x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-2"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="mt-4 grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-4">
+          <div>
+            <p class="font-semibold text-slate-600 dark:text-slate-300 mb-2">{{ t.get('import_formats') }}</p>
+            <div class="flex flex-wrap gap-1">
+              {% for fmt in ['xlsx','xls','xlsm','xlsb','csv','tsv','json','xml','yaml','parquet','feather','ods','pdf','docx','sqlite','pptx','html','jpg','jpeg','png','bmp','gif','webp','svg'] %}
+              <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded-md">.{{ fmt }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <p class="font-semibold text-slate-600 dark:text-slate-300 mb-2">{{ t.get('export_formats_lbl') }}</p>
+            <div class="flex flex-wrap gap-1">
+              {% for fmt in export_formats %}
+              <span class="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-md">.{{ fmt }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
 
-    </div>
-  </div>
-
+    </div><!-- /right col -->
+  </div><!-- /grid -->
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+</style>
 <script>
 function converterPage() {
   return {
-    isExcel:       false,
-    isPdf:         false,
-    hasFile:       false,
-    converting:    false,
-    currentPct:    0,
-    progressMsg:   'جاري المعالجة…',
-    successData:   {},
+    isExcel:         false,
+    isPdf:           false,
+    hasFile:         false,
+    converting:      false,
+    formatsOpen:     false,
+    currentPct:      0,
+    progressMsg:     'جاري المعالجة…',
+    successData:     {},
     successSubtitle: '',
-    errorTitle:    '',
-    errorDetail:   '',
+    errorTitle:      '',
+    errorDetail:     '',
 
-    // Sheet selection state
-    sheets:        [],    // all available sheet names
-    selectedSheets: [],   // checked sheet names
-    loadingSheets: false,
+    sheets:          [],
+    selectedSheets:  [],
+    loadingSheets:   false,
 
     steps: [
-      { pct: 8,  label: 'التحقق',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
-      { pct: 28, label: 'القراءة',  icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10"/></svg>' },
-      { pct: 62, label: 'التحويل',  icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>' },
-      { pct: 90, label: 'الحفظ',    icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>' },
+      { pct: 8,   label: 'التحقق',  icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' },
+      { pct: 28,  label: 'القراءة', icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10"/></svg>' },
+      { pct: 62,  label: 'التحويل', icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>' },
+      { pct: 90,  label: 'الحفظ',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>' },
       { pct: 100, label: 'اكتمل',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' },
     ],
 
@@ -361,24 +600,21 @@ function converterPage() {
       this.selectedSheets = [];
       this.resetResult();
 
-      // Trigger HTMX preview
-      const sel = e.target;
       if (id) {
-        sel.setAttribute('hx-get', `/converter/preview/${id}`);
-        htmx.process(sel);
-        htmx.trigger(sel, 'change');
+        e.target.setAttribute('hx-get', `/converter/preview/${id}`);
+        htmx.process(e.target);
+        htmx.trigger(e.target, 'change');
       } else {
         document.getElementById('preview-area').innerHTML = '';
       }
 
-      // Load sheet names for Excel files
       if (this.isExcel && id) {
         this.loadingSheets = true;
         try {
           const res  = await fetch(`/converter/sheets/${id}`);
           const data = await res.json();
           this.sheets         = data.sheets || [];
-          this.selectedSheets = [...this.sheets];   // all checked by default
+          this.selectedSheets = [...this.sheets];
         } catch (_) {
           this.sheets = [];
         } finally {
@@ -387,37 +623,36 @@ function converterPage() {
       }
     },
 
-    selectAllSheets(checked) {
-      this.selectedSheets = checked ? [...this.sheets] : [];
+    selectAllSheets(v) {
+      this.selectedSheets = v ? [...this.sheets] : [];
     },
 
     getTargetFormat() {
-      const checked = document.querySelector('input[name="target_format"]:checked');
-      return checked ? checked.value : '';
+      const el = document.querySelector('input[name="target_format"]:checked');
+      return el ? el.value : '';
     },
 
-    showState(state) {
-      ['idle','progress','success','error'].forEach(s => {
-        const el = document.getElementById(`result-${s}`);
-        if (el) el.classList.toggle('hidden', s !== state);
+    showState(s) {
+      ['idle','progress','success','error'].forEach(k => {
+        const el = document.getElementById(`result-${k}`);
+        if (el) el.classList.toggle('hidden', k !== s);
       });
     },
 
     resetResult() {
-      this.converting = false;
-      this.currentPct = 0;
+      this.converting  = false;
+      this.currentPct  = 0;
       this.progressMsg = 'جاري المعالجة…';
       this.showState('idle');
     },
 
-    startConvert(e) {
-      const form   = e.target;
-      const fileId = form.file_id?.value;
+    startConvert() {
+      const fileEl = document.querySelector('[name="file_id"]');
+      const fileId = fileEl?.value;
       const fmt    = this.getTargetFormat();
 
       if (!fileId || !fmt) return;
 
-      // Validate: at least one sheet must be selected for Excel
       if (this.isExcel && this.sheets.length > 0 && this.selectedSheets.length === 0) {
         this.errorTitle  = 'لم تحدد أي ورقة عمل';
         this.errorDetail = 'يرجى تحديد ورقة عمل واحدة على الأقل قبل التحويل.';
@@ -425,35 +660,32 @@ function converterPage() {
         return;
       }
 
-      this.converting = true;
-      this.currentPct = 0;
+      this.converting  = true;
+      this.currentPct  = 0;
       this.progressMsg = 'جارٍ التحضير…';
       this.showState('progress');
 
-      // Build query params — sheets as repeated param
       const params = new URLSearchParams({ file_id: fileId, target_format: fmt });
-      if (this.isExcel && this.selectedSheets.length > 0) {
+      if (this.isExcel && this.selectedSheets.length > 0)
         this.selectedSheets.forEach(s => params.append('sheets', s));
-      }
 
       const es = new EventSource(`/converter/convert-sse?${params}`);
 
-      es.addEventListener('progress', (ev) => {
+      es.addEventListener('progress', ev => {
         const d = JSON.parse(ev.data);
         this.currentPct  = d.pct;
         this.progressMsg = d.msg;
       });
 
-      es.addEventListener('done', (ev) => {
+      es.addEventListener('done', ev => {
         es.close();
         this.converting = false;
         const d = JSON.parse(ev.data);
-
         if (d.ok) {
-          this.currentPct  = 100;
-          this.progressMsg = 'اكتملت العملية بنجاح';
-          this.successData = d;
-          this.successSubtitle = `${d.src_name} ← .${d.target_fmt}`;
+          this.currentPct      = 100;
+          this.progressMsg     = 'اكتملت العملية بنجاح';
+          this.successData     = d;
+          this.successSubtitle = `${d.src_name} ← .${d.target_fmt?.toUpperCase()}`;
           setTimeout(() => this.showState('success'), 400);
         } else {
           this.errorTitle  = d.title  || 'فشل التحويل';
@@ -464,7 +696,7 @@ function converterPage() {
 
       es.onerror = () => {
         es.close();
-        this.converting = false;
+        this.converting  = false;
         this.errorTitle  = 'انقطع الاتصال';
         this.errorDetail = 'انقطع الاتصال بالخادم أثناء التحويل. تحقق من اتصالك وأعد المحاولة.';
         this.showState('error');
