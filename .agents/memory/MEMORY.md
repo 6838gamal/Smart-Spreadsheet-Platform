@@ -1,0 +1,1 @@
+- [rich_extractor corruption](rich-extractor-fix.md) — file was triplicated with broken regex at seams; fix pattern applies to any future regeneration

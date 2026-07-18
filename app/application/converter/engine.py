@@ -200,11 +200,14 @@ class DataEngine:
     def _read_sqlite(self, path: str) -> pl.DataFrame:
         con = duckdb.connect()
         con.execute(f"ATTACH '{path}' AS src (TYPE sqlite)")
-        tables = con.execute("SHOW TABLES").fetchall()
-        if not tables:
+        # SHOW ALL TABLES includes tables from all attached databases
+        rows = con.execute("SHOW ALL TABLES").fetchall()
+        # rows: (database, schema, name, column_names, column_types, temporary)
+        src_tables = [r[2] for r in rows if r[0] == "src"]
+        if not src_tables:
             return pl.DataFrame()
-        table_name = tables[0][0]
-        return con.execute(f"SELECT * FROM src.{table_name}").pl()
+        table_name = src_tables[0]
+        return con.execute(f'SELECT * FROM src."{table_name}"').pl()
 
     def _read_docx_tables(self, path: str) -> pl.DataFrame:
         from docx import Document
@@ -216,7 +219,13 @@ class DataEngine:
                 headers = [cell.text.strip() for cell in table.rows[0].cells]
             for row in table.rows[1:]:
                 rows.append({h: c.text.strip() for h, c in zip(headers, row.cells)})
-        return pl.DataFrame(rows) if rows else pl.DataFrame()
+        if rows:
+            return pl.DataFrame(rows)
+        # Fallback: extract paragraphs as plain text rows
+        lines = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        if lines:
+            return pl.DataFrame({"النص": lines})
+        return pl.DataFrame()
 
     def _read_pdf_tables(self, path: str) -> pl.DataFrame:
         import pdfplumber
@@ -256,8 +265,10 @@ class DataEngine:
             for shape in slide.shapes:
                 if shape.has_table:
                     tbl = shape.table
-                    headers = [tbl.cell(0, c).text.strip() for c in range(tbl._tbl.col_count)]
-                    for r in range(1, tbl._tbl.tr_count):
+                    n_cols = len(tbl.columns)
+                    n_rows = len(tbl.rows)
+                    headers = [tbl.cell(0, c).text.strip() for c in range(n_cols)]
+                    for r in range(1, n_rows):
                         row_dict = {"slide": i}
                         for c, h in enumerate(headers):
                             row_dict[h or f"col_{c}"] = tbl.cell(r, c).text.strip()
