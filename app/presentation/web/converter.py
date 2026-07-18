@@ -313,8 +313,19 @@ async def convert_sse(
         out_name = f"{stem}_{uid}.{out_ext}"
         out_path = storage.get_output_path(current_user.id, out_name)
 
+        # Detect same-format pass-through (preserves everything: charts, formulas, macros)
+        same_fmt = (src_fmt == target_fmt or
+                    (src_fmt in {"xlsx", "xlsm", "xlsb", "xls"} and target_fmt == "xlsx"))
+
         try:
-            if is_direct:
+            if same_fmt and not multi_sheet_mode:
+                # Direct file copy — zero data loss
+                await loop.run_in_executor(
+                    None, lambda: engine.copy_preserve(f.path, str(out_path))
+                )
+                actual_path = str(out_path)
+                actual_name = out_name
+            elif is_direct:
                 actual_path = await loop.run_in_executor(
                     None,
                     lambda: engine.convert_direct(f.path, src_fmt, str(out_path), target_fmt),
@@ -327,8 +338,13 @@ async def convert_sse(
                     )
                     actual_path = str(out_path)
                 elif target_fmt == "pdf":
+                    # Rich PDF: includes charts from source
+                    _sp, _sf = f.path, src_fmt
                     await loop.run_in_executor(
-                        None, lambda: engine.write_pdf_multi_sheet(sheets_dict, str(out_path))
+                        None,
+                        lambda: engine.write_pdf_multi_sheet_rich(
+                            sheets_dict, str(out_path), _sp, _sf
+                        ),
                     )
                     actual_path = str(out_path)
                 else:
@@ -338,7 +354,18 @@ async def convert_sse(
                     )
                 actual_name = Path(actual_path).name
             else:
-                await loop.run_in_executor(None, lambda: engine.write(df, str(out_path), target_fmt))
+                # Single-sheet: use rich write for pdf/html targets
+                _sp, _sf, _sh = f.path, src_fmt, (selected_sheets[0] if selected_sheets else sheet or None)
+                if target_fmt in {"pdf", "html", "htm"}:
+                    await loop.run_in_executor(
+                        None,
+                        lambda: engine.write_rich(
+                            df, str(out_path), target_fmt,
+                            src_path=_sp, src_fmt=_sf, sheet_name=_sh,
+                        ),
+                    )
+                else:
+                    await loop.run_in_executor(None, lambda: engine.write(df, str(out_path), target_fmt))
                 actual_path = str(out_path)
                 actual_name = out_name
         except Exception as exc:

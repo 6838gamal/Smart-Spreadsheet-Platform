@@ -324,6 +324,104 @@ class DataEngine:
         else:
             df.write_csv(path)
 
+    # ─── Rich-content-aware write (with charts + equations) ───────────────────
+
+    def write_rich(
+        self,
+        df: pl.DataFrame,
+        path: str,
+        fmt: str,
+        src_path: str | None = None,
+        src_fmt: str | None = None,
+        sheet_name: str | None = None,
+    ) -> None:
+        """
+        Like write(), but also extracts and embeds charts / equations from the
+        source file when the target format supports rich embedding (pdf, html).
+        Falls back to plain write() for all other formats.
+        """
+        from app.application.converter.rich_extractor import (
+            extract_excel_charts,
+            extract_docx_equations,
+            extract_pptx_equations,
+            enrich_pdf_with_charts,
+            charts_to_html_blocks,
+        )
+
+        fmt = fmt.lower().lstrip(".")
+
+        # ── PDF output: append charts/equations after the data table ──────────
+        if fmt == "pdf":
+            self._write_pdf(df, path)
+
+            charts: list[dict] = []
+            equations: list[dict] = []
+
+            if src_path and src_fmt:
+                sf = src_fmt.lower().lstrip(".")
+                if sf in EXCEL_FORMATS | ODS_FORMAT:
+                    charts = extract_excel_charts(src_path, sheet_name)
+                elif sf == "docx":
+                    equations = extract_docx_equations(src_path)
+                elif sf in PPTX_FORMATS:
+                    equations = extract_pptx_equations(src_path)
+
+            if charts or equations:
+                import pymupdf as fitz
+                doc = fitz.open(path)
+                enrich_pdf_with_charts(doc, charts, equations=equations)
+                tmp_out = path + ".tmp_rich.pdf"
+                doc.save(tmp_out)
+                doc.close()
+                import os as _os
+                _os.replace(tmp_out, path)
+            return
+
+        # ── HTML output: inject chart images as base64 blocks ─────────────────
+        if fmt in HTML_FORMATS:
+            # Write the plain table first
+            html_table = df.to_pandas().to_html(index=False)
+
+            charts: list[dict] = []
+            equations: list[dict] = []
+
+            if src_path and src_fmt:
+                sf = src_fmt.lower().lstrip(".")
+                if sf in EXCEL_FORMATS | ODS_FORMAT:
+                    charts = extract_excel_charts(src_path, sheet_name)
+                elif sf == "docx":
+                    equations = extract_docx_equations(src_path)
+                elif sf in PPTX_FORMATS:
+                    equations = extract_pptx_equations(src_path)
+
+            rich_block = charts_to_html_blocks(charts, equations)
+
+            full_html = f"""<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Converted Data</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; background:#f8fafc; }}
+    table {{ border-collapse: collapse; width: 100%; font-size: 13px;
+             box-shadow: 0 1px 4px rgba(0,0,0,.1); }}
+    th {{ background:#4F46E5; color:#fff; padding:8px 10px; }}
+    td {{ padding:6px 10px; border-bottom:1px solid #e2e8f0; }}
+    tr:nth-child(even) td {{ background:#f1f5f9; }}
+    tr:hover td {{ background:#e0e7ff; }}
+  </style>
+</head>
+<body>
+{html_table}
+{rich_block}
+</body>
+</html>"""
+            Path(path).write_text(full_html, encoding="utf-8")
+            return
+
+        # ── All other formats: plain write ─────────────────────────────────────
+        self.write(df, path, fmt)
+
     def write_excel_multi_sheet(self, sheets_dict: dict[str, pl.DataFrame], path: str) -> None:
         """Write multiple DataFrames as separate worksheets in one xlsx file."""
         import openpyxl
@@ -674,6 +772,59 @@ class DataEngine:
 
         save_fmt = "JPEG" if fmt in ("jpg", "jpeg") else "PNG"
         img.save(path, save_fmt)
+
+    # ─── Same-format pass-through ─────────────────────────────────────────────
+
+    def copy_preserve(self, src_path: str, dst_path: str) -> None:
+        """
+        Copy the source file byte-for-byte to dst_path, preserving ALL content:
+        charts, formulas, macros, embedded objects, equations, etc.
+        Used when src_fmt == dst_fmt (no-op conversion).
+        """
+        shutil.copy2(src_path, dst_path)
+
+    # ─── Rich multi-sheet PDF (with per-sheet charts) ─────────────────────────
+
+    def write_pdf_multi_sheet_rich(
+        self,
+        sheets_dict: dict[str, pl.DataFrame],
+        path: str,
+        src_path: str | None = None,
+        src_fmt: str | None = None,
+    ) -> None:
+        """Like write_pdf_multi_sheet but also embeds charts from the source file."""
+        from app.application.converter.rich_extractor import (
+            extract_excel_charts,
+            extract_docx_equations,
+            extract_pptx_equations,
+            enrich_pdf_with_charts,
+        )
+
+        # Build the data table PDF first
+        self.write_pdf_multi_sheet(sheets_dict, path)
+
+        if not src_path or not src_fmt:
+            return
+
+        sf = src_fmt.lower().lstrip(".")
+        charts: list[dict] = []
+        equations: list[dict] = []
+
+        if sf in EXCEL_FORMATS | ODS_FORMAT:
+            charts = extract_excel_charts(src_path)   # all sheets
+        elif sf == "docx":
+            equations = extract_docx_equations(src_path)
+        elif sf in PPTX_FORMATS:
+            equations = extract_pptx_equations(src_path)
+
+        if charts or equations:
+            import pymupdf as fitz
+            doc = fitz.open(path)
+            enrich_pdf_with_charts(doc, charts, equations=equations)
+            tmp_out = path + ".tmp_rich.pdf"
+            doc.save(tmp_out)
+            doc.close()
+            os.replace(tmp_out, path)
 
     # ─── Direct (non-tabular) conversions ────────────────────────────────────
 
