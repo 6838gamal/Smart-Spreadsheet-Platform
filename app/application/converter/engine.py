@@ -338,12 +338,14 @@ class DataEngine:
         """
         Like write(), but also extracts and embeds charts / equations from the
         source file when the target format supports rich embedding (pdf, html).
+        Also scans DataFrame cells for inline LaTeX/math and renders them as images.
         Falls back to plain write() for all other formats.
         """
         from app.application.converter.rich_extractor import (
             extract_excel_charts,
             extract_docx_equations,
             extract_pptx_equations,
+            detect_math_cells,
             enrich_pdf_with_charts,
             charts_to_html_blocks,
         )
@@ -365,6 +367,12 @@ class DataEngine:
                     equations = extract_docx_equations(src_path)
                 elif sf in PPTX_FORMATS:
                     equations = extract_pptx_equations(src_path)
+
+            # Also scan DataFrame cells for inline LaTeX / scientific notation
+            cell_math = detect_math_cells({"data": df})
+            for cell_imgs in cell_math.values():
+                for png in cell_imgs.values():
+                    equations.append({"text": "", "png": png})
 
             if charts or equations:
                 import pymupdf as fitz
@@ -393,6 +401,12 @@ class DataEngine:
                     equations = extract_docx_equations(src_path)
                 elif sf in PPTX_FORMATS:
                     equations = extract_pptx_equations(src_path)
+
+            # Also scan DataFrame cells for inline LaTeX / scientific notation
+            cell_math = detect_math_cells({"data": df})
+            for cell_imgs in cell_math.values():
+                for png in cell_imgs.values():
+                    equations.append({"text": "", "png": png})
 
             rich_block = charts_to_html_blocks(charts, equations)
 

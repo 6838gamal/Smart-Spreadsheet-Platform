@@ -670,6 +670,7 @@ function converterPage() {
         this.selectedSheets.forEach(s => params.append('sheets', s));
 
       const es = new EventSource(`/converter/convert-sse?${params}`);
+      let _done = false;   // guard: onerror fires on normal stream-end in some browsers
 
       es.addEventListener('progress', ev => {
         const d = JSON.parse(ev.data);
@@ -678,6 +679,7 @@ function converterPage() {
       });
 
       es.addEventListener('done', ev => {
+        _done = true;
         es.close();
         this.converting = false;
         const d = JSON.parse(ev.data);
@@ -695,6 +697,7 @@ function converterPage() {
       });
 
       es.onerror = () => {
+        if (_done) return;   // normal stream close — not a real error
         es.close();
         this.converting  = false;
         this.errorTitle  = 'انقطع الاتصال';
