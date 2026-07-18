@@ -1,91 +1,42 @@
 # Smart Spreadsheet Platform
 
-A professional SaaS web application for managing, converting, cleaning, and analyzing Excel and data files of all formats.
+A professional SaaS web application for managing, converting, cleaning, and analyzing spreadsheet and data files.
 
-## Tech Stack
+## Stack
 
-- **Backend**: Python 3 + FastAPI (async)
-- **Database**: SQLite (dev) / PostgreSQL (prod) via SQLAlchemy async + Alembic
-- **Data Engine**: Polars (primary) + PyArrow + DuckDB
-- **Frontend**: Jinja2 templates + HTMX + Alpine.js + TailwindCSS CDN
-- **Architecture**: Clean Architecture (Presentation → Application → Domain → Infrastructure)
+- **Backend**: Python 3.12 + FastAPI (async)
+- **Database**: PostgreSQL (Render-hosted) — SQLAlchemy async + auto-migration on startup
+- **Data Engine**: Polars + PyArrow + DuckDB
+- **Frontend**: Jinja2 + HTMX + Alpine.js + TailwindCSS (CDN)
+- **Auth**: JWT via HTTP-only cookies (24-hour access tokens)
 
-## How to Run on Replit
+## How to run
 
-The **"Start application"** workflow runs the server automatically:
-
-```bash
+The workflow **Start application** runs:
+```
 uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-The app runs on **port 5000**. Dependencies are managed with `uv` and installed automatically on first run.
+## Environment variables
 
-### Required Secrets (Replit Secrets tab)
-
-| Secret | Purpose |
+| Variable | Notes |
 |---|---|
-| `SESSION_SECRET` | Signs JWT access tokens — must be a long random string |
+| `SECRET_KEY` | Signs JWT tokens — has a default, change in production |
+| `SESSION_SECRET` | Falls back to `SECRET_KEY` if empty — stored in Replit Secrets |
+| `DATABASE_URL` | SQLite fallback; `POSTGRES_URL` takes priority |
+| `POSTGRES_URL` | Pre-configured Render PostgreSQL URL in `app/core/config.py` |
+| `DEBUG` | `true` in dev |
+| `MAX_FILE_SIZE_MB` | Default 500 |
 
-### Non-secret environment variables (already configured)
+## Key entry points
 
-| Variable | Value |
-|---|---|
-| `PORT` | `5000` |
-| `DEBUG` | `true` |
-| `APP_NAME` | `Smart Spreadsheet Platform` |
-| `MAX_FILE_SIZE_MB` | `500` |
-| `DEFAULT_LANGUAGE` | `ar` |
-| `DEFAULT_THEME` | `dark` |
+- `main.py` — FastAPI app factory, lifespan, middleware, keep-alive thread
+- `app/core/config.py` — all settings via pydantic-settings
+- `app/core/database.py` — async SQLAlchemy engine + session
+- `app/infrastructure/database/models.py` — ORM models
+- `app/presentation/web/` — Jinja2 route handlers
+- `app/presentation/api/v1/` — REST API routes
 
-## Project Structure
+## User preferences
 
-```
-app/
-├── core/           # Config, DB, security, exceptions, dependencies
-├── domain/         # (entities reference models via infrastructure layer)
-├── infrastructure/ # SQLAlchemy models, repositories, file storage
-├── application/    # Use-case services per feature (auth, files, converter, cleaner, dashboard)
-└── presentation/
-    ├── api/v1/     # REST API endpoints
-    └── web/        # Server-rendered page routes
-templates/          # Jinja2 HTML templates
-static/             # CSS, JS assets
-uploads/            # User-uploaded files (created at runtime)
-outputs/            # Processed output files (created at runtime)
-data/               # SQLite database (created at runtime)
-```
-
-## Key Features (MVP)
-
-- **Auth**: JWT-based login/register, HTTP-only cookie session
-- **Dashboard**: Stats, recent files, operation history, quick actions
-- **File Manager**: Upload (drag & drop / multi-file), preview, download, favorite, delete
-- **Converter**: Any-format-to-any-format conversion using Polars engine
-- **Data Cleaner**: Remove duplicates, trim spaces, remove empty rows/cols, fill nulls
-- **Operation Logs**: Full audit trail of all operations with duration tracking
-
-## Supported Import Formats
-
-xlsx, xls, xlsm, xlsb, csv, tsv, txt, json, xml, yaml, parquet, feather, ods, sqlite, pdf (tables), docx (tables)
-
-## Supported Export Formats
-
-xlsx, csv, json, xml, yaml, parquet, feather, ods, html, tsv, sqlite, docx
-
-## Environment Variables
-
-See `.env.example` for all available configuration options.
-
-## Default Credentials (dev only)
-
-- **Email**: `admin@spreadsheet.com`
-- **Password**: `Spreadsheet123`
-- **Role**: Admin
-
-## User Preferences
-
-- Arabic RTL UI by default (configurable per user)
-- Dark mode by default (toggleable)
-- File uploads stored in `uploads/{user_id}/`
-- Processed outputs stored in `outputs/{user_id}/`
-- Do not replace external CDN/resource links with local ones — keep all external links as-is
+<!-- Add user preferences here -->
