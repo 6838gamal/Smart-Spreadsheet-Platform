@@ -19,10 +19,15 @@ logger = logging.getLogger(__name__)
 
 # Formats available as export targets in the UI
 EXPORT_FORMATS = [
-    "xlsx", "csv", "json", "xml", "yaml", "parquet", "feather",
-    "ods", "html", "tsv", "sqlite", "docx", "pdf",
-    "pptx",
-    "png", "jpg",
+    # Spreadsheets
+    "xlsx", "ods", "csv", "tsv",
+    # Documents
+    "pdf", "docx", "pptx", "html",
+    # Structured data
+    "json", "xml", "yaml", "parquet", "feather", "sqlite",
+    # Images (raster)
+    "png", "jpg", "bmp", "gif", "webp",
+    # Images (vector)
     "svg",
 ]
 

@@ -121,9 +121,22 @@ class Settings(BaseSettings):
 
     # Allowed file extensions
     ALLOWED_IMPORT_EXTENSIONS: list[str] = [
-        "xlsx", "xls", "xlsm", "xlsb", "csv", "tsv", "txt",
-        "json", "xml", "yaml", "yml", "sqlite", "db", "sql",
-        "ods", "parquet", "feather", "docx", "pdf", "html",
+        # Spreadsheets
+        "xlsx", "xls", "xlsm", "xlsb", "ods",
+        # Delimited / plain text
+        "csv", "tsv", "txt",
+        # Structured data
+        "json", "xml", "yaml", "yml",
+        # Columnar / binary
+        "parquet", "feather",
+        # Database
+        "sqlite", "db", "sql",
+        # Documents
+        "docx", "pdf", "pptx", "html", "htm",
+        # Raster images
+        "jpg", "jpeg", "png", "bmp", "gif", "webp",
+        # Vector images
+        "svg",
     ]
 
     # Processing

@@ -33,9 +33,15 @@ SVG_FORMAT     = {"svg"}
 
 # Conversions that bypass the DataFrame (direct binary transformation)
 DIRECT_PAIRS: set[tuple[str, str]] = (
+    # Any raster image → PDF
     {(img, "pdf")  for img in IMAGE_FORMATS} |
-    {("pdf", img)  for img in ("jpg", "jpeg", "png")} |
-    {("svg", "pdf"), ("pdf", "svg")}
+    # PDF → raster images
+    {("pdf", img)  for img in ("jpg", "jpeg", "png", "bmp", "gif", "webp")} |
+    # SVG ↔ PDF and SVG → raster
+    {("svg", "pdf"), ("pdf", "svg")} |
+    {("svg", img)  for img in ("jpg", "jpeg", "png", "bmp", "gif", "webp")} |
+    # Raster image ↔ raster image (format swap via PIL)
+    {(src, dst) for src in IMAGE_FORMATS for dst in IMAGE_FORMATS if src != dst}
 )
 
 
@@ -152,6 +158,9 @@ class DataEngine:
 
         if fmt in IMAGE_FORMATS:
             return self._read_image_meta(path)
+
+        if fmt in SVG_FORMAT:
+            return self._read_svg_meta(path)
 
         raise ValueError(f"Unsupported read format: {fmt}")
 
@@ -277,6 +286,24 @@ class DataEngine:
             "height":   img.size[1],
         }])
 
+    def _read_svg_meta(self, path: str) -> pl.DataFrame:
+        """Return basic SVG metadata (dimensions, viewBox) as a single-row DataFrame."""
+        import xml.etree.ElementTree as ET
+        try:
+            tree = ET.parse(path)
+            root = tree.getroot()
+            # Strip namespace prefix if present
+            attribs = root.attrib
+            return pl.DataFrame([{
+                "filename": Path(path).name,
+                "format":   "SVG",
+                "width":    attribs.get("width", ""),
+                "height":   attribs.get("height", ""),
+                "viewBox":  attribs.get("viewBox", ""),
+            }])
+        except Exception:
+            return pl.DataFrame([{"filename": Path(path).name, "format": "SVG"}])
+
     # ─── Write ────────────────────────────────────────────────────────────────
 
     def write(self, df: pl.DataFrame, path: str, fmt: str, **kwargs) -> None:
@@ -318,9 +345,11 @@ class DataEngine:
             self._write_pdf(df, path)
         elif fmt in PPTX_FORMATS:
             self._write_pptx(df, path)
-        elif fmt in ("jpg", "jpeg", "png"):
-            # DataFrame → image: render as a styled table image
+        elif fmt in ("jpg", "jpeg", "png", "bmp", "gif", "webp"):
+            # DataFrame → raster image: render as a styled table image
             self._write_df_as_image(df, path, fmt)
+        elif fmt in SVG_FORMAT:
+            self._write_df_as_svg(df, path)
         else:
             df.write_csv(path)
 
@@ -784,8 +813,57 @@ class DataEngine:
                 draw.text((x + 4, y + 6), str(val if val is not None else "")[:16],
                           fill=(30, 30, 30), font=font)
 
-        save_fmt = "JPEG" if fmt in ("jpg", "jpeg") else "PNG"
+        _FMT_MAP = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG",
+                    "bmp": "BMP", "gif": "GIF", "webp": "WEBP"}
+        save_fmt = _FMT_MAP.get(fmt, "PNG")
+        # GIF requires palette mode
+        if save_fmt == "GIF":
+            img = img.convert("P")
+        # JPEG doesn't support alpha
+        elif save_fmt == "JPEG" and img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
         img.save(path, save_fmt)
+
+    def _write_df_as_svg(self, df: pl.DataFrame, path: str) -> None:
+        """Render a DataFrame as an SVG table (vector, scalable)."""
+        n_cols  = len(df.columns)
+        n_rows  = min(len(df), 100)
+        cell_w  = 120
+        cell_h  = 26
+        hdr_h   = 30
+        pad     = 4
+        img_w   = cell_w * n_cols + 2
+        img_h   = hdr_h + cell_h * n_rows + 2
+
+        parts = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{img_w}" height="{img_h}">',
+            '<style>'
+            'text{font:11px Arial,sans-serif;dominant-baseline:middle}'
+            '.hdr{fill:#fff;font-weight:bold}'
+            '.even{fill:#f1f5f9}'
+            '.odd{fill:#fff}'
+            '.cell{fill:#1e1b2e}'
+            '</style>',
+        ]
+        # Header row
+        for c, col in enumerate(df.columns):
+            x = c * cell_w + 1
+            parts.append(f'<rect x="{x}" y="1" width="{cell_w - 1}" height="{hdr_h - 1}" fill="#4F46E5"/>')
+            tx = x + cell_w // 2
+            parts.append(f'<text x="{tx}" y="{hdr_h // 2 + 1}" text-anchor="middle" class="hdr">'
+                         f'{str(col)[:18]}</text>')
+        # Data rows
+        for r_idx, row in enumerate(df.head(n_rows).iter_rows()):
+            y         = hdr_h + r_idx * cell_h + 1
+            row_class = "even" if r_idx % 2 == 0 else "odd"
+            for c_idx, val in enumerate(row):
+                x = c_idx * cell_w + 1
+                parts.append(f'<rect x="{x}" y="{y}" width="{cell_w - 1}" height="{cell_h - 1}" '
+                              f'class="{row_class}"/>')
+                parts.append(f'<text x="{x + pad}" y="{y + cell_h // 2}" class="cell">'
+                              f'{str(val if val is not None else "")[:20]}</text>')
+        parts.append('</svg>')
+        Path(path).write_text('\n'.join(parts), encoding='utf-8')
 
     # ─── Same-format pass-through ─────────────────────────────────────────────
 
@@ -855,8 +933,8 @@ class DataEngine:
             self._image_to_pdf(src_path, dst_path)
             return dst_path
 
-        # PDF → image(s)
-        if src_fmt == "pdf" and dst_fmt in ("jpg", "jpeg", "png"):
+        # PDF → raster image(s)
+        if src_fmt == "pdf" and dst_fmt in IMAGE_FORMATS:
             return self._pdf_to_images(src_path, dst_path, dst_fmt)
 
         # SVG → PDF
@@ -867,6 +945,16 @@ class DataEngine:
         # PDF → SVG (first page)
         if src_fmt == "pdf" and dst_fmt == "svg":
             self._pdf_to_svg(src_path, dst_path)
+            return dst_path
+
+        # SVG → raster image
+        if src_fmt == "svg" and dst_fmt in IMAGE_FORMATS:
+            self._svg_to_image(src_path, dst_path, dst_fmt)
+            return dst_path
+
+        # Raster image → raster image (format conversion via PIL)
+        if src_fmt in IMAGE_FORMATS and dst_fmt in IMAGE_FORMATS:
+            self._image_to_image(src_path, dst_path, dst_fmt)
             return dst_path
 
         raise ValueError(f"No direct conversion path for {src_fmt} → {dst_fmt}")
@@ -931,6 +1019,35 @@ class DataEngine:
                 img_bytes = pix.tobytes(save_fmt)
                 zf.writestr(f"page_{i + 1:03d}.{fmt}", img_bytes)
         return zip_path
+
+    def _image_to_image(self, src_path: str, dst_path: str, dst_fmt: str) -> None:
+        """Convert between raster image formats using PIL."""
+        from PIL import Image
+        _FMT_MAP = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG",
+                    "bmp": "BMP", "gif": "GIF", "webp": "WEBP"}
+        save_fmt = _FMT_MAP.get(dst_fmt, dst_fmt.upper())
+        img = Image.open(src_path)
+        if save_fmt == "GIF":
+            img = img.convert("P")
+        elif save_fmt in ("JPEG",) and img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        img.save(dst_path, save_fmt)
+
+    def _svg_to_image(self, src_path: str, dst_path: str, dst_fmt: str) -> None:
+        """Render an SVG to a raster image via PyMuPDF at 2× scale."""
+        import fitz
+        from PIL import Image as PILImage
+        import io
+        doc = fitz.open(src_path)
+        mat = fitz.Matrix(2.0, 2.0)
+        pix = doc[0].get_pixmap(matrix=mat, alpha=False)
+        img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        _FMT_MAP = {"jpg": "JPEG", "jpeg": "JPEG", "png": "PNG",
+                    "bmp": "BMP", "gif": "GIF", "webp": "WEBP"}
+        save_fmt = _FMT_MAP.get(dst_fmt, "PNG")
+        if save_fmt == "GIF":
+            img = img.convert("P")
+        img.save(dst_path, save_fmt)
 
     def _svg_to_pdf(self, src_path: str, dst_path: str) -> None:
         """Convert SVG to PDF using PyMuPDF."""
