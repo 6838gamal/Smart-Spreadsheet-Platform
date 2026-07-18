@@ -13,6 +13,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav_merger":       {"ar": "دمج الملفات",        "en": "Merge Files"},
     "nav_logs":         {"ar": "سجل العمليات",       "en": "Operation Logs"},
     "nav_settings":     {"ar": "الإعدادات",          "en": "Settings"},
+    "nav_contact":      {"ar": "تواصل مع المطور",    "en": "Contact Developer"},
+    "contact_modal_title": {"ar": "تواصل مع المطور", "en": "Contact Developer"},
+    "contact_close":    {"ar": "إغلاق",              "en": "Close"},
 
     # ── Topbar ────────────────────────────────────────────────────────────────
     "upload_file":      {"ar": "رفع ملف",            "en": "Upload"},
