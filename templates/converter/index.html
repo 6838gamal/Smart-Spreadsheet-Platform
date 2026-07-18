@@ -672,13 +672,40 @@ function converterPage() {
       const es = new EventSource(`/converter/convert-sse?${params}`);
       let _done = false;   // guard: onerror fires on normal stream-end in some browsers
 
+      // Safety watchdog: if no SSE message arrives within 120 s, abort.
+      const _WATCHDOG_MS = 120_000;
+      let _watchdog = setTimeout(() => {
+        if (_done) return;
+        _done = true;
+        es.close();
+        this.converting  = false;
+        this.errorTitle  = 'انتهت المهلة الزمنية';
+        this.errorDetail = 'لم يستجب الخادم خلال دقيقتين. الملف ربما كبير جداً — جرّب ملفاً أصغر أو صيغة أخرى.';
+        this.showState('error');
+      }, _WATCHDOG_MS);
+
+      const _resetWatchdog = () => {
+        clearTimeout(_watchdog);
+        _watchdog = setTimeout(() => {
+          if (_done) return;
+          _done = true;
+          es.close();
+          this.converting  = false;
+          this.errorTitle  = 'انتهت المهلة الزمنية';
+          this.errorDetail = 'لم يستجب الخادم خلال دقيقتين. الملف ربما كبير جداً — جرّب ملفاً أصغر أو صيغة أخرى.';
+          this.showState('error');
+        }, _WATCHDOG_MS);
+      };
+
       es.addEventListener('progress', ev => {
+        _resetWatchdog();
         const d = JSON.parse(ev.data);
         this.currentPct  = d.pct;
         this.progressMsg = d.msg;
       });
 
       es.addEventListener('done', ev => {
+        clearTimeout(_watchdog);
         _done = true;
         es.close();
         this.converting = false;
@@ -698,6 +725,8 @@ function converterPage() {
 
       es.onerror = () => {
         if (_done) return;   // normal stream close — not a real error
+        clearTimeout(_watchdog);
+        _done = true;
         es.close();
         this.converting  = false;
         this.errorTitle  = 'انقطع الاتصال';

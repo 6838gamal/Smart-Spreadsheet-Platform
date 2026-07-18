@@ -58,7 +58,9 @@ async def converter_page(
     current_user: User = Depends(get_current_user),
 ):
     file_repo = FileRepository(db)
-    files = await file_repo.get_by_owner(current_user.id, limit=100)
+    all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+    # Only show files that still exist on disk; silently skip orphaned DB records.
+    files = [f for f in all_files if Path(f.path).exists()]
     return templates.TemplateResponse(
         request,
         "converter/index.html",
@@ -258,29 +260,53 @@ async def convert_sse(
         yield _sse("progress", {"pct": 28, "step": "reading", "msg": f"جاري قراءة {f.original_name}…"})
         await asyncio.sleep(0)
 
+        # Abort early if the client already disconnected
+        if await request.is_disconnected():
+            await op_repo.mark_complete(op, OperationStatus.FAILED, error="client disconnected",
+                                        duration_ms=int((time.time() - t0) * 1000))
+            return
+
+        _TIMEOUT = 300  # 5 minutes max per heavy step
+
         try:
             if is_direct:
                 df = None
                 sheets_dict = None
             elif multi_sheet_mode:
                 df = None
-                sheets_dict = await loop.run_in_executor(
-                    None,
-                    lambda: engine.read_all_sheets(f.path, src_fmt, selected_sheets),
+                sheets_dict = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: engine.read_all_sheets(f.path, src_fmt, selected_sheets),
+                    ),
+                    timeout=_TIMEOUT,
                 )
             elif pdf_pages_mode:
                 df = None
-                sheets_dict = await loop.run_in_executor(
-                    None,
-                    lambda: engine.read_pdf_pages(f.path),
+                sheets_dict = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: engine.read_pdf_pages(f.path),
+                    ),
+                    timeout=_TIMEOUT,
                 )
             else:
                 sheets_dict = None
-                df = await loop.run_in_executor(
-                    None,
-                    lambda: engine.read(f.path, src_fmt,
-                                        sheet=selected_sheets[0] if selected_sheets else (sheet or None)),
+                df = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: engine.read(f.path, src_fmt,
+                                            sheet=selected_sheets[0] if selected_sheets else (sheet or None)),
+                    ),
+                    timeout=_TIMEOUT,
                 )
+        except asyncio.TimeoutError:
+            duration_ms = int((time.time() - t0) * 1000)
+            await op_repo.mark_complete(op, OperationStatus.FAILED, error="timeout reading file",
+                                        duration_ms=duration_ms)
+            yield _sse("done", {"ok": False, "title": "انتهت المهلة الزمنية",
+                                "detail": "استغرقت قراءة الملف وقتاً طويلاً جداً. حاول بملف أصغر."})
+            return
         except Exception as exc:
             t, d = _friendly_error(str(exc))
             duration_ms = int((time.time() - t0) * 1000)
@@ -301,6 +327,12 @@ async def convert_sse(
                                  "msg": f"جاري التحويل إلى .{target_fmt.upper()}…"})
         await asyncio.sleep(0)
 
+        # Abort if client left before the heavy conversion step
+        if await request.is_disconnected():
+            await op_repo.mark_complete(op, OperationStatus.FAILED, error="client disconnected",
+                                        duration_ms=int((time.time() - t0) * 1000))
+            return
+
         stem = Path(f.original_name).stem
         uid  = uuid.uuid4().hex[:6]
 
@@ -317,57 +349,60 @@ async def convert_sse(
         same_fmt = (src_fmt == target_fmt or
                     (src_fmt in {"xlsx", "xlsm", "xlsb", "xls"} and target_fmt == "xlsx"))
 
+        async def _run(fn):
+            """Run a synchronous callable in the thread pool with a 5-minute timeout."""
+            try:
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, fn),
+                    timeout=_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError("انتهت المهلة الزمنية أثناء التحويل")
+
         try:
             if same_fmt and not multi_sheet_mode:
                 # Direct file copy — zero data loss
-                await loop.run_in_executor(
-                    None, lambda: engine.copy_preserve(f.path, str(out_path))
-                )
+                await _run(lambda: engine.copy_preserve(f.path, str(out_path)))
                 actual_path = str(out_path)
                 actual_name = out_name
             elif is_direct:
-                actual_path = await loop.run_in_executor(
-                    None,
-                    lambda: engine.convert_direct(f.path, src_fmt, str(out_path), target_fmt),
+                actual_path = await _run(
+                    lambda: engine.convert_direct(f.path, src_fmt, str(out_path), target_fmt)
                 )
                 actual_name = Path(actual_path).name
             elif (multi_sheet_mode or pdf_pages_mode) and sheets_dict:
                 if target_fmt == "xlsx":
-                    await loop.run_in_executor(
-                        None, lambda: engine.write_excel_multi_sheet(sheets_dict, str(out_path))
-                    )
+                    await _run(lambda: engine.write_excel_multi_sheet(sheets_dict, str(out_path)))
                     actual_path = str(out_path)
                 elif target_fmt == "pdf":
-                    # Rich PDF: includes charts from source
                     _sp, _sf = f.path, src_fmt
-                    await loop.run_in_executor(
-                        None,
-                        lambda: engine.write_pdf_multi_sheet_rich(
-                            sheets_dict, str(out_path), _sp, _sf
-                        ),
-                    )
+                    await _run(lambda: engine.write_pdf_multi_sheet_rich(
+                        sheets_dict, str(out_path), _sp, _sf
+                    ))
                     actual_path = str(out_path)
                 else:
-                    actual_path = await loop.run_in_executor(
-                        None,
-                        lambda: engine.write_zip_multi_sheet(sheets_dict, str(out_path), target_fmt),
+                    actual_path = await _run(
+                        lambda: engine.write_zip_multi_sheet(sheets_dict, str(out_path), target_fmt)
                     )
                 actual_name = Path(actual_path).name
             else:
                 # Single-sheet: use rich write for pdf/html targets
                 _sp, _sf, _sh = f.path, src_fmt, (selected_sheets[0] if selected_sheets else sheet or None)
                 if target_fmt in {"pdf", "html", "htm"}:
-                    await loop.run_in_executor(
-                        None,
-                        lambda: engine.write_rich(
-                            df, str(out_path), target_fmt,
-                            src_path=_sp, src_fmt=_sf, sheet_name=_sh,
-                        ),
-                    )
+                    await _run(lambda: engine.write_rich(
+                        df, str(out_path), target_fmt,
+                        src_path=_sp, src_fmt=_sf, sheet_name=_sh,
+                    ))
                 else:
-                    await loop.run_in_executor(None, lambda: engine.write(df, str(out_path), target_fmt))
+                    await _run(lambda: engine.write(df, str(out_path), target_fmt))
                 actual_path = str(out_path)
                 actual_name = out_name
+        except TimeoutError as exc:
+            duration_ms = int((time.time() - t0) * 1000)
+            await op_repo.mark_complete(op, OperationStatus.FAILED, error=str(exc), duration_ms=duration_ms)
+            yield _sse("done", {"ok": False, "title": "انتهت المهلة الزمنية",
+                                "detail": "استغرق التحويل وقتاً طويلاً جداً. حاول بملف أصغر أو صيغة أخرى."})
+            return
         except Exception as exc:
             t, d = _friendly_error(str(exc))
             duration_ms = int((time.time() - t0) * 1000)
