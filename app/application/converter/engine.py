@@ -157,7 +157,7 @@ class DataEngine:
             return self._read_html(path)
 
         if fmt in IMAGE_FORMATS:
-            return self._read_image_meta(path)
+            return self._read_image_ocr(path)
 
         if fmt in SVG_FORMAT:
             return self._read_svg_meta(path)
@@ -274,10 +274,163 @@ class DataEngine:
             return pl.DataFrame()
         return pl.from_pandas(tables[0])
 
-    def _read_image_meta(self, path: str) -> pl.DataFrame:
-        """Return basic image metadata as a single-row DataFrame."""
-        from PIL import Image
-        img = Image.open(path)
+    def _read_image_ocr(self, path: str) -> pl.DataFrame:
+        """
+        Extract table data from an image using img2table + Tesseract OCR.
+
+        Strategy:
+        1. Try img2table to detect table borders and cells → returns clean DataFrame.
+        2. If no table found, fall back to full-page Tesseract OCR → split lines/columns.
+        3. Last resort: return image metadata only.
+
+        Languages: eng (English) + ara (Arabic) + equ (equations/math symbols).
+        """
+        import cv2
+        import numpy as np
+        import pytesseract
+        from img2table.document import Image as Img2Image
+        from img2table.ocr import TesseractOCR
+
+        LANGS = "eng+ara+equ"
+
+        # ── 1. img2table table detection ─────────────────────────────────────
+        try:
+            doc = Img2Image(src=path)
+            ocr = TesseractOCR(lang=LANGS)
+            extracted = doc.extract_tables(ocr=ocr, implicit_rows=True,
+                                           borderless_tables=True,
+                                           min_confidence=30)
+            tables = extracted  # dict {page: [Table, ...]} or list
+            # img2table returns a list of ExtractedTable for Image documents
+            if tables and len(tables) > 0:
+                # Pick the largest table (most cells)
+                best = max(tables, key=lambda t: t.df.shape[0] * t.df.shape[1])
+                raw_df = best.df        # pandas DataFrame
+                # Promote first row as header if it looks like a header row
+                first_vals = [str(v).strip() for v in raw_df.iloc[0]]
+                is_header = all(v != "" for v in first_vals)
+                if is_header and raw_df.shape[0] > 1:
+                    raw_df.columns = first_vals
+                    raw_df = raw_df.iloc[1:].reset_index(drop=True)
+                # Cast to Polars — keep everything as strings first
+                pl_df = pl.from_pandas(raw_df.astype(str))
+                # Replace "None" / "nan" strings with nulls
+                pl_df = pl_df.with_columns([
+                    pl.when(pl.col(c).is_in(["None", "nan", "NaN", ""]))
+                      .then(None)
+                      .otherwise(pl.col(c))
+                      .alias(c)
+                    for c in pl_df.columns
+                ])
+                return pl_df
+        except Exception:
+            pass  # fall through to raw OCR
+
+        # ── 2. Full-page Tesseract OCR fallback ──────────────────────────────
+        try:
+            img_cv = cv2.imread(path)
+            if img_cv is None:
+                raise ValueError("cv2 could not read image")
+
+            # Pre-process: grayscale → adaptive threshold for better OCR
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 0, 255,
+                                      cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+            # TSV output gives word-level bounding boxes → useful for column alignment
+            tsv = pytesseract.image_to_data(
+                thresh,
+                lang=LANGS,
+                config="--psm 6",          # uniform block of text
+                output_type=pytesseract.Output.DICT,
+            )
+
+            # Collect words with non-empty text
+            words: list[dict] = []
+            for i, text in enumerate(tsv["text"]):
+                if str(text).strip() and int(tsv["conf"][i]) > 10:
+                    words.append({
+                        "text": str(text).strip(),
+                        "top":  int(tsv["top"][i]),
+                        "left": int(tsv["left"][i]),
+                        "width": int(tsv["width"][i]),
+                    })
+
+            if not words:
+                raise ValueError("No text detected")
+
+            # Group words into rows by vertical proximity (±10 px)
+            words.sort(key=lambda w: (w["top"], w["left"]))
+            rows: list[list[dict]] = []
+            for w in words:
+                placed = False
+                for row in rows:
+                    if abs(w["top"] - row[0]["top"]) <= 12:
+                        row.append(w)
+                        placed = True
+                        break
+                if not placed:
+                    rows.append([w])
+
+            # Sort each row left-to-right
+            for row in rows:
+                row.sort(key=lambda w: w["left"])
+
+            # Detect column boundaries via x-coordinate clustering
+            all_lefts = sorted({w["left"] for row in rows for w in row})
+            col_boundaries: list[int] = []
+            for lx in all_lefts:
+                if not col_boundaries or lx - col_boundaries[-1] > 20:
+                    col_boundaries.append(lx)
+
+            def assign_col(left_x: int) -> int:
+                return min(range(len(col_boundaries)),
+                           key=lambda i: abs(col_boundaries[i] - left_x))
+
+            n_cols = len(col_boundaries)
+            table_rows: list[list[str]] = []
+            for row in rows:
+                cells = [""] * n_cols
+                for w in row:
+                    ci = assign_col(w["left"])
+                    cells[ci] = (cells[ci] + " " + w["text"]).strip()
+                table_rows.append(cells)
+
+            if not table_rows:
+                raise ValueError("empty table")
+
+            # Use first row as header if it's fully non-empty
+            headers = table_rows[0]
+            if all(h.strip() for h in headers) and len(table_rows) > 1:
+                data = table_rows[1:]
+            else:
+                headers = [f"col_{i+1}" for i in range(n_cols)]
+                data = table_rows
+
+            # Deduplicate column names
+            seen: dict[str, int] = {}
+            clean_headers: list[str] = []
+            for h in headers:
+                h = h.strip() or "col"
+                if h in seen:
+                    seen[h] += 1
+                    clean_headers.append(f"{h}_{seen[h]}")
+                else:
+                    seen[h] = 0
+                    clean_headers.append(h)
+
+            return pl.DataFrame(
+                {clean_headers[ci]: [row[ci] if ci < len(row) else ""
+                                     for row in data]
+                 for ci in range(n_cols)}
+            )
+
+        except Exception:
+            pass  # last resort
+
+        # ── 3. Metadata-only fallback ─────────────────────────────────────────
+        from PIL import Image as PILImage
+        img = PILImage.open(path)
         return pl.DataFrame([{
             "filename": Path(path).name,
             "format":   img.format or Path(path).suffix.lstrip(".").upper(),
