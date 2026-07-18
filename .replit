@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["arrow-cpp", "gettext", "glibcLocales", "libiconv", "openssl", "pkg-config", "postgresql"]
+packages = ["arrow-cpp", "freetype", "gettext", "glibcLocales", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "postgresql", "swig", "tcl", "tk", "xcbuild", "zlib"]
 
 [workflows]
 runButton = "Project"

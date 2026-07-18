@@ -317,6 +317,37 @@ class DataEngine:
             pg.insert_font(fontname="dvb", fontfile=FONT_BOLD)
             return pg
 
+        import unicodedata
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+
+        def _is_rtl(text: str) -> bool:
+            """Return True if the text is predominantly RTL (Arabic/Hebrew)."""
+            rtl_count = 0
+            ltr_count = 0
+            for ch in text:
+                bidi = unicodedata.bidirectional(ch)
+                if bidi in ("R", "AL", "AN"):
+                    rtl_count += 1
+                elif bidi in ("L",):
+                    ltr_count += 1
+            return rtl_count > ltr_count
+
+        def _prepare_text(text: str) -> tuple[str, bool]:
+            """
+            Return (display_text, is_rtl).
+            For Arabic/RTL text: reshape letters and apply BiDi algorithm so the
+            string renders correctly in a simple left-to-right PDF text stream.
+            For LTR text: return as-is.
+            """
+            rtl = _is_rtl(text)
+            if rtl:
+                reshaped = arabic_reshaper.reshape(text)
+                display  = get_display(reshaped)
+            else:
+                display = text
+            return display, rtl
+
         def _draw_row(pg: fitz.Page, y: float, cells, is_header: bool, row_idx: int = 0) -> None:
             h          = HDR_H if is_header else ROW_H
             fn         = "dvb" if is_header else "dvr"
@@ -328,10 +359,14 @@ class DataEngine:
                 fill_color = C_HDR_BG if is_header else (C_EVEN if row_idx % 2 == 0 else C_ODD)
                 pg.draw_rect(rect, color=C_BORDER, fill=fill_color, width=0.4, overlay=True)
                 inner = fitz.Rect(rect.x0 + 2, rect.y0 + 2, rect.x1 - 2, rect.y1 - 2)
+                cell_str            = str(text)[:64]
+                display_str, is_rtl = _prepare_text(cell_str)
+                align = fitz.TEXT_ALIGN_RIGHT if is_rtl else fitz.TEXT_ALIGN_LEFT
                 pg.insert_textbox(
-                    inner, str(text)[:32],
+                    inner, display_str,
                     fontname=fn, fontsize=fs,
-                    color=txt_color, align=fitz.TEXT_ALIGN_CENTER, overlay=True,
+                    color=txt_color, align=align,
+                    overlay=True,
                 )
 
         doc      = fitz.open()
