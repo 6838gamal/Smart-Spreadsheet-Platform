@@ -7,6 +7,7 @@ Usage in templates: {% set t = get_texts(lang) %} then {{ t.key }}
 _TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── Navigation ────────────────────────────────────────────────────────────
     "nav_dashboard":    {"ar": "لوحة التحكم",       "en": "Dashboard"},
+    "nav_intelligence": {"ar": "ذكاء المستندات",     "en": "Doc Intelligence"},
     "nav_files":        {"ar": "إدارة الملفات",      "en": "Files"},
     "nav_converter":    {"ar": "محول الصيغ",         "en": "Converter"},
     "nav_cleaner":      {"ar": "تنظيف البيانات",     "en": "Data Cleaner"},

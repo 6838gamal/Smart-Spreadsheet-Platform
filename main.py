@@ -28,6 +28,13 @@ from app.core.logging_config import setup_logging
 from app.core.security import hash_password
 from app.infrastructure.database.models import User, UserRole
 from app.infrastructure.repositories.user_repository import UserRepository
+import app.infrastructure.database.models_intelligence  # noqa: F401 — register intelligence ORM models
+
+from app.jobs import job_queue as _job_queue
+import app.services.pipeline.pipeline_manager  # noqa: F401 — registers "analysis" job handler
+
+from app.presentation.web import intelligence as web_intelligence
+from app.presentation.api.v1 import intelligence as api_intelligence
 
 from app.presentation.web import auth as web_auth
 from app.presentation.web import dashboard as web_dashboard
@@ -206,8 +213,11 @@ async def lifespan(app: FastAPI):
     # Start keep-alive in a daemon thread (no asyncio task — survives event-loop pauses)
     threading.Thread(target=_start_keepalive, daemon=True, name="keepalive").start()
 
+    # Start intelligence job queue workers
+    await _job_queue.start()
     logger.info("Smart Spreadsheet Platform starting on port %s", settings.PORT)
     yield
+    await _job_queue.stop()
     logger.info("Application shutting down")
 
 
@@ -241,6 +251,7 @@ def create_app() -> FastAPI:
     # Web routes (server-rendered pages)
     app.include_router(web_auth.router, tags=["web:auth"])
     app.include_router(web_dashboard.router, tags=["web:dashboard"])
+    app.include_router(web_intelligence.router, tags=["web:intelligence"])
     app.include_router(web_files.router, tags=["web:files"])
     app.include_router(web_converter.router, tags=["web:converter"])
     app.include_router(web_cleaner.router, tags=["web:cleaner"])
@@ -250,6 +261,7 @@ def create_app() -> FastAPI:
     app.include_router(web_admin.router, tags=["web:admin"])
 
     # API routes
+    app.include_router(api_intelligence.router, prefix="/api/v1/intelligence", tags=["api:intelligence"])
     app.include_router(api_auth.router, prefix="/api/v1/auth", tags=["api:auth"])
     app.include_router(api_files.router, prefix="/api/v1/files", tags=["api:files"])
     app.include_router(api_converter.router, prefix="/api/v1/converter", tags=["api:converter"])

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}ذكاء المستندات — Smart Spreadsheet{% endblock %}
+{% block page_title %}ذكاء المستندات{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header banner -->
+  <div class="card p-6 bg-gradient-to-br from-brand-600/10 to-purple-600/10 border-brand-200 dark:border-brand-700/40">
+    <div class="flex items-start gap-4">
+      <div class="p-3 rounded-xl bg-brand-600/10 dark:bg-brand-600/20">
+        <svg class="w-7 h-7 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-bold text-slate-900 dark:text-white">تحليل المستندات بالذكاء الاصطناعي</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          ارفع أي مستند وسيقوم النظام بتصنيفه، اكتشاف جداوله، استخراج البيانات، وتقديم اقتراحات ذكية — بدون أي خدمات خارجية مدفوعة.
+        </p>
+        <div class="flex flex-wrap gap-2 mt-3">
+          {% for badge in ['OCR متعدد اللغات', 'استخراج الجداول', 'تصنيف تلقائي', 'استخراج الكيانات', 'اقتراحات ذكية'] %}
+          <span class="badge bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">{{ badge }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  {% if recent_analyses %}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {% set completed = recent_analyses | selectattr('status', 'equalto', 'completed') | list %}
+    <div class="card p-4 text-center">
+      <p class="text-2xl font-bold text-brand-500">{{ recent_analyses | length }}</p>
+      <p class="text-xs text-slate-500 mt-1">إجمالي التحليلات</p>
+    </div>
+    <div class="card p-4 text-center">
+      <p class="text-2xl font-bold text-emerald-500">{{ completed | length }}</p>
+      <p class="text-xs text-slate-500 mt-1">مكتملة</p>
+    </div>
+    <div class="card p-4 text-center">
+      <p class="text-2xl font-bold text-slate-700 dark:text-slate-200">{{ files | length }}</p>
+      <p class="text-xs text-slate-500 mt-1">ملف متاح</p>
+    </div>
+    <div class="card p-4 text-center">
+      <p class="text-2xl font-bold text-purple-500">{{ recent_analyses | selectattr('has_tables') | list | length }}</p>
+      <p class="text-xs text-slate-500 mt-1">تحتوي جداول</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- File picker -->
+    <div class="lg:col-span-2 card p-5">
+      <h3 class="font-semibold text-slate-900 dark:text-white mb-4">اختر ملفاً للتحليل</h3>
+      {% if files %}
+      <div class="space-y-2 max-h-96 overflow-y-auto pe-1">
+        {% for f in files %}
+        <a href="/intelligence/analyze/{{ f.id }}"
+           class="flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-brand-300 dark:hover:border-brand-600 hover:bg-brand-50/50 dark:hover:bg-brand-900/20 transition-all group">
+          <!-- Icon by type -->
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
+            {% if f.format in ['pdf'] %}bg-red-100 dark:bg-red-900/30 text-red-600
+            {% elif f.format in ['xlsx','xls','csv'] %}bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600
+            {% elif f.format in ['docx','doc'] %}bg-blue-100 dark:bg-blue-900/30 text-blue-600
+            {% elif f.format in ['jpg','jpeg','png','bmp','webp'] %}bg-purple-100 dark:bg-purple-900/30 text-purple-600
+            {% else %}bg-slate-100 dark:bg-slate-700 text-slate-500{% endif %}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-slate-800 dark:text-white truncate group-hover:text-brand-600 dark:group-hover:text-brand-400">{{ f.original_name }}</p>
+            <p class="text-xs text-slate-400">{{ f.size_human }} · {{ f.format.upper() }}</p>
+          </div>
+          <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-12 text-slate-400">
+        <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p class="text-sm">لا يوجد ملفات بعد</p>
+        <a href="/files" class="btn-primary mt-3 text-xs">رفع ملف جديد</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Recent analyses -->
+    <div class="card p-5">
+      <h3 class="font-semibold text-slate-900 dark:text-white mb-4">آخر التحليلات</h3>
+      {% if recent_analyses %}
+      <div class="space-y-3">
+        {% for a in recent_analyses %}
+        <a href="/intelligence/analysis/{{ a.id }}/result" class="block p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold
+              {% if a.status == 'completed' %}text-emerald-500
+              {% elif a.status == 'running' %}text-amber-500
+              {% elif a.status == 'failed' %}text-red-500
+              {% else %}text-slate-400{% endif %}">
+              {{ {'completed':'مكتمل','running':'جارٍ','failed':'فشل','pending':'انتظار'}.get(a.status, a.status) }}
+            </span>
+            {% if a.doc_type %}
+            <span class="badge bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs">{{ a.doc_type }}</span>
+            {% endif %}
+          </div>
+          <p class="text-xs text-slate-500">ملف #{{ a.file_id }}</p>
+          {% if a.processing_ms %}
+          <p class="text-xs text-slate-400">{{ a.processing_ms }}ms</p>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-400 text-center py-6">لا يوجد تحليلات بعد</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}
