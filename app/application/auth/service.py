@@ -35,6 +35,38 @@ class AuthService:
         logger.info(f"New user registered: {user.email}")
         return user
 
+    async def login_or_register_google(self, userinfo: dict) -> "User":
+        """Find or create a USER-role account from Google userinfo payload."""
+        email: str = userinfo.get("email", "").lower().strip()
+        if not email:
+            raise ValidationError("لم يتم الحصول على البريد الإلكتروني من Google")
+
+        user = await self.user_repo.get_by_email(email)
+        if user:
+            if not user.is_active:
+                raise AuthenticationError("الحساب معطّل")
+            logger.info("Google login: existing user %s", email)
+            return user
+
+        # First-time — create a USER account (no password)
+        name: str = userinfo.get("name", "")
+        username_base = email.split("@")[0]
+        username = username_base
+        suffix = 1
+        while await self.user_repo.username_exists(username):
+            username = f"{username_base}{suffix}"
+            suffix += 1
+
+        user = await self.user_repo.create(
+            email=email,
+            username=username,
+            hashed_password="",          # Google users never use a password
+            role=UserRole.USER,
+            preferences={"theme": "dark", "language": "ar", "full_name": name},
+        )
+        logger.info("Google login: new user created %s", email)
+        return user
+
     async def login(self, dto: LoginDTO) -> TokenResponseDTO:
         user = await self.user_repo.get_by_email(dto.email)
         if not user or not verify_password(dto.password, user.hashed_password):
