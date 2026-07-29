@@ -37,6 +37,14 @@ uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 - `app/presentation/web/` — Jinja2 route handlers
 - `app/presentation/api/v1/` — REST API routes
 
+## Replit setup notes
+
+- Dependencies are managed with `uv` (see `pyproject.toml` / `uv.lock`). Run `uv sync` after pulling changes.
+- The workflow **Start application** is pre-configured; use the Run button to start/stop it.
+- `SESSION_SECRET` is stored as a Replit Secret. `SECRET_KEY` falls back to a hardcoded default — override it with a Replit Secret in production.
+- `POSTGRES_URL` is currently hard-coded in `app/core/config.py`. Moving it to a Replit Secret is recommended (see task #2).
+- `data/`, `uploads/`, and `outputs/` directories are created automatically by the app on first startup.
+
 ## User preferences
 
 <!-- Add user preferences here -->
