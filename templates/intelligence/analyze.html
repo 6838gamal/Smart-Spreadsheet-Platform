@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}تحليل: {{ file.original_name }}{% endblock %}
 {% block page_title %}تحليل المستند{% endblock %}
+{% block ai_context %}
+<script>
+  window.__AI_FILE_ID     = {{ file.id }};
+  window.__AI_ANALYSIS_ID = {{ analysis.id if analysis else 'null' }};
+</script>
+{% endblock %}
 
 {% block content %}
 <div class="space-y-6"

@@ -37,6 +37,7 @@ from app.presentation.web import intelligence as web_intelligence
 from app.presentation.api.v1 import intelligence as api_intelligence
 from app.presentation.web import search as web_search
 from app.presentation.api.v1 import search as api_search
+from app.presentation.api.v1 import hf_api as api_hf
 
 from app.presentation.web import auth as web_auth
 from app.presentation.web import dashboard as web_dashboard
@@ -211,6 +212,28 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # ── Column migrations: add new columns to existing tables ─────────────────
+    # SQLAlchemy's create_all only creates missing tables, not missing columns.
+    # We add them manually when the DB is Postgres; SQLite recreates tables fresh.
+    if not settings._raw_db_url.startswith("sqlite"):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ai_model_registry "
+                    "ADD COLUMN IF NOT EXISTS task_type VARCHAR(50);"
+                ))
+                await conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ai_model_registry "
+                    "ADD COLUMN IF NOT EXISTS visible_to_users BOOLEAN DEFAULT TRUE;"
+                ))
+                await conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ai_model_registry "
+                    "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
+                ))
+            logger.info("Column migrations applied to ai_model_registry")
+        except Exception as exc:
+            logger.warning("Column migration skipped: %s", exc)
+
     # Ensure upload/data directories exist
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
@@ -283,6 +306,7 @@ def create_app() -> FastAPI:
     app.include_router(api_models.router, prefix="/api/v1/models", tags=["api:models"])
     app.include_router(api_datasets.router, prefix="/api/v1/datasets", tags=["api:datasets"])
     app.include_router(api_search.router, prefix="/api/v1/search", tags=["api:search"])
+    app.include_router(api_hf.router, prefix="/api/v1/hf", tags=["api:hf"])
     app.include_router(api_websocket.router, tags=["api:websocket"])
 
     return app

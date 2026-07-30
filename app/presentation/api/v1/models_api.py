@@ -29,10 +29,13 @@ async def _seed_db_models(db: AsyncSession):
             db.add(AIModelRegistry(
                 name=m["name"],
                 model_type=m["model_type"],
+                task_type=m.get("task_type"),
                 version=m["version"],
                 source=m.get("source", "builtin"),
+                hf_model_id=m.get("hf_model_id"),
                 is_active=m.get("is_active", False),
                 is_default=m.get("is_default", False),
+                visible_to_users=m.get("visible_to_users", True),
                 languages=m.get("languages", []),
                 description=m.get("description", ""),
             ))
@@ -53,19 +56,22 @@ async def list_models(
     return {
         "models": [
             {
-                "id":          m.id,
-                "name":        m.name,
-                "model_type":  m.model_type,
-                "version":     m.version,
-                "source":      m.source,
-                "is_active":   m.is_active,
-                "is_default":  m.is_default,
-                "languages":   m.languages,
-                "description": m.description,
-                "metrics":     m.metrics,
-                "size_mb":     m.size_mb,
-                "loaded_at":   m.loaded_at.isoformat() if m.loaded_at else None,
-                "created_at":  m.created_at.isoformat() if m.created_at else None,
+                "id":               m.id,
+                "name":             m.name,
+                "model_type":       m.model_type,
+                "task_type":        m.task_type,
+                "version":          m.version,
+                "source":           m.source,
+                "hf_model_id":      m.hf_model_id,
+                "is_active":        m.is_active,
+                "is_default":       m.is_default,
+                "visible_to_users": m.visible_to_users,
+                "languages":        m.languages,
+                "description":      m.description,
+                "metrics":          m.metrics,
+                "size_mb":          m.size_mb,
+                "loaded_at":        m.loaded_at.isoformat() if m.loaded_at else None,
+                "created_at":       m.created_at.isoformat() if m.created_at else None,
             }
             for m in rows
         ]
@@ -102,6 +108,24 @@ async def activate_model(
         "version": m.version, "is_active": True,
     })
     return {"message": f"Model '{m.name}' activated for type '{m.model_type}'"}
+
+
+@router.post("/{model_id}/toggle-visibility")
+async def toggle_model_visibility(
+    model_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle visible_to_users for a model (admin only)."""
+    from app.infrastructure.database.models import UserRole
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Admin only")
+    m = await db.get(AIModelRegistry, model_id)
+    if not m:
+        raise HTTPException(404, "Model not found")
+    m.visible_to_users = not m.visible_to_users
+    await db.commit()
+    return {"id": m.id, "name": m.name, "visible_to_users": m.visible_to_users}
 
 
 @router.post("/{model_id}/set-default")

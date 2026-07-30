@@ -273,12 +273,14 @@ class AIModelRegistry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # question-answering | summarization | text-generation | feature-extraction | text-extraction
     version: Mapped[str] = mapped_column(String(30), nullable=False)
     source: Mapped[str | None] = mapped_column(String(50), nullable=True)  # huggingface | local | builtin
     model_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    visible_to_users: Mapped[bool] = mapped_column(Boolean, default=True)  # admin controls user visibility
     size_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     languages: Mapped[list] = mapped_column(JSON, default=list)
     metrics: Mapped[dict] = mapped_column(JSON, default=dict)

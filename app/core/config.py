@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"   # swap to "gpt-4o" for higher quality
 
+    # Hugging Face — optional; enables HF Inference API for Q&A, summarization, extraction.
+    # Set HUGGINGFACE_TOKEN as a Replit Secret to activate HF-powered features.
+    HUGGINGFACE_TOKEN: str = ""
+
     # Locale defaults
     DEFAULT_LANGUAGE: Literal["ar", "en"] = "ar"
     DEFAULT_THEME: Literal["dark", "light"] = "dark"

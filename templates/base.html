@@ -398,6 +398,10 @@
   </div>
 </div>
 
+<!-- AI Assistant Widget -->
+{% block ai_context %}{% endblock %}
+{% include "components/ai_assistant.html" %}
+
 <!-- Toast notifications -->
 <div x-show="toast.show" x-cloak x-transition
      class="fixed bottom-6 end-6 z-50 max-w-sm">
