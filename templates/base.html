@@ -423,14 +423,21 @@ function appState() {
       window.addEventListener('resize', () => {
         const mobile = window.innerWidth < 768;
         if (mobile !== this.isMobile) {
+          // Breakpoint crossed — restore the saved preference for the new mode.
+          // If the user has never toggled manually for this mode, use the default.
           this.isMobile = mobile;
-          this.sidebarOpen = !mobile;
+          const key = mobile ? 'sidebar_mobile' : 'sidebar_desktop';
+          const saved = localStorage.getItem(key);
+          this.sidebarOpen = saved !== null ? saved === 'true' : !mobile;
         }
       });
     },
 
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen;
+      // Persist the user's explicit choice for the current mode.
+      const key = this.isMobile ? 'sidebar_mobile' : 'sidebar_desktop';
+      localStorage.setItem(key, this.sidebarOpen);
     },
 
     toggleDark() {

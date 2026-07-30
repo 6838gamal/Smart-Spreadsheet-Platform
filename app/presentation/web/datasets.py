@@ -23,5 +23,7 @@ async def datasets_page(
     return templates.TemplateResponse("datasets/index.html", {
         "request": request,
         "user": current_user,
+        "current_page": "datasets",
+        "lang": current_user.default_lang,
         "page_title": "مدير مجموعات البيانات",
     })

@@ -23,5 +23,7 @@ async def models_page(
     return templates.TemplateResponse("models/index.html", {
         "request": request,
         "user": current_user,
+        "current_page": "models",
+        "lang": current_user.default_lang,
         "page_title": "مدير النماذج",
     })

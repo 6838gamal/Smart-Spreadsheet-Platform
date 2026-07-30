@@ -49,6 +49,8 @@ async def intelligence_home(
     return templates.TemplateResponse("intelligence/index.html", {
         "request": request,
         "user": current_user,
+        "current_page": "intelligence",
+        "lang": current_user.default_lang,
         "files": files,
         "recent_analyses": recent_analyses,
         "page_title": "ذكاء المستندات",
@@ -100,6 +102,8 @@ async def analyze_file(
     return templates.TemplateResponse("intelligence/analyze.html", {
         "request": request,
         "user": current_user,
+        "current_page": "intelligence",
+        "lang": current_user.default_lang,
         "file": file,
         "analysis": analysis,
         "tables": tables,
@@ -140,6 +144,8 @@ async def analysis_result(
     return templates.TemplateResponse("intelligence/result.html", {
         "request": request,
         "user": current_user,
+        "current_page": "intelligence",
+        "lang": current_user.default_lang,
         "file": file,
         "analysis": analysis,
         "tables": tables,

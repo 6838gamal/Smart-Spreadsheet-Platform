@@ -23,5 +23,7 @@ async def analytics_page(
     return templates.TemplateResponse("analytics/index.html", {
         "request": request,
         "user": current_user,
+        "current_page": "analytics",
+        "lang": current_user.default_lang,
         "page_title": "لوحة التحليلات",
     })
