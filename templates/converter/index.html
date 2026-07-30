@@ -588,6 +588,49 @@ function converterPage() {
       { pct: 100, label: 'اكتمل',   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' },
     ],
 
+    init() {
+      // Auto-initialize when the page loads with ?file_id=...&to=... (e.g. from AI suggestions)
+      const params = new URLSearchParams(window.location.search);
+      const fileId = params.get('file_id');
+      const toFmt  = params.get('to');
+
+      if (fileId) {
+        const select = document.querySelector('[name="file_id"]');
+        if (select && select.value === fileId) {
+          const opt = select.options[select.selectedIndex];
+          const fmt = opt?.dataset.format || '';
+
+          this.isExcel = ['xlsx','xls','xlsm','xlsb','ods'].includes(fmt);
+          this.isPdf   = fmt === 'pdf';
+          this.hasFile = true;
+
+          // Trigger HTMX preview fetch
+          select.setAttribute('hx-get', `/converter/preview/${fileId}`);
+          htmx.process(select);
+          htmx.trigger(select, 'change');
+
+          // Load sheets for Excel files
+          if (this.isExcel) {
+            this.loadingSheets = true;
+            fetch(`/converter/sheets/${fileId}`)
+              .then(r => r.json())
+              .then(data => {
+                this.sheets         = data.sheets || [];
+                this.selectedSheets = [...this.sheets];
+              })
+              .catch(() => { this.sheets = []; })
+              .finally(() => { this.loadingSheets = false; });
+          }
+        }
+      }
+
+      // Pre-select target format if ?to=... is present
+      if (toFmt) {
+        const radio = document.querySelector(`input[name="target_format"][value="${toFmt}"]`);
+        if (radio) radio.checked = true;
+      }
+    },
+
     async onFileChange(e) {
       const opt = e.target.options[e.target.selectedIndex];
       const fmt = opt?.dataset.format || '';
