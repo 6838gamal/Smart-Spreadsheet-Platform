@@ -203,7 +203,10 @@ async def google_callback(
         user = await svc.login_or_register_google(userinfo)
         jwt_token = create_access_token({"sub": str(user.id)})
 
-        response = RedirectResponse(url="/dashboard", status_code=302)
+        # Redirect through session-init so the token is saved to sessionStorage.
+        # This lets the login page silently recover the session if the iframe
+        # drops the cookie (e.g. Replit mobile-mode switch).
+        response = RedirectResponse(url="/auth/session-init", status_code=302)
         _set_auth_cookie(response, jwt_token)
         return response
 
@@ -235,10 +238,47 @@ async def recover_session(
         return Response(content="unauthorized", status_code=401)
 
 
+@router.get("/auth/session-init", response_class=HTMLResponse)
+async def session_init(request: Request):
+    """Bridge page: reads the httpOnly cookie server-side, stores the token in
+    sessionStorage (so the login page can recover the session if the cookie is
+    dropped by Replit's iframe), then redirects to /dashboard.
+
+    Google OAuth redirects here instead of /dashboard directly.
+    """
+    token = request.cookies.get("access_token", "")
+    if not token:
+        return RedirectResponse("/auth/login", status_code=302)
+
+    # Embed token safely — JWTs only contain base64url chars + dots, no quotes
+    # or backslashes, so simple single-quote wrapping is safe here.
+    html = (
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'/>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'/>"
+        "</head><body>"
+        "<script>"
+        f"try{{sessionStorage.setItem('_ark','{token}');}}catch(e){{}}"
+        "window.location.replace('/dashboard');"
+        "</script>"
+        "</body></html>"
+    )
+    return HTMLResponse(content=html)
+
+
 @router.post("/auth/logout")
 @router.get("/auth/logout")
 async def logout():
-    response = RedirectResponse(url="/auth/login?reason=logout", status_code=303)
+    # Clear sessionStorage token via a tiny bridge page so the login page
+    # doesn't silently re-authenticate the user after an intentional logout.
+    html = (
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'/></head><body>"
+        "<script>"
+        "try{sessionStorage.removeItem('_ark');}catch(e){}"
+        "window.location.replace('/auth/login?reason=logout');"
+        "</script>"
+        "</body></html>"
+    )
+    response = HTMLResponse(content=html, status_code=200)
     _clear_auth_cookie(response)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"

@@ -202,6 +202,50 @@
   </div>
 
   <script>
+    // ── Session recovery ────────────────────────────────────────────────────
+    // When Replit's preview iframe reloads (e.g. on mobile-mode switch), the
+    // browser may drop SameSite=None cookies. If a valid token was saved in
+    // sessionStorage at login time, silently recover the session here so the
+    // user never sees the login screen.
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      // Don't recover on intentional logout — the user meant to leave.
+      if (params.get('reason') === 'logout') {
+        sessionStorage.removeItem('_ark');
+        return;
+      }
+      const token = sessionStorage.getItem('_ark');
+      if (!token) return;
+
+      // Show a non-intrusive loading hint while we check
+      const hint = document.createElement('p');
+      hint.id = '_recovery-hint';
+      hint.style.cssText = 'position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);' +
+        'background:#1e1b4b;color:#a5b4fc;font-size:0.75rem;padding:0.4rem 0.9rem;' +
+        'border-radius:9999px;z-index:9999;pointer-events:none;';
+      hint.textContent = 'جارٍ استعادة الجلسة…';
+      document.body.appendChild(hint);
+
+      fetch('/auth/recover', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        credentials: 'include',
+      })
+        .then(function (r) {
+          if (r.ok) {
+            window.location.replace('/dashboard');
+          } else {
+            sessionStorage.removeItem('_ark');
+            hint.remove();
+          }
+        })
+        .catch(function () {
+          sessionStorage.removeItem('_ark');
+          hint.remove();
+        });
+    })();
+
+    // ── Admin modal ─────────────────────────────────────────────────────────
     function adminModal() {
       return {
         open: false,
