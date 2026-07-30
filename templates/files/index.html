@@ -45,8 +45,8 @@
              class="input flex-1 min-w-0 max-w-xs"/>
       <select name="fmt" class="input w-32">
         <option value="">{{ t.get('all_formats') }}</option>
-        {% for fmt in ['xlsx','xls','csv','json','pdf','docx','parquet','xml','yaml','ods'] %}
-        <option value="{{ fmt }}" {% if fmt == fmt %}selected{% endif %}>{{ fmt|upper }}</option>
+        {% for ext in ['xlsx','xls','csv','json','pdf','docx','parquet','xml','yaml','ods'] %}
+        <option value="{{ ext }}" {% if ext == fmt %}selected{% endif %}>{{ ext|upper }}</option>
         {% endfor %}
       </select>
       <button type="submit" class="btn-primary">{{ t.get('search') }}</button>

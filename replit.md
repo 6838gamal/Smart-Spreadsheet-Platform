@@ -44,7 +44,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 - `SESSION_SECRET` is stored as a Replit Secret. `SECRET_KEY` falls back to a hardcoded default — set it as a Replit Secret for production.
 - `POSTGRES_URL` is currently hard-coded in `app/core/config.py` pointing to a Render PostgreSQL instance. Set `POSTGRES_URL` to `""` via env vars to force SQLite for local dev.
 - `data/`, `uploads/`, and `outputs/` directories are created automatically on first startup.
-- Default admin credentials (created on first run): `admin@spreadsheet.com` / `admin123`
+- Default admin credentials (created on first run): `admin@spreadsheet.com` / `Spreadsheet123`
 
 ## Vision: Document Intelligence Platform
 

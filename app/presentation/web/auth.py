@@ -119,7 +119,7 @@ async def admin_login(
             )
 
         response = Response(content="", status_code=200)
-        response.headers["HX-Redirect"] = "/dashboard"
+        response.headers["HX-Redirect"] = "/admin"
         _set_auth_cookie(response, result.access_token)
         return response
     except Exception as e:

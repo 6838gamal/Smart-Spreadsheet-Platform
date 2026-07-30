@@ -35,61 +35,6 @@ async def get_admin_user(
     return user
 
 
-# ── Admin Login ──────────────────────────────────────────────────────────────
-
-@router.post("/admin/login")
-async def admin_login(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-):
-    """Authenticate admin via the secret modal on the login page."""
-    user_repo = UserRepository(db)
-    user = await user_repo.get_by_email(email)
-
-    is_htmx = request.headers.get("HX-Request")
-
-    if not user or not verify_password(password, user.hashed_password):
-        msg = "بيانات غير صحيحة" if not is_htmx else "بيانات غير صحيحة"
-        if is_htmx:
-            return HTMLResponse(
-                f'<p class="text-red-400 text-sm text-center mt-2">{msg}</p>',
-                status_code=401,
-            )
-        return RedirectResponse("/auth/login?error=invalid", status_code=302)
-
-    if not user.is_active:
-        if is_htmx:
-            return HTMLResponse(
-                '<p class="text-red-400 text-sm text-center mt-2">الحساب معطّل</p>',
-                status_code=403,
-            )
-        return RedirectResponse("/auth/login?error=disabled", status_code=302)
-
-    if user.role != UserRole.ADMIN:
-        if is_htmx:
-            return HTMLResponse(
-                '<p class="text-red-400 text-sm text-center mt-2">ليس لديك صلاحية الوصول</p>',
-                status_code=403,
-            )
-        return RedirectResponse("/auth/login?error=forbidden", status_code=302)
-
-    token = create_access_token({"sub": str(user.id)})
-
-    if is_htmx:
-        response = HTMLResponse(
-            '<p class="text-green-400 text-sm text-center mt-2">جاري التحويل…</p>'
-        )
-        _set_auth_cookie(response, token)
-        response.headers["HX-Redirect"] = "/admin"
-        return response
-
-    response = RedirectResponse("/admin", status_code=302)
-    _set_auth_cookie(response, token)
-    return response
-
-
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
 @router.get("/admin", response_class=HTMLResponse)
