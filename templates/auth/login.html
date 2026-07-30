@@ -44,44 +44,50 @@
       <p class="text-slate-400 mt-1 text-sm">{{ t.get('subtitle_login') }}</p>
     </div>
 
-    <!-- Regular login card -->
+    <!-- Login card -->
     <div class="bg-slate-900 rounded-2xl border border-slate-700/50 p-8 shadow-2xl">
-      <h2 class="text-lg font-semibold text-white mb-6">{{ t.get('login_heading') }}</h2>
+      <h2 class="text-lg font-semibold text-white mb-6 text-center">{{ t.get('login_heading') }}</h2>
 
       {% if error %}
-      <div class="mb-4 p-3 bg-red-900/40 border border-red-500/30 rounded-lg text-red-300 text-sm">
+      <div class="mb-5 p-3 bg-red-900/40 border border-red-500/30 rounded-lg text-red-300 text-sm text-center">
         {{ error }}
       </div>
       {% endif %}
 
-      <form method="post" action="/auth/login" class="space-y-5">
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t.get('email_lbl') }}</label>
-          <input type="email" name="email" required placeholder="you@example.com"
-                 class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-xl text-white
-                        placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500
-                        focus:border-transparent transition text-sm"/>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">{{ t.get('password_lbl') }}</label>
-          <input type="password" name="password" required placeholder="••••••••"
-                 autocomplete="current-password"
-                 class="w-full px-4 py-3 bg-slate-800 border border-slate-600 rounded-xl text-white
-                        placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500
-                        focus:border-transparent transition text-sm"/>
-        </div>
-        <button type="submit"
-                class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold
-                       rounded-xl transition-all duration-200 text-sm shadow-lg shadow-indigo-900/40">
-          {{ t.get('login_btn') }}
-        </button>
-      </form>
+      {% if google_enabled %}
+        <!-- Google Sign-In button -->
+        <a href="/auth/google"
+           class="flex items-center justify-center gap-3 w-full py-3 px-4
+                  bg-white hover:bg-slate-100 text-slate-800 font-semibold
+                  rounded-xl transition-all duration-200 text-sm shadow-md
+                  border border-slate-200 group">
+          <!-- Google G logo -->
+          <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 48 48">
+            <path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.2-2.7-.5-4z"/>
+            <path fill="#34A853" d="M6.3 14.7l7 5.1C15.1 16 19.3 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.9 0-14.7 4.6-17.7 11.7z"/>
+            <path fill="#FBBC05" d="M24 45c5.5 0 10.5-1.9 14.4-5l-6.7-5.5C29.8 36.2 27 37 24 37c-5.8 0-10.7-3.9-12.5-9.3l-7 5.4C7.7 40.6 15.3 45 24 45z"/>
+            <path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.9 2.6-2.6 4.8-4.9 6.3l6.7 5.5c3.9-3.6 6.4-8.9 6.4-15.3 0-1.3-.2-2.7-.5-4z"/>
+          </svg>
+          {% if (lang if lang else 'ar') == 'ar' %}
+            تسجيل الدخول عبر جوجل
+          {% else %}
+            Sign in with Google
+          {% endif %}
+        </a>
 
-      <p class="mt-6 text-center text-sm text-slate-400">
-        {{ t.get('no_account') }}
-        <a href="/auth/register?lang={{ lang if lang else 'ar' }}"
-           class="text-indigo-400 hover:text-indigo-300 font-medium">{{ t.get('create_account') }}</a>
-      </p>
+      {% else %}
+        <!-- Fallback: Google not configured -->
+        <div class="p-4 bg-amber-900/30 border border-amber-500/30 rounded-xl text-amber-300 text-sm text-center">
+          {% if (lang if lang else 'ar') == 'ar' %}
+            تسجيل الدخول عبر جوجل غير مفعّل بعد.<br/>
+            <span class="text-amber-400 text-xs mt-1 block">يرجى إضافة GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET</span>
+          {% else %}
+            Google login is not configured yet.<br/>
+            <span class="text-amber-400 text-xs mt-1 block">Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET</span>
+          {% endif %}
+        </div>
+      {% endif %}
+
     </div>
   </div>
 
