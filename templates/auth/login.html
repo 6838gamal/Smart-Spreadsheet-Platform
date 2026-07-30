@@ -49,8 +49,14 @@
       <h2 class="text-lg font-semibold text-white mb-6 text-center">{{ t.get('login_heading') }}</h2>
 
       {% if error %}
+      {% set error_messages = {
+        'state_mismatch':        'انتهت صلاحية جلسة تسجيل الدخول. حاول مجدداً.',
+        'google_not_configured': 'تسجيل الدخول عبر جوجل غير مفعّل.',
+        'access_denied':         'تم رفض الإذن من جوجل. حاول مجدداً.',
+        'invalid_request':       'طلب غير صالح. حاول مجدداً.',
+      } %}
       <div class="mb-5 p-3 bg-red-900/40 border border-red-500/30 rounded-lg text-red-300 text-sm text-center">
-        {{ error }}
+        {{ error_messages.get(error, error) }}
       </div>
       {% endif %}
 

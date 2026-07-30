@@ -1,8 +1,9 @@
 """Web authentication routes (login/register pages + Google OAuth)."""
 
-import os
 import secrets
 import logging
+import time
+import threading
 from urllib.parse import urlencode
 
 import httpx
@@ -25,13 +26,33 @@ _GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
-_OAUTH_COOKIE_OPTS = dict(
-    httponly=True,
-    max_age=600,        # 10 min — just for the redirect round-trip
-    samesite="none",
-    secure=True,
-    path="/",
-)
+# ── Server-side OAuth state store ─────────────────────────────────────────────
+# Replaces cookie-based state: works even when Replit's preview resets cookies
+# across desktop↔mobile mode switches or iframe boundaries.
+_state_lock: threading.Lock = threading.Lock()
+_oauth_states: dict[str, float] = {}   # state_token → expiry (unix timestamp)
+_STATE_TTL = 600   # seconds (10 min — same as before)
+
+
+def _store_oauth_state(state: str) -> None:
+    """Persist state token server-side and purge expired entries."""
+    now = time.time()
+    with _state_lock:
+        # Remove expired
+        expired = [k for k, v in _oauth_states.items() if v < now]
+        for k in expired:
+            del _oauth_states[k]
+        _oauth_states[state] = now + _STATE_TTL
+
+
+def _consume_oauth_state(state: str) -> bool:
+    """Verify and remove state. Returns True if valid."""
+    if not state:
+        return False
+    now = time.time()
+    with _state_lock:
+        expiry = _oauth_states.pop(state, 0.0)
+    return expiry > now
 
 # ── Cookie helpers ────────────────────────────────────────────────────────────
 _AUTH_COOKIE_OPTS = dict(
@@ -116,6 +137,7 @@ async def google_redirect(request: Request):
         return RedirectResponse("/auth/login?error=google_not_configured", status_code=302)
 
     state = secrets.token_urlsafe(32)
+    _store_oauth_state(state)   # server-side; no cookie needed
     params = urlencode({
         "response_type": "code",
         "client_id":     settings.GOOGLE_CLIENT_ID,
@@ -125,9 +147,7 @@ async def google_redirect(request: Request):
         "access_type":   "online",
         "prompt":        "select_account",
     })
-    response = RedirectResponse(f"{_GOOGLE_AUTH_URL}?{params}", status_code=302)
-    response.set_cookie("oauth_state", state, **_OAUTH_COOKIE_OPTS)
-    return response
+    return RedirectResponse(f"{_GOOGLE_AUTH_URL}?{params}", status_code=302)
 
 
 # ── Google OAuth: step 2 — callback ───────────────────────────────────────────
@@ -143,10 +163,9 @@ async def google_callback(
     if error:
         return RedirectResponse(f"/auth/login?error={error}", status_code=302)
 
-    # CSRF check
-    stored = request.cookies.get("oauth_state", "")
-    if not stored or stored != state:
-        logger.warning("Google OAuth: state mismatch stored=%r received=%r", stored, state)
+    # CSRF check — verified against server-side store (not a cookie)
+    if not _consume_oauth_state(state):
+        logger.warning("Google OAuth: invalid/expired state token received=%r", state)
         return RedirectResponse("/auth/login?error=state_mismatch", status_code=302)
 
     try:
@@ -178,7 +197,6 @@ async def google_callback(
 
         response = RedirectResponse(url="/dashboard", status_code=302)
         _set_auth_cookie(response, jwt_token)
-        response.delete_cookie("oauth_state", path="/", httponly=True, samesite="none", secure=True)
         return response
 
     except Exception as exc:
