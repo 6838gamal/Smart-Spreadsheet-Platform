@@ -45,11 +45,18 @@ from app.presentation.web import merger as web_merger
 from app.presentation.web import logs as web_logs
 from app.presentation.web import settings as web_settings
 from app.presentation.web import admin as web_admin
+from app.presentation.web import analytics as web_analytics
+from app.presentation.web import models_ui as web_models_ui
+from app.presentation.web import datasets as web_datasets
 
 from app.presentation.api.v1 import auth as api_auth
 from app.presentation.api.v1 import files as api_files
 from app.presentation.api.v1 import converter as api_converter
 from app.presentation.api.v1 import cleaner as api_cleaner
+from app.presentation.api.v1 import analytics as api_analytics
+from app.presentation.api.v1 import models_api as api_models
+from app.presentation.api.v1 import datasets_api as api_datasets
+from app.presentation.api.v1 import websocket as api_websocket
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -259,6 +266,9 @@ def create_app() -> FastAPI:
     app.include_router(web_logs.router, tags=["web:logs"])
     app.include_router(web_settings.router, tags=["web:settings"])
     app.include_router(web_admin.router, tags=["web:admin"])
+    app.include_router(web_analytics.router, tags=["web:analytics"])
+    app.include_router(web_models_ui.router, tags=["web:models"])
+    app.include_router(web_datasets.router, tags=["web:datasets"])
 
     # API routes
     app.include_router(api_intelligence.router, prefix="/api/v1/intelligence", tags=["api:intelligence"])
@@ -266,6 +276,10 @@ def create_app() -> FastAPI:
     app.include_router(api_files.router, prefix="/api/v1/files", tags=["api:files"])
     app.include_router(api_converter.router, prefix="/api/v1/converter", tags=["api:converter"])
     app.include_router(api_cleaner.router, prefix="/api/v1/cleaner", tags=["api:cleaner"])
+    app.include_router(api_analytics.router, prefix="/api/v1/analytics", tags=["api:analytics"])
+    app.include_router(api_models.router, prefix="/api/v1/models", tags=["api:models"])
+    app.include_router(api_datasets.router, prefix="/api/v1/datasets", tags=["api:datasets"])
+    app.include_router(api_websocket.router, tags=["api:websocket"])
 
     return app
 

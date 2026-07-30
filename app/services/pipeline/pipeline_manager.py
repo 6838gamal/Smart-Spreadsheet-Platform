@@ -20,12 +20,29 @@ from app.infrastructure.database.models_intelligence import (
 from app.services.classification.document_classifier import DocumentClassifier
 from app.services.pipeline.base_pipeline import PipelineContext
 from app.services.pipeline.pipelines.generic_pipeline import GenericPipeline
+from app.services.pipeline.pipelines.invoice_pipeline import InvoicePipeline
+from app.services.pipeline.pipelines.contract_pipeline import ContractPipeline
+from app.services.pipeline.pipelines.cv_pipeline import CVPipeline
+from app.services.pipeline.pipelines.bank_statement_pipeline import BankStatementPipeline
 from app.jobs.job_queue import register_handler
 
 logger = logging.getLogger(__name__)
 
 _classifier = DocumentClassifier()
-_pipeline = GenericPipeline()
+
+# Pipeline registry — keyed by doc_type
+_PIPELINES: dict = {
+    "invoice":        InvoicePipeline(),
+    "receipt":        InvoicePipeline(),      # reuse invoice pipeline
+    "contract":       ContractPipeline(),
+    "resume":         CVPipeline(),
+    "bank_statement": BankStatementPipeline(),
+}
+_generic_pipeline = GenericPipeline()
+
+
+def _get_pipeline(doc_type: str):
+    return _PIPELINES.get(doc_type, _generic_pipeline)
 
 
 # ── Job handler (registered with the queue) ───────────────────────────────────
@@ -60,6 +77,7 @@ async def handle_analysis_job(payload: dict) -> dict:
             await db.commit()
 
             # ── Step 2: Run pipeline ──────────────────────────────────────
+            pipeline = _get_pipeline(clf_result.doc_type)
             ctx = PipelineContext(
                 file_id=file_id,
                 file_path=file_path,
@@ -67,7 +85,7 @@ async def handle_analysis_job(payload: dict) -> dict:
                 analysis_id=analysis_id,
                 extra={"doc_type": clf_result.doc_type},
             )
-            ctx = _pipeline.run(ctx)
+            ctx = pipeline.run(ctx)
 
             # ── Step 3: Persist results ───────────────────────────────────
             analysis.raw_text = ctx.raw_text[:50000] if ctx.raw_text else None
@@ -75,7 +93,7 @@ async def handle_analysis_job(payload: dict) -> dict:
             analysis.page_count = ctx.page_count or analysis.page_count
             analysis.has_tables = ctx.has_tables
             analysis.has_images = ctx.has_images
-            analysis.pipeline_used = _pipeline.name
+            analysis.pipeline_used = pipeline.name
             analysis.model_versions = {"ocr": "tesseract-5", "layout": "pdfplumber-1", "ner": "regex-1"}
 
             # Layout elements

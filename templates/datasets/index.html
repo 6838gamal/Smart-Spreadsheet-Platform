@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}مدير مجموعات البيانات{% endblock %}
+{% block page_title %}مجموعات البيانات{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="datasetsPage()" x-init="load()">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <p class="text-sm text-slate-500">مجموعات البيانات المستخدمة لتدريب النماذج</p>
+    <button @click="showCreate = true" class="btn-primary text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      مجموعة جديدة
+    </button>
+  </div>
+
+  <!-- Create modal -->
+  <div x-show="showCreate" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+       @keydown.escape.window="showCreate = false">
+    <div class="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 space-y-4"
+         @click.stop>
+      <h3 class="font-semibold text-lg text-slate-800 dark:text-white">مجموعة بيانات جديدة</h3>
+      <div>
+        <label class="label">الاسم</label>
+        <input x-model="newDataset.name" class="input" placeholder="مثال: فواتير 2025"/>
+      </div>
+      <div>
+        <label class="label">الوصف</label>
+        <textarea x-model="newDataset.description" class="input resize-none" rows="2" placeholder="وصف اختياري"></textarea>
+      </div>
+      <div>
+        <label class="label">نوع البيانات</label>
+        <select x-model="newDataset.dataset_type" class="input">
+          <option value="classification">تصنيف المستندات</option>
+          <option value="ner">استخراج الكيانات (NER)</option>
+          <option value="ocr">OCR</option>
+          <option value="layout">Layout Detection</option>
+          <option value="table">Table Detection</option>
+        </select>
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button @click="createDataset()" class="btn-primary flex-1">إنشاء</button>
+        <button @click="showCreate = false" class="btn-secondary flex-1">إلغاء</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex items-center justify-center py-20">
+    <svg class="animate-spin w-8 h-8 text-brand-500" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+  </div>
+
+  <!-- Dataset list -->
+  <div x-show="!loading" x-cloak>
+    <div x-show="datasets.length === 0" class="text-center py-20 card">
+      <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+      </svg>
+      <p class="text-slate-500 text-sm">لا توجد مجموعات بيانات بعد</p>
+      <button @click="showCreate = true" class="btn-primary mt-4 text-sm mx-auto">إنشاء أول مجموعة</button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <template x-for="d in datasets" :key="d.id">
+        <div class="card p-5 flex flex-col gap-3">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <h4 class="font-semibold text-slate-800 dark:text-white text-sm truncate" x-text="d.name"></h4>
+              <p class="text-xs text-slate-500 mt-0.5" x-text="d.description || '—'"></p>
+            </div>
+            <span class="badge flex-shrink-0"
+                  :class="statusClass(d.status)"
+                  x-text="statusLabel(d.status)"></span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2">
+              <p class="text-sm font-bold text-slate-800 dark:text-white" x-text="d.sample_count"></p>
+              <p class="text-xs text-slate-500">عينة</p>
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2">
+              <p class="text-sm font-bold text-brand-500" x-text="d.dataset_type"></p>
+              <p class="text-xs text-slate-500">النوع</p>
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2">
+              <p class="text-sm font-bold text-slate-800 dark:text-white" x-text="'v' + (d.version || '1.0')"></p>
+              <p class="text-xs text-slate-500">الإصدار</p>
+            </div>
+          </div>
+
+          <div class="flex gap-2 mt-auto">
+            <button @click="deleteDataset(d.id)"
+                    class="btn-secondary text-xs flex-1 text-red-500 hover:text-red-600">
+              حذف
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function datasetsPage() {
+  return {
+    loading: true,
+    datasets: [],
+    showCreate: false,
+    newDataset: { name: '', description: '', dataset_type: 'classification' },
+
+    async load() {
+      this.loading = true;
+      try {
+        const r = await fetch('/api/v1/datasets');
+        const d = await r.json();
+        this.datasets = d.datasets || [];
+      } catch(e) { console.error(e); }
+      this.loading = false;
+    },
+
+    async createDataset() {
+      if (!this.newDataset.name.trim()) return;
+      try {
+        await fetch('/api/v1/datasets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.newDataset),
+        });
+        this.showCreate = false;
+        this.newDataset = { name: '', description: '', dataset_type: 'classification' };
+        await this.load();
+      } catch(e) { alert('فشل الإنشاء'); }
+    },
+
+    async deleteDataset(id) {
+      if (!confirm('هل تريد حذف هذه المجموعة؟')) return;
+      try {
+        await fetch(`/api/v1/datasets/${id}`, { method: 'DELETE' });
+        await this.load();
+      } catch(e) { alert('فشل الحذف'); }
+    },
+
+    statusClass(s) {
+      return {
+        building:  'bg-amber-100 dark:bg-amber-900/30 text-amber-600',
+        ready:     'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600',
+        training:  'bg-brand-100 dark:bg-brand-900/30 text-brand-600',
+        archived:  'bg-slate-100 dark:bg-slate-700 text-slate-500',
+      }[s] || 'bg-slate-100 text-slate-500';
+    },
+
+    statusLabel(s) {
+      return { building:'قيد الإنشاء', ready:'جاهز', training:'قيد التدريب', archived:'مؤرشف' }[s] || s;
+    },
+  };
+}
+</script>
+{% endblock %}

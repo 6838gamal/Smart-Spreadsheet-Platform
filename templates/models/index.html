@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}مدير النماذج{% endblock %}
+{% block page_title %}مدير النماذج{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="modelsPage()" x-init="load()">
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex items-center justify-center py-20">
+    <svg class="animate-spin w-8 h-8 text-brand-500" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+  </div>
+
+  <!-- Header -->
+  <div x-show="!loading" x-cloak class="flex items-center justify-between">
+    <div>
+      <p class="text-sm text-slate-500">النماذج المسجلة في المنصة وحالتها</p>
+    </div>
+    <button @click="load()" class="btn-secondary text-xs">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      تحديث
+    </button>
+  </div>
+
+  <!-- Group by type -->
+  <div x-show="!loading" x-cloak class="space-y-4">
+    <template x-for="(group, type) in groupedModels" :key="type">
+      <div class="card overflow-hidden">
+        <div class="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/50">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-brand-500"></div>
+            <h3 class="font-semibold text-slate-800 dark:text-white text-sm" x-text="typeLabel(type)"></h3>
+            <span class="badge bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400" x-text="group.length + ' نموذج'"></span>
+          </div>
+        </div>
+        <div class="divide-y divide-slate-100 dark:divide-slate-700/50">
+          <template x-for="m in group" :key="m.id">
+            <div class="px-5 py-4 flex items-center gap-4">
+              <!-- Status indicator -->
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                   :class="m.is_active ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-slate-100 dark:bg-slate-700'">
+                <svg class="w-4 h-4" :class="m.is_active ? 'text-emerald-600' : 'text-slate-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+                </svg>
+              </div>
+
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <p class="font-medium text-slate-800 dark:text-white text-sm" x-text="m.name"></p>
+                  <span x-show="m.is_active" class="badge bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xs">نشط</span>
+                  <span x-show="m.is_default" class="badge bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-xs">افتراضي</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5" x-text="m.description || ''"></p>
+                <div class="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                  <span x-text="'v' + m.version"></span>
+                  <span x-text="m.source"></span>
+                  <span x-show="m.languages && m.languages.length" x-text="m.languages.join(', ')"></span>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <button x-show="!m.is_active"
+                        @click="activateModel(m.id)"
+                        class="btn-secondary text-xs py-1 px-3">
+                  تفعيل
+                </button>
+                <span x-show="m.is_active" class="text-xs text-emerald-600 font-medium px-2">✓ مفعّل</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <div x-show="Object.keys(groupedModels).length === 0" class="text-center py-16 text-slate-400">
+      لا توجد نماذج مسجلة
+    </div>
+  </div>
+
+</div>
+
+<script>
+function modelsPage() {
+  return {
+    loading: true,
+    models: [],
+    groupedModels: {},
+
+    async load() {
+      this.loading = true;
+      try {
+        const r = await fetch('/api/v1/models');
+        const d = await r.json();
+        this.models = d.models || [];
+        this.groupedModels = this.models.reduce((acc, m) => {
+          (acc[m.model_type] = acc[m.model_type] || []).push(m);
+          return acc;
+        }, {});
+      } catch(e) { console.error(e); }
+      this.loading = false;
+    },
+
+    async activateModel(id) {
+      try {
+        await fetch(`/api/v1/models/${id}/activate`, { method: 'POST' });
+        await this.load();
+      } catch(e) { alert('فشل التفعيل'); }
+    },
+
+    typeLabel(type) {
+      const labels = {
+        ocr: 'نماذج OCR',
+        classification: 'نماذج التصنيف',
+        ner: 'نماذج استخراج الكيانات (NER)',
+        layout: 'نماذج الـ Layout',
+        table: 'نماذج الجداول',
+        embedding: 'نماذج التضمين',
+        cleaning: 'نماذج التنظيف',
+      };
+      return labels[type] || type;
+    },
+  };
+}
+</script>
+{% endblock %}
