@@ -41,9 +41,19 @@ uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 
 - Dependencies are managed with `uv` (see `pyproject.toml` / `uv.lock`). Run `uv sync` after pulling changes.
 - The workflow **Start application** is pre-configured; use the Run button to start/stop it.
-- `SESSION_SECRET` is stored as a Replit Secret. `SECRET_KEY` falls back to a hardcoded default — override it with a Replit Secret in production.
-- `POSTGRES_URL` is currently hard-coded in `app/core/config.py`. Moving it to a Replit Secret is recommended (see task #2).
-- `data/`, `uploads/`, and `outputs/` directories are created automatically by the app on first startup.
+- `SESSION_SECRET` is stored as a Replit Secret. `SECRET_KEY` falls back to a hardcoded default — set it as a Replit Secret for production.
+- `POSTGRES_URL` is currently hard-coded in `app/core/config.py` pointing to a Render PostgreSQL instance. Set `POSTGRES_URL` to `""` via env vars to force SQLite for local dev.
+- `data/`, `uploads/`, and `outputs/` directories are created automatically on first startup.
+- Default admin credentials (created on first run): `admin@spreadsheet.com` / `admin123`
+
+## Vision: Document Intelligence Platform
+
+The project is being evolved from a spreadsheet converter into a full Document Intelligence Platform. See `docs/document-intelligence-platform.md` for the full architecture and roadmap. Key modules planned:
+- Document Classification → Layout Detection → OCR → NER → Cleaning → Export pipeline
+- AI model management (OCR, NER, Layout, Table Transformer, GLiNER)
+- Dataset builder + Training Center
+- Semantic search (embeddings)
+- AI Assistant interface
 
 ## User preferences
 
