@@ -198,10 +198,33 @@
     </div>
 
     {% if preview.error %}
-    <div class="p-6 text-center text-red-400">
-      <p>تعذّر قراءة الملف: {{ preview.error }}</p>
+    <div class="p-8 text-center">
+      <svg class="w-10 h-10 mx-auto text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+      <p class="text-sm text-red-400 font-medium mb-1">تعذّر قراءة الملف</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">{{ preview.error }}</p>
     </div>
+
+    {% elif preview.rows and preview.content_type == 'text' %}
+    {# Plain-text document (PDF text, DOCX paragraphs, etc.) — render as readable lines #}
+    {% set text_col = preview.columns[0] %}
+    <div class="overflow-auto max-h-[60vh] p-5 space-y-1.5 font-mono text-sm
+                text-slate-700 dark:text-slate-300 leading-relaxed">
+      {% for row in preview.rows %}
+      <p class="border-b border-slate-50 dark:border-slate-800 pb-1 break-words">
+        {{ row[text_col] if row[text_col] is not none else '' }}
+      </p>
+      {% endfor %}
+      {% if preview.total_rows > preview.rows | length %}
+      <p class="text-xs text-slate-400 pt-2 text-center">
+        … {{ "{:,}".format(preview.total_rows - (preview.rows | length)) }} سطر إضافي (اضغط "تحليل" لرؤية المحتوى كاملاً)
+      </p>
+      {% endif %}
+    </div>
+
     {% elif preview.rows %}
+    {# Tabular data — standard table view #}
     <div class="overflow-auto max-h-[60vh]">
       <table class="w-full text-xs text-right">
         <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0">
@@ -210,8 +233,8 @@
             {% for col in preview.columns %}
             <th class="px-3 py-2.5 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start">
               {{ col }}
-              {% if preview.dtypes %}
-              <span class="text-slate-400 dark:text-slate-500 ms-1 font-normal">{{ preview.dtypes[loop.index0] }}</span>
+              {% if preview.dtypes and preview.content_type != 'text' %}
+              <span class="text-slate-400 dark:text-slate-500 ms-1 font-normal text-xs">{{ preview.dtypes[loop.index0] }}</span>
               {% endif %}
             </th>
             {% endfor %}
@@ -231,9 +254,23 @@
         </tbody>
       </table>
     </div>
+
     {% else %}
-    <div class="p-12 text-center text-slate-500 dark:text-slate-400">
-      <p>الملف فارغ أو لا يحتوي على بيانات قابلة للعرض</p>
+    {# Truly empty or unsupported — give a helpful nudge #}
+    <div class="p-12 text-center">
+      <svg class="w-12 h-12 mx-auto text-slate-200 dark:text-slate-700 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">لا توجد بيانات جدولية للعرض</p>
+      <p class="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
+        {% if file.format in ['pdf', 'docx', 'pptx'] %}
+        هذا الملف يحتوي محتوى مستندياً — استخدم زر <strong class="text-indigo-500">تحليل الملف</strong> أعلاه لاستخراج نصوصه والدردشة معه.
+        {% elif file.format in ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'gif'] %}
+        هذه صورة — استخدم زر <strong class="text-indigo-500">تحليل الملف</strong> لاستخراج النصوص منها بـ OCR.
+        {% else %}
+        الملف فارغ أو لا يحتوي على بيانات قابلة للعرض.
+        {% endif %}
+      </p>
     </div>
     {% endif %}
   </div>

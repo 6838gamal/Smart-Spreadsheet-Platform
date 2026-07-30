@@ -243,8 +243,11 @@ class DataEngine:
         import pdfplumber
         rows: list[dict] = []
         headers: list[str] = []
+        text_lines: list[str] = []
+
         with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
+            for page_num, page in enumerate(pdf.pages, 1):
+                # ── Try tables first ────────────────────────────────────────
                 for table in page.extract_tables():
                     if not table:
                         continue
@@ -252,7 +255,19 @@ class DataEngine:
                         headers = [str(c or f"col_{i}") for i, c in enumerate(table[0])]
                     for row in table[1:]:
                         rows.append({h: str(c or "") for h, c in zip(headers, row)})
-        return pl.DataFrame(rows) if rows else pl.DataFrame()
+                # ── Collect plain text as fallback ──────────────────────────
+                if not rows:
+                    text = page.extract_text() or ""
+                    for line in text.split("\n"):
+                        line = line.strip()
+                        if line:
+                            text_lines.append(f"[ص{page_num}] {line}")
+
+        if rows:
+            return pl.DataFrame(rows)
+        if text_lines:
+            return pl.DataFrame({"المحتوى": text_lines})
+        return pl.DataFrame()
 
     def _read_ods(self, path: str) -> pl.DataFrame:
         import pandas as pd
@@ -1243,11 +1258,19 @@ class DataEngine:
     # ─── Preview ──────────────────────────────────────────────────────────────
 
     def preview(self, path: str, fmt: str, rows: int = 100) -> dict:
-        """Return preview data: columns, sample rows, shape."""
+        """Return preview data: columns, sample rows, shape, and content_type hint."""
         try:
             df = self.read(path, fmt)
             total_rows, total_cols = df.shape
             sample = df.head(rows)
+            # Detect whether this is effectively plain-text output
+            # (single column named "المحتوى", "النص", or "content")
+            text_col_names = {"المحتوى", "النص", "content", "text"}
+            is_text = (
+                total_cols == 1
+                and df.columns
+                and df.columns[0].lower() in text_col_names
+            )
             return {
                 "columns": df.columns,
                 "dtypes": [str(d) for d in df.dtypes],
@@ -1255,6 +1278,7 @@ class DataEngine:
                 "total_rows": total_rows,
                 "total_cols": total_cols,
                 "shape": f"{total_rows:,} × {total_cols}",
+                "content_type": "text" if is_text else "table",
             }
         except Exception as e:
             logger.error(f"Preview failed for {path}: {e}")
