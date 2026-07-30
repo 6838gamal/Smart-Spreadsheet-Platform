@@ -148,6 +148,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # OpenAI — optional; enables generative answers in the chat Q&A feature.
+    # Set OPENAI_API_KEY as a Replit Secret to activate LLM-powered responses.
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"   # swap to "gpt-4o" for higher quality
+
     # Locale defaults
     DEFAULT_LANGUAGE: Literal["ar", "en"] = "ar"
     DEFAULT_THEME: Literal["dark", "light"] = "dark"

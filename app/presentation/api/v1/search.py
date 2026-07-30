@@ -1,14 +1,17 @@
 """
 Search & Q&A API endpoints.
 
-POST /api/v1/search/query      — ask a question, get an answer + sources
-GET  /api/v1/search/stats      — indexing stats for the current user
-POST /api/v1/search/index/{file_id} — manually (re-)index a specific file
+POST /api/v1/search/query        — extractive Q&A (sync JSON)
+GET  /api/v1/search/stream       — generative Q&A via SSE (streams tokens)
+GET  /api/v1/search/stats        — indexing stats for the current user
+POST /api/v1/search/index/{id}   — manually (re-)index a specific file
 """
 from __future__ import annotations
+import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,11 +26,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ── Request / Response schemas ────────────────────────────────────────────────
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000)
-    file_ids: list[int] | None = Field(default=None, description="Scope search to these file IDs. Null = all files.")
+    file_ids: list[int] | None = Field(default=None)
     top_k: int = Field(default=5, ge=1, le=20)
 
 
@@ -48,6 +51,7 @@ class QueryResponse(BaseModel):
     total_chunks_searched: int
     backend: str
     has_results: bool
+    mode: str = "extractive"
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -59,10 +63,8 @@ async def query_documents(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Ask a question and get an answer extracted from your processed documents.
-
-    Phase 1: BM25 keyword search → extractive answer (the best matching passage).
-    Phase 2 (future): dense embeddings + optional local LLM for generative answer.
+    Sync extractive Q&A. Returns the best matching passage as JSON.
+    For real-time LLM answers, use GET /stream instead.
     """
     result = await search_service.query(
         db,
@@ -80,6 +82,62 @@ async def query_documents(
         total_chunks_searched=result.total_chunks_searched,
         backend=result.backend,
         has_results=result.has_results,
+        mode=result.mode,
+    )
+
+
+@router.get("/stream")
+async def stream_answer(
+    request: Request,
+    question: str,
+    file_ids: str | None = None,          # comma-separated IDs, e.g. "1,2,3"
+    top_k: int = 6,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Server-Sent Events endpoint for real-time generative answers.
+
+    Event types emitted:
+      {"type":"sources", "sources":[...], "total": N}
+      {"type":"token",   "text": "..."}          — 0-N times
+      {"type":"done",    "mode": "llm"|"extractive"|"no_results"}
+      {"type":"error",   "msg": "..."}
+    """
+    parsed_ids: list[int] | None = None
+    if file_ids:
+        try:
+            parsed_ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid file_ids format")
+
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="question must not be empty")
+
+    async def event_generator():
+        try:
+            async for chunk in search_service.stream_answer(
+                db,
+                user_id=current_user.id,
+                question=question,
+                file_ids=parsed_ids,
+                top_k=min(max(top_k, 1), 20),
+            ):
+                # Respect client disconnect
+                if await request.is_disconnected():
+                    break
+                yield chunk
+        except Exception as exc:
+            logger.error("SSE stream error: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'msg': str(exc)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering
+        },
     )
 
 
@@ -98,18 +156,13 @@ async def index_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Manually trigger (re-)indexing of a file.
-    The file must belong to the current user and have a completed analysis.
-    """
-    # Verify ownership
+    """Manually trigger (re-)indexing of a file."""
     file = (await db.execute(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
     )).scalar_one_or_none()
     if not file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    # Find latest completed analysis
     analysis = (await db.execute(
         select(DocumentAnalysis)
         .where(
@@ -128,7 +181,6 @@ async def index_file(
         doc_type = analysis.doc_type
         analysis_id = analysis.id
     else:
-        # Fall back to quick text extraction
         from app.services.pipeline.pipeline_manager import _quick_text
         text = _quick_text(file.path, file.file_format)
 
