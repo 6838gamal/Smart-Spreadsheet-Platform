@@ -17,20 +17,26 @@ async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Dependency: returns the authenticated user or raises 401."""
+    """Dependency: returns the authenticated user or raises AuthenticationError."""
     token = get_token_from_request(request)
     if not token:
-        raise AuthenticationError()
-    
-    payload = decode_token(token)
+        raise AuthenticationError("no_token")
+
+    try:
+        payload = decode_token(token)
+    except HTTPException:
+        # JWT is invalid or expired — raise AuthenticationError so the
+        # AppException handler can redirect to the login page cleanly.
+        raise AuthenticationError("session_expired")
+
     user_id = payload.get("sub")
     if not user_id:
-        raise AuthenticationError()
+        raise AuthenticationError("session_expired")
 
     repo = UserRepository(db)
     user = await repo.get_by_id(int(user_id))
     if not user or not user.is_active:
-        raise AuthenticationError()
+        raise AuthenticationError("session_expired")
     return user
 
 

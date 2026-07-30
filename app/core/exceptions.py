@@ -69,7 +69,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
             )
         if exc.status_code == 401:
             from fastapi.responses import RedirectResponse
-            return RedirectResponse(url="/auth/login", status_code=302)
+            # Pass the reason so the login page can show a helpful message.
+            reason = exc.message if exc.message not in ("Authentication required",) else "session_expired"
+            return RedirectResponse(url=f"/auth/login?error={reason}", status_code=302)
         return templates.TemplateResponse(
             request,
             "errors/error.html",
