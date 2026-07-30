@@ -2,9 +2,8 @@
 <!DOCTYPE html>
 <html lang="{{ lang if lang else 'ar' }}" 
       dir="{{ 'rtl' if (lang if lang else 'ar') == 'ar' else 'ltr' }}"
-      x-data="appState()" 
-      :class="darkMode ? 'dark' : ''"
-      x-init="init()">
+      x-data="appState()"
+      :class="darkMode ? 'dark' : ''">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
