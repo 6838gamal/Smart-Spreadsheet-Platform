@@ -118,9 +118,17 @@ async def admin_login(
                 status_code=403,
             )
 
-        response = Response(content="", status_code=200)
+        token = result.access_token
+        # Inject token into sessionStorage so the login page can recover the
+        # session automatically if the cookie is dropped (e.g. Replit iframe
+        # mobile-mode reload blocks third-party cookies).
+        response = HTMLResponse(
+            '<p class="text-green-400 text-sm text-center mt-2">جاري التحويل…</p>'
+            f'<script>try{{sessionStorage.setItem("_ark","{token}")}}catch(e){{}}</script>',
+            status_code=200,
+        )
         response.headers["HX-Redirect"] = "/admin"
-        _set_auth_cookie(response, result.access_token)
+        _set_auth_cookie(response, token)
         return response
     except Exception as e:
         return templates.TemplateResponse(
@@ -205,10 +213,32 @@ async def google_callback(
 
 
 # ── Logout ────────────────────────────────────────────────────────────────────
+@router.post("/auth/recover")
+async def recover_session(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-establish the session cookie from an Authorization Bearer token.
+
+    Used by the login page to recover a lost session (e.g. when the Replit
+    preview iframe reloads in mobile mode and drops the SameSite=None cookie).
+    The token is read from the Authorization header, validated, and a fresh
+    cookie is set so the user is silently redirected back to /dashboard.
+    """
+    try:
+        user = await get_current_user(request, db)
+        token = create_access_token({"sub": str(user.id)})
+        response = Response(content="ok", status_code=200)
+        _set_auth_cookie(response, token)
+        return response
+    except Exception:
+        return Response(content="unauthorized", status_code=401)
+
+
 @router.post("/auth/logout")
 @router.get("/auth/logout")
 async def logout():
-    response = RedirectResponse(url="/auth/login", status_code=303)
+    response = RedirectResponse(url="/auth/login?reason=logout", status_code=303)
     _clear_auth_cookie(response)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
