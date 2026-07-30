@@ -172,9 +172,9 @@ function filesPage() {
         });
         const html = await res.text();
         document.getElementById('upload-result').innerHTML = html;
-        setTimeout(() => location.reload(), 1500);
+        // Redirect/reload is handled by the embedded <script> in the server response
       } catch(e) {
-        document.getElementById('upload-result').innerHTML = '<div class="text-red-400 text-sm">Upload failed</div>';
+        document.getElementById('upload-result').innerHTML = '<div class="text-red-400 text-sm">فشل الرفع — حاول مجدداً</div>';
       } finally {
         this.uploading = false;
       }
