@@ -19,8 +19,7 @@ async def datasets_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return templates.TemplateResponse("datasets/index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "datasets/index.html", {
         "user": current_user,
         "current_page": "datasets",
         "lang": current_user.default_lang,

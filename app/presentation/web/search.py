@@ -4,18 +4,17 @@ import logging
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.templates import templates
 from app.infrastructure.database.models import User, File
 from app.infrastructure.database.models_intelligence import DocumentChunk
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 
 @router.get("/search", response_class=HTMLResponse)
@@ -53,11 +52,11 @@ async def search_page(
         select(DocumentChunk.id).where(DocumentChunk.user_id == current_user.id)
     )).scalars().all()
 
-    return templates.TemplateResponse("search/index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "search/index.html", {
         "user": current_user,
         "page_title": "البحث الذكي",
         "current_page": "search",
+        "lang": current_user.default_lang,
         "files_info": files_info,
         "indexed_count": indexed_count,
         "total_chunks": len(total_chunks),

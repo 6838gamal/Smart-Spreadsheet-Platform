@@ -19,8 +19,7 @@ async def models_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return templates.TemplateResponse("models/index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "models/index.html", {
         "user": current_user,
         "current_page": "models",
         "lang": current_user.default_lang,

@@ -45,8 +45,7 @@ async def intelligence_home(
     )
     recent_analyses = result2.scalars().all()
 
-    return templates.TemplateResponse("intelligence/index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "intelligence/index.html", {
         "user": current_user,
         "current_page": "intelligence",
         "lang": current_user.default_lang,
@@ -98,8 +97,7 @@ async def analyze_file(
     for e in entities:
         entity_groups.setdefault(e.entity_type, []).append(e)
 
-    return templates.TemplateResponse("intelligence/analyze.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "intelligence/analyze.html", {
         "user": current_user,
         "current_page": "intelligence",
         "lang": current_user.default_lang,
@@ -140,8 +138,7 @@ async def analysis_result(
     for e in entities:
         entity_groups.setdefault(e.entity_type, []).append(e)
 
-    return templates.TemplateResponse("intelligence/result.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "intelligence/result.html", {
         "user": current_user,
         "current_page": "intelligence",
         "lang": current_user.default_lang,
