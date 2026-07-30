@@ -15,6 +15,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav_analytics":    {"ar": "التحليلات",          "en": "Analytics"},
     "nav_datasets":     {"ar": "مجموعات البيانات",   "en": "Datasets"},
     "nav_models":       {"ar": "مدير النماذج",       "en": "Model Manager"},
+    "nav_search":       {"ar": "البحث الذكي",         "en": "Smart Search"},
     "nav_logs":         {"ar": "سجل العمليات",       "en": "Operation Logs"},
     "nav_settings":     {"ar": "الإعدادات",          "en": "Settings"},
     "nav_contact":      {"ar": "تواصل مع المطور",    "en": "Contact Developer"},

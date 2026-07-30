@@ -35,6 +35,8 @@ import app.services.pipeline.pipeline_manager  # noqa: F401 — registers "analy
 
 from app.presentation.web import intelligence as web_intelligence
 from app.presentation.api.v1 import intelligence as api_intelligence
+from app.presentation.web import search as web_search
+from app.presentation.api.v1 import search as api_search
 
 from app.presentation.web import auth as web_auth
 from app.presentation.web import dashboard as web_dashboard
@@ -269,6 +271,7 @@ def create_app() -> FastAPI:
     app.include_router(web_analytics.router, tags=["web:analytics"])
     app.include_router(web_models_ui.router, tags=["web:models"])
     app.include_router(web_datasets.router, tags=["web:datasets"])
+    app.include_router(web_search.router, tags=["web:search"])
 
     # API routes
     app.include_router(api_intelligence.router, prefix="/api/v1/intelligence", tags=["api:intelligence"])
@@ -279,6 +282,7 @@ def create_app() -> FastAPI:
     app.include_router(api_analytics.router, prefix="/api/v1/analytics", tags=["api:analytics"])
     app.include_router(api_models.router, prefix="/api/v1/models", tags=["api:models"])
     app.include_router(api_datasets.router, prefix="/api/v1/datasets", tags=["api:datasets"])
+    app.include_router(api_search.router, prefix="/api/v1/search", tags=["api:search"])
     app.include_router(api_websocket.router, tags=["api:websocket"])
 
     return app

@@ -1,1 +1,2 @@
 - [rich_extractor corruption](rich-extractor-fix.md) — file was triplicated with broken regex at seams; fix pattern applies to any future regeneration
+- [Search & Q&A system design](search-qa-system.md) — BM25 Phase 1 with upgrade path; SearchBackend ABC is the key abstraction; auto-indexes after analysis

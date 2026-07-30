@@ -17,6 +17,7 @@ from app.infrastructure.database.models_intelligence import (
     DocumentAnalysis, AnalysisStatus, LayoutElement as LayoutElementModel,
     ExtractedTable, ExtractedEntity, AISuggestion, ProcessingJob
 )
+from app.infrastructure.database.models import File
 from app.services.classification.document_classifier import DocumentClassifier
 from app.services.pipeline.base_pipeline import PipelineContext
 from app.services.pipeline.pipelines.generic_pipeline import GenericPipeline
@@ -157,6 +158,23 @@ async def handle_analysis_job(payload: dict) -> dict:
             analysis.status = AnalysisStatus.COMPLETED
             analysis.updated_at = datetime.now(timezone.utc)
             await db.commit()
+
+            # ── Step 4: Auto-index for search ─────────────────────────
+            try:
+                from app.services.search.search_service import search_service
+                file_row = await db.get(File, file_id)
+                await search_service.index_document(
+                    db,
+                    file_id=file_id,
+                    analysis_id=analysis_id,
+                    user_id=file_row.owner_id if file_row else 0,
+                    text=ctx.raw_text or "",
+                    doc_type=clf_result.doc_type,
+                    language=ctx.language,
+                    filename=file_row.original_name if file_row else "",
+                )
+            except Exception as idx_exc:
+                logger.warning("Search indexing failed for file %d: %s", file_id, idx_exc)
 
             logger.info("Analysis %d completed in %dms (type=%s)", analysis_id, duration_ms, clf_result.doc_type)
             return {

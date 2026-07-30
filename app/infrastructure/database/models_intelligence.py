@@ -338,6 +338,27 @@ class DatasetSample(Base):
     dataset: Mapped["Dataset"] = relationship("Dataset", back_populates="samples")
 
 
+class DocumentChunk(Base):
+    """
+    A text chunk extracted from a processed document, used for BM25 / embedding search.
+
+    Phase 1: chunk_text only (no vector). embedding field added in Phase 2.
+    """
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False, index=True)
+    analysis_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    doc_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Phase 2: add embedding JSON column here (vector stored as list[float])
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ProcessingJob(Base):
     """Internal async job queue."""
     __tablename__ = "processing_jobs"
