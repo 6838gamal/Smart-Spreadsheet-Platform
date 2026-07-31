@@ -41,7 +41,7 @@ async def search_page(
         {
             "id": f.id,
             "original_name": f.original_name,
-            "file_format": f.file_format,
+            "file_format": f.format,
             "is_indexed": f.id in indexed_ids,
         }
         for f in all_files_rows
