@@ -31,7 +31,7 @@ router = APIRouter(prefix="/workspace", tags=["workspace"])
 
 async def _get_files(db: AsyncSession, user_id: int):
     repo = FileRepository(db)
-    return await repo.get_user_files(user_id)
+    return await repo.get_by_owner(user_id)
 
 
 async def _get_latest_analysis(db: AsyncSession, file_id: int) -> Optional[DocumentAnalysis]:
@@ -62,9 +62,9 @@ async def workspace_shell(
     stats = await svc.get_stats(current_user.id)
 
     return templates.TemplateResponse(
+        request,
         "workspace/index.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "files": files,
@@ -88,9 +88,9 @@ async def panel_files(
 ):
     files = await _get_files(db, current_user.id)
     return templates.TemplateResponse(
+        request,
         "workspace/_files_panel.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "files": files,
@@ -111,9 +111,9 @@ async def panel_home(
     svc = DashboardService(db)
     stats = await svc.get_stats(current_user.id)
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_home.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "stats": stats,
@@ -135,7 +135,9 @@ async def panel_view(
     from app.application.files.service import FileService
 
     repo = FileRepository(db)
-    file = await repo.get_by_id(file_id, current_user.id)
+    file = await repo.get_by_id(file_id)
+    if file and file.owner_id != current_user.id:
+        file = None
 
     preview = None
     analysis = None
@@ -149,9 +151,9 @@ async def panel_view(
         analysis = await _get_latest_analysis(db, file_id)
 
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_view.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "file": file,
@@ -176,7 +178,9 @@ async def panel_analyze(
     from app.infrastructure.database.models import ExtractedTable, ExtractedEntity, AISuggestion
 
     repo = FileRepository(db)
-    file = await repo.get_by_id(file_id, current_user.id)
+    file = await repo.get_by_id(file_id)
+    if file and file.owner_id != current_user.id:
+        file = None
 
     analysis = None
     tables = []
@@ -212,9 +216,9 @@ async def panel_analyze(
             suggestions = sug_result.scalars().all()
 
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_analyze.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "file": file,
@@ -239,9 +243,9 @@ async def panel_convert(
 ):
     files = await _get_files(db, current_user.id)
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_convert.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "files": files,
@@ -264,9 +268,9 @@ async def panel_clean(
 ):
     files = await _get_files(db, current_user.id)
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_clean.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "files": files,
@@ -287,9 +291,9 @@ async def panel_merge(
 ):
     files = await _get_files(db, current_user.id)
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_merge.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
             "files": files,
@@ -308,9 +312,9 @@ async def panel_analytics(
     current_user: User = Depends(get_current_user),
 ):
     return templates.TemplateResponse(
+        request,
         "workspace/_panel_analytics.html",
         {
-            "request": request,
             "current_user": current_user,
             "lang": current_user.default_lang,
         },
