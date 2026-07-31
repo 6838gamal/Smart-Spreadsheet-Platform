@@ -247,15 +247,38 @@
 
 <script>
 function acceptSuggestion(id, el) {
+  // Disable the card immediately to prevent double-clicks
+  el.style.pointerEvents = 'none';
+  el.style.opacity = '0.7';
+
   fetch('/api/v1/intelligence/suggestions/' + id + '/accept', {method:'POST'})
     .then(r => r.json()).then(d => {
-      // Redirect based on action
       const p = d.action_params || {};
       if (p.action === 'convert' && p.target) {
         window.location.href = '/converter?file_id=' + p.file_id + '&to=' + p.target;
       } else if (p.action === 'clean') {
-        window.location.href = '/cleaner';
+        // FIX: preserve file_id when navigating to cleaner
+        window.location.href = '/cleaner?file_id=' + p.file_id;
+      } else if (p.action === 'extract_tables') {
+        // Export tables → redirect to converter targeting xlsx
+        window.location.href = '/converter?file_id=' + p.file_id + '&to=xlsx';
+      } else if (p.action === 'search') {
+        // Full-text search within this document
+        window.location.href = '/search?file_id=' + p.file_id;
+      } else {
+        // For export_entities and other actions: mark accepted in-place
+        el.style.opacity = '1';
+        el.style.pointerEvents = 'auto';
+        el.classList.remove('border-slate-100', 'dark:border-slate-700', 'hover:border-brand-300');
+        el.classList.add('border-emerald-200', 'bg-emerald-50/50');
+        const lastSpan = el.querySelector('span.mt-2');
+        if (lastSpan) lastSpan.textContent = '✓ مقبول';
+        else el.insertAdjacentHTML('beforeend', '<span class="mt-2 badge bg-emerald-100 text-emerald-600 text-xs block w-fit">✓ مقبول</span>');
       }
+    })
+    .catch(() => {
+      el.style.opacity = '1';
+      el.style.pointerEvents = 'auto';
     });
 }
 

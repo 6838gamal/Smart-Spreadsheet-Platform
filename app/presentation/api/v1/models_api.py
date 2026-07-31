@@ -110,6 +110,23 @@ async def activate_model(
     return {"message": f"Model '{m.name}' activated for type '{m.model_type}'"}
 
 
+@router.post("/{model_id}/deactivate")
+async def deactivate_model(
+    model_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deactivate a model (mark is_active = False)."""
+    m = await db.get(AIModelRegistry, model_id)
+    if not m:
+        raise HTTPException(404, "Model not found")
+    if m.is_default:
+        raise HTTPException(400, "لا يمكن تعطيل النموذج الافتراضي")
+    m.is_active = False
+    await db.commit()
+    return {"message": f"Model '{m.name}' deactivated"}
+
+
 @router.post("/{model_id}/toggle-visibility")
 async def toggle_model_visibility(
     model_id: int,

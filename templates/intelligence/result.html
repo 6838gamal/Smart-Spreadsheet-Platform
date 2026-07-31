@@ -179,17 +179,32 @@
 
 <script>
 function acceptSuggestion(id, el) {
+  el.style.pointerEvents = 'none';
+  el.style.opacity = '0.7';
+
   fetch('/api/v1/intelligence/suggestions/' + id + '/accept', {method:'POST'})
     .then(r => r.json()).then(d => {
       const p = d.action_params || {};
       if (p.action === 'convert' && p.target) {
         window.location.href = '/converter?file_id=' + p.file_id + '&to=' + p.target;
       } else if (p.action === 'clean') {
-        window.location.href = '/cleaner';
+        // FIX: preserve file_id when navigating to cleaner
+        window.location.href = '/cleaner?file_id=' + p.file_id;
+      } else if (p.action === 'extract_tables') {
+        window.location.href = '/converter?file_id=' + p.file_id + '&to=xlsx';
+      } else if (p.action === 'search') {
+        window.location.href = '/search?file_id=' + p.file_id;
       } else {
-        el.querySelector('span:last-child').textContent = '✓ مقبول';
-        el.classList.add('border-emerald-200','bg-emerald-50/50');
+        el.style.opacity = '1';
+        el.style.pointerEvents = 'auto';
+        el.classList.add('border-emerald-200', 'dark:border-emerald-700/40', 'bg-emerald-50/50', 'dark:bg-emerald-900/10');
+        const lastSpan = el.querySelector('span:last-child');
+        if (lastSpan) lastSpan.textContent = '✓ مقبول';
       }
+    })
+    .catch(() => {
+      el.style.opacity = '1';
+      el.style.pointerEvents = 'auto';
     });
 }
 

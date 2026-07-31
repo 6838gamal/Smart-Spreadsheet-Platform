@@ -248,12 +248,15 @@
 
 <script>
 function searchApp() {
+  // Pre-select a specific file if ?file_id=X is in the URL (from AI suggestions)
+  const _urlFileId = parseInt(new URLSearchParams(window.location.search).get('file_id') || '0');
+
   return {
     question: '',
     messages: [],
     loading: false,
-    allFiles: true,
-    selectedFiles: [],
+    allFiles: !_urlFileId,
+    selectedFiles: _urlFileId ? [_urlFileId] : [],
     indexFileId: '',
     indexing: false,
     indexMsg: '',
