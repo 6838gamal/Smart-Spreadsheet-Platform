@@ -1,0 +1,161 @@
+{# Merge panel — combine multiple files into one #}
+<div class="space-y-4" x-data="mergePanel()">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- File selector -->
+    <div class="card p-4">
+      <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">اختر الملفات للدمج</h3>
+      {% if files %}
+      <div class="space-y-1 max-h-80 overflow-y-auto pe-1">
+        {% for f in files %}
+        <label class="flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all"
+               :class="selected.includes({{ f.id }})
+                 ? 'border-brand-500/50 bg-brand-50 dark:bg-brand-900/20'
+                 : 'border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600 bg-white dark:bg-slate-800/30'">
+          <input type="checkbox" value="{{ f.id }}" x-model="selected"
+                 class="rounded border-slate-300 text-brand-600 focus:ring-brand-500"/>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-800 dark:text-white truncate">{{ f.original_name }}</p>
+            <p class="text-xs text-slate-400">{{ f.format|upper }} · {{ f.size_human }}</p>
+          </div>
+          <span class="text-xs px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+                :class="selected.includes({{ f.id }}) ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'">
+            <span x-show="selected.includes({{ f.id }})" x-text="'#'+(selected.indexOf({{ f.id }})+1)"></span>
+            <span x-show="!selected.includes({{ f.id }})">—</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-10 text-slate-400">
+        <p class="text-sm">لا يوجد ملفات</p>
+        <p class="text-xs mt-1">ارفع ملفين على الأقل للدمج</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Options + Result -->
+    <div class="space-y-3">
+
+      <!-- Selected list -->
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">الملفات المختارة</h3>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 font-semibold"
+                x-text="selected.length"></span>
+        </div>
+        <div x-show="selected.length === 0" class="text-center py-4 text-slate-400 text-xs">
+          اختر ملفين على الأقل
+        </div>
+        <div x-show="selected.length > 0" class="space-y-1.5">
+          <template x-for="(id, idx) in selected" :key="id">
+            <div class="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+              <span class="text-xs w-5 h-5 rounded-full bg-brand-600/20 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold flex-shrink-0"
+                    x-text="idx + 1"></span>
+              <span class="text-xs text-slate-700 dark:text-slate-300 flex-1 truncate" x-text="getFileName(id)"></span>
+              <button @click="selected.splice(idx, 1)"
+                      class="text-slate-400 hover:text-red-400 transition-colors text-xs">✕</button>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Output format -->
+      <div class="card p-4">
+        <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">صيغة الملف الناتج</h3>
+        <div class="grid grid-cols-3 gap-2">
+          {% for fmt in ['xlsx', 'csv', 'json'] %}
+          <label class="flex items-center justify-center gap-1 p-2.5 rounded-xl border cursor-pointer transition-all text-sm font-semibold"
+                 :class="outputFormat === '{{ fmt }}'
+                   ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400'
+                   : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'">
+            <input type="radio" name="merge_format" value="{{ fmt }}" x-model="outputFormat" class="sr-only"/>
+            {{ fmt|upper }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Merge button -->
+      <button @click="merge()"
+              :disabled="selected.length < 2 || merging"
+              class="w-full py-3 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed
+                     text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
+        <svg x-show="merging" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span x-text="merging ? 'جارٍ الدمج…' : 'دمج الملفات'"></span>
+      </button>
+
+      <!-- Result -->
+      <div x-show="resultUrl" x-cloak
+           class="card p-4 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">تم الدمج بنجاح ✓</p>
+          <p class="text-xs text-slate-400 mt-0.5" x-text="resultName"></p>
+        </div>
+        <a :href="resultUrl" download
+           class="flex items-center gap-1.5 text-xs bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          تحميل
+        </a>
+      </div>
+
+      <!-- Error -->
+      <div x-show="errorMsg" x-cloak
+           class="card p-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40"
+           x-text="errorMsg">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+const _fileMap = {};
+{% for f in files %}
+_fileMap[{{ f.id }}] = "{{ f.original_name | replace('"', '\\"') }}";
+{% endfor %}
+
+window.mergePanel = function() {
+  return {
+    selected: [],
+    outputFormat: 'xlsx',
+    merging: false,
+    resultUrl: '',
+    resultName: '',
+    errorMsg: '',
+
+    getFileName(id) { return _fileMap[id] || `ملف #${id}`; },
+
+    async merge() {
+      if (this.selected.length < 2 || this.merging) return;
+      this.merging = true;
+      this.resultUrl = '';
+      this.errorMsg = '';
+      try {
+        const res = await fetch('/api/v1/converter/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_ids: this.selected, output_format: this.outputFormat }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || `خطأ ${res.status}`);
+        }
+        const data = await res.json();
+        this.resultUrl = data.download_url || '';
+        this.resultName = data.filename || 'merged_file';
+      } catch (e) {
+        this.errorMsg = e.message || 'حدث خطأ أثناء الدمج';
+      } finally {
+        this.merging = false;
+      }
+    },
+  };
+};
+})();
+</script>

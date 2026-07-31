@@ -1,0 +1,57 @@
+{# File list partial — loaded into the left file browser #}
+{% if files %}
+<div class="space-y-1">
+  {% for f in files %}
+  <div class="group rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700
+              hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all cursor-pointer p-2"
+       data-file-card
+       data-file-id="{{ f.id }}"
+       data-file-name="{{ f.original_name }}"
+       @click="selectFile({{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')">
+
+    <div class="flex items-center gap-2">
+      <!-- Format badge -->
+      <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold
+        {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
+        {% elif f.format == 'csv' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
+        {% elif f.format == 'json' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400
+        {% elif f.format == 'pdf' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
+        {% elif f.format == 'parquet' %}bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400
+        {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
+        {{ f.format[:3]|upper }}
+      </div>
+
+      <!-- Name & size -->
+      <div class="min-w-0 flex-1">
+        <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight">{{ f.original_name }}</p>
+        <p class="text-xs text-slate-400 dark:text-slate-500">{{ f.size_human }}</p>
+      </div>
+    </div>
+
+    <!-- Quick actions (shown on hover) -->
+    <div class="hidden group-hover:flex items-center gap-1 mt-1.5 ps-10">
+      <button @click.stop="openPanel('view', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+              class="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors">
+        عرض
+      </button>
+      <button @click.stop="openPanel('analyze', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+              class="text-xs px-2 py-0.5 rounded-md bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 text-brand-600 dark:text-brand-400 transition-colors">
+        تحليل
+      </button>
+      <button @click.stop="openPanel('convert', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+              class="text-xs px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 text-violet-600 dark:text-violet-400 transition-colors">
+        تحويل
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="py-8 text-center text-slate-400">
+  <svg class="w-10 h-10 mx-auto mb-2 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+  </svg>
+  <p class="text-xs">لا يوجد ملفات</p>
+  <p class="text-xs mt-1 text-slate-300 dark:text-slate-600">ارفع ملفاً للبدء</p>
+</div>
+{% endif %}

@@ -1,0 +1,143 @@
+{# Analytics panel — usage statistics and charts #}
+<div class="space-y-4" x-data="analyticsPanel()" x-init="load()">
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex items-center justify-center py-16">
+    <svg class="animate-spin w-7 h-7 text-brand-500" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+  </div>
+
+  <!-- Stats -->
+  <div x-show="!loading" x-cloak class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <template x-for="card in statCards" :key="card.key">
+      <div class="card p-4">
+        <p class="text-xs text-slate-500 dark:text-slate-400 mb-1" x-text="card.label"></p>
+        <p class="text-xl font-bold" :class="card.color" x-text="card.value"></p>
+        <p class="text-xs text-slate-400 mt-1" x-text="card.sub"></p>
+      </div>
+    </template>
+  </div>
+
+  <!-- Charts row -->
+  <div x-show="!loading" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+    <!-- Doc types -->
+    <div class="card p-4">
+      <h3 class="text-sm font-semibold text-slate-800 dark:text-white mb-3">توزيع أنواع المستندات</h3>
+      <div x-show="docTypes.length === 0" class="text-center py-6 text-slate-400 text-xs">
+        لا توجد بيانات — حلّل بعض الملفات أولاً
+      </div>
+      <div x-show="docTypes.length > 0" class="space-y-2">
+        <template x-for="dt in docTypes" :key="dt.doc_type">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-brand-500 flex-shrink-0"></div>
+            <span class="text-xs text-slate-600 dark:text-slate-300 flex-1 truncate" x-text="dt.doc_type || 'unknown'"></span>
+            <span class="text-xs font-semibold text-slate-800 dark:text-white w-6 text-end" x-text="dt.count"></span>
+            <div class="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 flex-shrink-0">
+              <div class="bg-brand-500 h-1.5 rounded-full" :style="`width:${Math.min(100, dt.count/maxDocType*100)}%`"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Entity types -->
+    <div class="card p-4">
+      <h3 class="text-sm font-semibold text-slate-800 dark:text-white mb-3">أكثر الكيانات المستخرجة</h3>
+      <div x-show="entities.length === 0" class="text-center py-6 text-slate-400 text-xs">لا توجد كيانات بعد</div>
+      <div x-show="entities.length > 0" class="space-y-2">
+        <template x-for="e in entities.slice(0,8)" :key="e.entity_type">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></div>
+            <span class="text-xs text-slate-600 dark:text-slate-300 flex-1 font-mono" x-text="e.entity_type"></span>
+            <span class="text-xs font-semibold text-slate-800 dark:text-white" x-text="e.count"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily uploads bar chart -->
+  <div x-show="!loading" x-cloak class="card p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-slate-800 dark:text-white">الملفات المرفوعة يومياً</h3>
+      <select class="input w-auto text-xs py-1 px-2" x-model="period" @change="loadFileTrend()">
+        <option value="7">7 أيام</option>
+        <option value="30" selected>30 يوماً</option>
+        <option value="90">90 يوماً</option>
+      </select>
+    </div>
+    <div x-show="fileTrend.length === 0" class="text-center py-6 text-slate-400 text-xs">لا توجد بيانات</div>
+    <div x-show="fileTrend.length > 0" class="flex items-end gap-0.5 h-28">
+      <template x-for="d in fileTrend" :key="d.day">
+        <div class="flex-1 flex flex-col items-center group">
+          <div class="w-full bg-brand-500/80 rounded-t hover:bg-brand-600 transition-colors cursor-default"
+               :style="`height:${Math.max(3, d.count/maxFileTrend*104)}px`"
+               :title="`${d.day}: ${d.count} ملف`"></div>
+        </div>
+      </template>
+    </div>
+    <p class="text-xs text-slate-400 text-center mt-2">كل عمود = يوم واحد</p>
+  </div>
+
+</div>
+
+<script>
+function analyticsPanel() {
+  return {
+    loading: true,
+    overview: {},
+    docTypes: [],
+    entities: [],
+    fileTrend: [],
+    period: '30',
+    statCards: [],
+    maxDocType: 1,
+    maxFileTrend: 1,
+
+    async load() {
+      this.loading = true;
+      await Promise.all([this.loadOverview(), this.loadDocTypes(), this.loadEntities(), this.loadFileTrend()]);
+      this.loading = false;
+    },
+
+    async loadOverview() {
+      try {
+        const d = await (await fetch('/api/v1/analytics/overview')).json();
+        this.overview = d;
+        this.statCards = [
+          { key:'files',    label:'إجمالي الملفات',  value:d.total_files,        sub:`${d.files_this_week} هذا الأسبوع`, color:'text-brand-500' },
+          { key:'analyses', label:'تحليلات مكتملة',  value:d.completed_analyses, sub:`متوسط ${d.avg_processing_sec}ث`,   color:'text-emerald-500' },
+          { key:'entities', label:'كيانات مستخرجة',  value:d.total_entities,     sub:`${d.total_tables} جدول`,            color:'text-violet-500' },
+          { key:'sugg',     label:'قبول الاقتراحات', value:`${d.suggestion_acceptance_rate}%`, sub:`${d.total_feedback} تغذية`, color:'text-amber-500' },
+        ];
+      } catch(e) { console.error(e); }
+    },
+
+    async loadDocTypes() {
+      try {
+        const d = await (await fetch('/api/v1/analytics/doc-types')).json();
+        this.docTypes = d.data || [];
+        this.maxDocType = Math.max(1, ...this.docTypes.map(x => x.count));
+      } catch(e) {}
+    },
+
+    async loadEntities() {
+      try {
+        const d = await (await fetch('/api/v1/analytics/entities')).json();
+        this.entities = d.data || [];
+      } catch(e) {}
+    },
+
+    async loadFileTrend() {
+      try {
+        const d = await (await fetch(`/api/v1/analytics/files?period=${this.period}`)).json();
+        this.fileTrend = d.data || [];
+        this.maxFileTrend = Math.max(1, ...this.fileTrend.map(x => x.count));
+      } catch(e) {}
+    },
+  };
+}
+</script>

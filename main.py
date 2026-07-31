@@ -41,6 +41,7 @@ from app.presentation.api.v1 import hf_api as api_hf
 
 from app.presentation.web import auth as web_auth
 from app.presentation.web import dashboard as web_dashboard
+from app.presentation.web import workspace as web_workspace
 from app.presentation.web import files as web_files
 from app.presentation.web import converter as web_converter
 from app.presentation.web import cleaner as web_cleaner
@@ -282,6 +283,7 @@ def create_app() -> FastAPI:
 
     # Web routes (server-rendered pages)
     app.include_router(web_auth.router, tags=["web:auth"])
+    app.include_router(web_workspace.router, tags=["web:workspace"])
     app.include_router(web_dashboard.router, tags=["web:dashboard"])
     app.include_router(web_intelligence.router, tags=["web:intelligence"])
     app.include_router(web_files.router, tags=["web:files"])

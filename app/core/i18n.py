@@ -6,6 +6,7 @@ Usage in templates: {% set t = get_texts(lang) %} then {{ t.key }}
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── Navigation ────────────────────────────────────────────────────────────
+    "nav_workspace":    {"ar": "مساحة العمل",       "en": "Workspace"},
     "nav_dashboard":    {"ar": "لوحة التحكم",       "en": "Dashboard"},
     "nav_intelligence": {"ar": "ذكاء المستندات",     "en": "Doc Intelligence"},
     "nav_files":        {"ar": "إدارة الملفات",      "en": "Files"},
