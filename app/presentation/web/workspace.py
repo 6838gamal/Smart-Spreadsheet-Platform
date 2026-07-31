@@ -65,7 +65,7 @@ async def workspace_shell(
         request,
         "workspace/index.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
             "stats": stats,
@@ -91,7 +91,7 @@ async def panel_files(
         request,
         "workspace/_files_panel.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
         },
@@ -114,7 +114,7 @@ async def panel_home(
         request,
         "workspace/_panel_home.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "stats": stats,
         },
@@ -154,7 +154,7 @@ async def panel_view(
         request,
         "workspace/_panel_view.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "file": file,
             "preview": preview,
@@ -219,7 +219,7 @@ async def panel_analyze(
         request,
         "workspace/_panel_analyze.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "file": file,
             "analysis": analysis,
@@ -246,7 +246,7 @@ async def panel_convert(
         request,
         "workspace/_panel_convert.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
             "selected_file_id": file_id,
@@ -271,7 +271,7 @@ async def panel_clean(
         request,
         "workspace/_panel_clean.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
             "selected_file_id": file_id,
@@ -294,7 +294,7 @@ async def panel_merge(
         request,
         "workspace/_panel_merge.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
         },
@@ -315,7 +315,7 @@ async def panel_analytics(
         request,
         "workspace/_panel_analytics.html",
         {
-            "current_user": current_user,
+            "user": current_user,
             "lang": current_user.default_lang,
         },
     )
