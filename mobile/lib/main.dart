@@ -26,11 +26,16 @@ Future<void> main() async {
   await HiveStorage.init();
 
   // Initialize Google Sign-In with Client ID from --dart-define
-  await GoogleSignIn.instance.initialize(
-    clientId: AppConstants.googleClientId.isNotEmpty
-        ? AppConstants.googleClientId
-        : null,
-  );
+  // Wrapped in try-catch — throws on platforms without google-services.json
+  try {
+    await GoogleSignIn.instance.initialize(
+      clientId: AppConstants.googleClientId.isNotEmpty
+          ? AppConstants.googleClientId
+          : null,
+    );
+  } catch (_) {
+    // Platform not configured yet — login screen will show an error on tap
+  }
 
   runApp(
     // ProviderScope is the root of the Riverpod dependency graph.

@@ -40,7 +40,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState.loading();
     try {
       await GoogleSignIn.instance.signOut();
-      final account = await GoogleSignIn.instance.authenticate();
+
+      // 30-second timeout — prevents the spinner from hanging forever
+      final account = await GoogleSignIn.instance
+          .authenticate()
+          .timeout(const Duration(seconds: 30));
+
       state = AuthState.authenticated(
         user: UserEntity(
           id: 0,
@@ -59,11 +64,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         state = const AuthState.unauthenticated();
       } else {
-        state = AuthState.error(message: 'فشل تسجيل الدخول: ${e.description ?? e.code.name}');
+        state = AuthState.error(
+            message: 'فشل تسجيل الدخول: ${e.description ?? e.code.name}');
       }
       return false;
     } catch (e) {
-      state = AuthState.error(message: 'حدث خطأ غير متوقع');
+      // Covers TimeoutException and any platform errors
+      state = AuthState.error(
+          message: e.toString().contains('TimeoutException')
+              ? 'انتهت مهلة تسجيل الدخول، حاول مجدداً'
+              : 'حدث خطأ: تأكد من إعداد Google Sign-In على الجهاز');
       return false;
     }
   }
