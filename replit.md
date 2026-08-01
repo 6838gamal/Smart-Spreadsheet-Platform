@@ -46,6 +46,46 @@ uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 - `data/`, `uploads/`, and `outputs/` directories are created automatically on first startup.
 - Default admin credentials (created on first run): `admin@spreadsheet.com` / `Spreadsheet123`
 
+## Flutter Mobile App
+
+A production-ready Flutter mobile app lives in `mobile/`. It targets Android & iOS with a mobile-first UX (not a port of the web app).
+
+### Stack
+- Flutter 3.32 (installed via Nix)
+- Clean Architecture + Feature-First + MVVM
+- Riverpod (state), GoRouter (navigation), Freezed (models), Dio (HTTP), Hive (local cache)
+
+### Features built
+- Splash screen with animated loading + auto-login check
+- Auth: login, register, biometric (fingerprint/Face ID), PIN
+- Home: dashboard with stats, quick actions, recent files
+- Files: grid/list manager with upload, sections (My Files / Favorites / Recent / Shared / Offline / Downloads / Trash), swipe actions
+- Conversion: PDF↔Excel/Word/CSV, OCR, Images→Excel/Word, background job polling
+- AI Assistant: chat with documents, streaming responses, quick-action shortcuts (summarize, extract tables, analyze contract/invoice)
+- Search: debounced full-text search with type filters
+- Account: profile, theme/language picker (AR/EN), biometric toggle, PIN change, subscription view, logout
+- Notifications: notification center with dismiss, mark-read
+
+### How to develop
+```bash
+cd mobile
+flutter pub get
+flutter pub run build_runner build --delete-conflicting-outputs  # regenerate freezed/json files
+flutter run   # requires connected device or emulator
+```
+
+### Backend URL
+Set `AppConstants.defaultApiBaseUrl` in `mobile/lib/core/constants/app_constants.dart` to your Replit dev domain, e.g.:
+```
+static const String defaultApiBaseUrl = 'https://<repl-name>.replit.dev/api/v1';
+```
+Or override at runtime by storing the URL in Hive (`StorageKeys.apiBaseUrl`).
+
+### Design doc
+Full design document: `docs/flutter-design.md`
+
+---
+
 ## Vision: Document Intelligence Platform
 
 The project is being evolved from a spreadsheet converter into a full Document Intelligence Platform. See `docs/document-intelligence-platform.md` for the full architecture and roadmap. Key modules planned:

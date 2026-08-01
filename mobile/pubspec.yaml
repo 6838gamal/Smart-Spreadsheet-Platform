@@ -1,0 +1,98 @@
+name: smart_spreadsheet
+description: "Smart Spreadsheet Platform — Mobile App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.4.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Data / serialization
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.8.1
+
+  # Network
+  dio: ^5.8.0
+  connectivity_plus: ^6.1.4
+
+  # Local storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.4
+
+  # File handling
+  file_picker: ^8.1.7
+  image_picker: ^1.1.2
+  permission_handler: ^11.4.0
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  open_filex: ^4.6.0
+
+  # UI & UX
+  dynamic_color: ^1.7.0
+  flutter_animate: ^4.5.2
+  shimmer: ^3.0.0
+  cached_network_image: ^3.4.1
+  lottie: ^3.3.1
+  percent_indicator: ^4.2.4
+  fl_chart: ^0.69.0
+
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+
+  # Auth & Security
+  local_auth: ^2.3.0
+  crypto: ^3.0.6
+
+  # Utilities
+  intl: ^0.20.2
+  timeago: ^3.7.0
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.4
+  uuid: ^4.5.1
+  equatable: ^2.0.7
+  dartz: ^0.10.1
+  logger: ^2.5.0
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.11
+  freezed: ^2.5.7
+  json_serializable: ^6.7.1
+  riverpod_generator: ^2.6.4
+
+flutter:
+  uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/images/
+    - assets/animations/
+    - assets/icons/
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
