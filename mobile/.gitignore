@@ -42,3 +42,7 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 # Generated files — committed intentionally (no CI build_runner step yet)
 # *.g.dart
 # *.freezed.dart
+
+# Override root .gitignore "data/" rule — Flutter data-layer source must be tracked
+!lib/**/data/
+!lib/**/data/**
