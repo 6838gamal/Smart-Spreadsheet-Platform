@@ -21,7 +21,6 @@ class PinScreen extends ConsumerStatefulWidget {
 class _PinScreenState extends ConsumerState<PinScreen> {
   final List<String> _digits = [];
   String? _error;
-  bool _success = false;
 
   void _onDigitTap(String digit) {
     if (_digits.length >= AppConstants.pinLength) return;

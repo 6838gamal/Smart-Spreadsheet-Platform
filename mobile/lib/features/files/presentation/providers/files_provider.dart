@@ -7,7 +7,6 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../data/datasources/files_remote_datasource.dart';
 import '../../domain/entities/file_entity.dart';
-import '../../data/models/file_model.dart';
 
 part 'files_provider.freezed.dart';
 

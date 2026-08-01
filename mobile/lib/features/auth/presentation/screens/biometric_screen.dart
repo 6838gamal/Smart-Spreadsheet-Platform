@@ -115,7 +115,8 @@ class _BiometricScreenState extends ConsumerState<BiometricScreen> {
               TextButton(
                 onPressed: () async {
                   await ref.read(authStateProvider.notifier).logout();
-                  if (mounted) context.go(AppRoutes.login);
+                  // ignore: use_build_context_synchronously
+                  context.go(AppRoutes.login);
                 },
                 child: const Text('تسجيل الخروج'),
               ),

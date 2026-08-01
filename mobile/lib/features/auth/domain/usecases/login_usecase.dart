@@ -13,11 +13,11 @@ class LoginUseCase {
 
   Future<Either<Failure, UserEntity>> call(LoginParams params) async {
     if (params.email.isEmpty || !params.email.contains('@')) {
-      return Left(
-          const Failure.auth(message: 'يرجى إدخال بريد إلكتروني صحيح'));
+      return const Left(
+          Failure.auth(message: 'يرجى إدخال بريد إلكتروني صحيح'));
     }
     if (params.password.length < 6) {
-      return Left(const Failure.auth(
+      return const Left(Failure.auth(
           message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'));
     }
     return _repository.login(

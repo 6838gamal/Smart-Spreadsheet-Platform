@@ -16,9 +16,8 @@ final dioClientProvider = Provider<DioClient>((ref) {
 
 class DioClient {
   late final Dio _dio;
-  final Ref _ref;
 
-  DioClient(this._ref) {
+  DioClient(Ref _) {
     final baseUrl = HiveStorage.get<String>(StorageKeys.apiBaseUrl) ??
         AppConstants.defaultApiBaseUrl;
 
@@ -31,7 +30,7 @@ class DioClient {
     ));
 
     _dio.interceptors.addAll([
-      _AuthInterceptor(_ref),
+      _AuthInterceptor(),
       _ErrorInterceptor(),
       LogInterceptor(
         requestBody: false,
@@ -89,8 +88,7 @@ class DioClient {
 // ── Auth interceptor ──────────────────────────────────────────────────────────
 
 class _AuthInterceptor extends Interceptor {
-  final Ref _ref;
-  _AuthInterceptor(this._ref);
+  _AuthInterceptor();
 
   @override
   Future<void> onRequest(
@@ -118,7 +116,7 @@ class _ErrorInterceptor extends Interceptor {
         err.type == DioExceptionType.receiveTimeout ||
         err.type == DioExceptionType.sendTimeout ||
         err.type == DioExceptionType.connectionError) {
-      throw NetworkException(
+      throw const NetworkException(
           message: 'No internet connection or server unreachable');
     }
 

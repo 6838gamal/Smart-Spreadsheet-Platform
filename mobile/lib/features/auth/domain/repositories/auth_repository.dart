@@ -4,7 +4,7 @@ import '../../../../core/error/failures.dart';
 import '../entities/user_entity.dart';
 
 /// Abstract contract — the data layer implements this, the domain uses it.
-/// Returning Either<Failure, T> forces callers to handle errors explicitly.
+/// Returning `Either<Failure, T>` forces callers to handle errors explicitly.
 abstract class AuthRepository {
   Future<Either<Failure, UserEntity>> login({
     required String email,

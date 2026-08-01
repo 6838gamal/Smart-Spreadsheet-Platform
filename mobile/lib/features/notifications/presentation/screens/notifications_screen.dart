@@ -111,18 +111,18 @@ class _NotificationTile extends ConsumerWidget {
           side: BorderSide(
             color: notification.isRead
                 ? cs.outlineVariant
-                : cs.primary.withOpacity(0.3),
+                : cs.primary.withValues(alpha: 0.3),
             width: notification.isRead ? 0.5 : 1.5,
           ),
         ),
         tileColor: notification.isRead
             ? null
-            : cs.primaryContainer.withOpacity(0.2),
+            : cs.primaryContainer.withValues(alpha: 0.2),
         leading: Container(
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: _iconColor(cs).withOpacity(0.15),
+            color: _iconColor(cs).withValues(alpha: 0.15),
             shape: BoxShape.circle,
           ),
           child: Icon(_icon, color: _iconColor(cs), size: 22),

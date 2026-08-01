@@ -11,20 +11,20 @@ class RegisterUseCase {
 
   Future<Either<Failure, UserEntity>> call(RegisterParams params) async {
     if (params.username.length < 3) {
-      return Left(const Failure.auth(
+      return const Left(Failure.auth(
           message: 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل'));
     }
     if (!params.email.contains('@')) {
-      return Left(
-          const Failure.auth(message: 'يرجى إدخال بريد إلكتروني صحيح'));
+      return const Left(
+          Failure.auth(message: 'يرجى إدخال بريد إلكتروني صحيح'));
     }
     if (params.password.length < 8) {
-      return Left(const Failure.auth(
+      return const Left(Failure.auth(
           message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل'));
     }
     if (params.password != params.confirmPassword) {
-      return Left(
-          const Failure.auth(message: 'كلمتا المرور غير متطابقتين'));
+      return const Left(
+          Failure.auth(message: 'كلمتا المرور غير متطابقتين'));
     }
     return _repository.register(
       email: params.email,

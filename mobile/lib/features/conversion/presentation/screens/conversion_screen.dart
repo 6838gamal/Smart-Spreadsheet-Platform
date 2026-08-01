@@ -53,7 +53,7 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
   Future<void> _startConversion() async {
     if (_selectedFilePath == null ||
         _selectedSourceFormat == null ||
-        _selectedTargetFormat == null) return;
+        _selectedTargetFormat == null) { return; }
 
     await ref.read(conversionProvider.notifier).convert(
           sourceFile: File(_selectedFilePath!),
@@ -143,7 +143,7 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
                   ),
                   borderRadius: BorderRadius.circular(16),
                   color: _selectedFilePath != null
-                      ? cs.primaryContainer.withOpacity(0.3)
+                      ? cs.primaryContainer.withValues(alpha: 0.3)
                       : null,
                 ),
                 child: Column(
@@ -192,7 +192,7 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.green),
                 ),

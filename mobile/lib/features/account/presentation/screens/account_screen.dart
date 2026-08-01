@@ -116,7 +116,7 @@ class AccountScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   LinearProgressIndicator(
                     value: 0.3,
-                    backgroundColor: cs.primary.withOpacity(0.2),
+                    backgroundColor: cs.primary.withValues(alpha: 0.2),
                     color: cs.primary,
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -142,7 +142,7 @@ class AccountScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // ── Preferences ──────────────────────────────────────────────────
-          _SectionHeader('التفضيلات'),
+          const _SectionHeader('التفضيلات'),
 
           ListTile(
             leading: const Icon(Icons.language_rounded),
@@ -187,7 +187,7 @@ class AccountScreen extends ConsumerWidget {
 
           // ── Security ──────────────────────────────────────────────────────
           const SizedBox(height: 8),
-          _SectionHeader('الأمان'),
+          const _SectionHeader('الأمان'),
 
           ListTile(
             leading: const Icon(Icons.fingerprint_rounded),
@@ -216,7 +216,7 @@ class AccountScreen extends ConsumerWidget {
 
           // ── Storage ───────────────────────────────────────────────────────
           const SizedBox(height: 8),
-          _SectionHeader('التخزين'),
+          const _SectionHeader('التخزين'),
 
           ListTile(
             leading: const Icon(Icons.cleaning_services_rounded),
