@@ -3,122 +3,73 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
 import '../providers/auth_provider.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
+class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    final success = await ref.read(authStateProvider.notifier).login(
-          _emailCtrl.text.trim(),
-          _passwordCtrl.text,
-        );
-    if (success && mounted) context.go(AppRoutes.home);
-  }
-
-  Future<void> _signInWithGoogle() async {
-    final success =
-        await ref.read(authStateProvider.notifier).loginWithGoogle();
-    if (success && mounted) context.go(AppRoutes.home);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final auth = ref.watch(authStateProvider);
     final isLoading = auth.isLoading;
     final error = auth.maybeMap(error: (e) => e.message, orElse: () => null);
 
+    // No Google Client ID configured
+    final clientIdMissing = AppConstants.googleClientId.isEmpty;
+
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Form(
-            key: _formKey,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 24),
-
-                // Logo
+                // ── Logo ───────────────────────────────────────────────────
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 90,
+                  height: 90,
                   decoration: BoxDecoration(
                     color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(24),
                   ),
                   child: Icon(Icons.table_chart_rounded,
-                      size: 44, color: cs.onPrimaryContainer),
-                ).animate().scale(duration: 500.ms, curve: Curves.elasticOut),
+                      size: 50, color: cs.onPrimaryContainer),
+                )
+                    .animate()
+                    .scale(duration: 500.ms, curve: Curves.elasticOut),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                Text('تسجيل الدخول',
-                    style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 8),
                 Text(
-                  'مرحباً بعودتك',
+                  'Smart Spreadsheet',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ).animate(delay: 200.ms).fadeIn(),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'منصة إدارة ومعالجة البيانات الاحترافية',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
                       ?.copyWith(color: cs.onSurfaceVariant),
-                ),
+                ).animate(delay: 300.ms).fadeIn(),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 48),
 
-                // ── Google Sign-In button ─────────────────────────────────────
-                _GoogleSignInButton(
-                  isLoading: isLoading,
-                  onPressed: _signInWithGoogle,
-                ).animate().fadeIn(delay: 100.ms),
-
-                const SizedBox(height: 20),
-
-                // ── Divider ───────────────────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: cs.outlineVariant)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'أو',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: cs.outlineVariant)),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // ── Error banner ──────────────────────────────────────────────
-                if (error != null) ...[
+                // ── Error banner ───────────────────────────────────────────
+                if (error != null)
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: cs.errorContainer,
                       borderRadius: BorderRadius.circular(12),
@@ -127,91 +78,85 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         Icon(Icons.error_outline,
                             color: cs.onErrorContainer, size: 18),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(error,
-                              style: TextStyle(color: cs.onErrorContainer)),
+                              style:
+                                  TextStyle(color: cs.onErrorContainer)),
                         ),
                       ],
                     ),
-                  ).animate().shakeX(duration: 400.ms),
-                  const SizedBox(height: 16),
-                ],
+                  ).animate().fadeIn().slideY(begin: -0.2),
 
-                // ── Email field ───────────────────────────────────────────────
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  textDirection: TextDirection.ltr,
-                  decoration: const InputDecoration(
-                    labelText: 'البريد الإلكتروني',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  validator: (v) =>
-                      v == null || !v.contains('@') ? 'بريد إلكتروني غير صحيح' : null,
-                ),
+                // ── No Client ID warning ───────────────────────────────────
+                if (clientIdMissing)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded,
+                            color: cs.onTertiaryContainer, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'GOOGLE_CLIENT_ID غير مضبوط.\nشغّل التطبيق مع:\n--dart-define=GOOGLE_CLIENT_ID=...',
+                            style: TextStyle(
+                                color: cs.onTertiaryContainer,
+                                fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).animate().fadeIn(),
 
-                const SizedBox(height: 16),
-
-                // ── Password field ────────────────────────────────────────────
-                TextFormField(
-                  controller: _passwordCtrl,
-                  obscureText: _obscurePassword,
-                  textDirection: TextDirection.ltr,
-                  decoration: InputDecoration(
-                    labelText: 'كلمة المرور',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined),
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
+                // ── Google Sign-In button ──────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: (isLoading || clientIdMissing)
+                        ? null
+                        : () async {
+                            final ok = await ref
+                                .read(authStateProvider.notifier)
+                                .loginWithGoogle();
+                            if (ok && context.mounted) {
+                              context.go(AppRoutes.home);
+                            }
+                          },
+                    icon: isLoading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.onPrimary,
+                            ),
+                          )
+                        : const _GoogleIcon(),
+                    label: Text(
+                      isLoading ? 'جارٍ تسجيل الدخول...' : 'تسجيل الدخول عبر Google',
+                      style: const TextStyle(fontSize: 15),
                     ),
                   ),
-                  validator: (v) =>
-                      v == null || v.length < 6 ? 'كلمة المرور قصيرة جداً' : null,
-                ),
+                ).animate(delay: 400.ms).fadeIn().slideY(begin: 0.2),
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 40),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () {}, // TODO: forgot password
-                    child: const Text('نسيت كلمة المرور؟'),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // ── Login button ──────────────────────────────────────────────
-                FilledButton(
-                  onPressed: isLoading ? null : _submit,
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.5, color: Colors.white),
-                        )
-                      : const Text('تسجيل الدخول'),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ── Register link ─────────────────────────────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('ليس لديك حساب؟',
-                        style: Theme.of(context).textTheme.bodyMedium),
-                    TextButton(
-                      onPressed: () => context.go(AppRoutes.register),
-                      child: const Text('إنشاء حساب'),
-                    ),
-                  ],
-                ),
+                Text(
+                  'بتسجيل دخولك توافق على سياسة الخصوصية وشروط الاستخدام',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: cs.outline),
+                ).animate(delay: 500.ms).fadeIn(),
               ],
             ),
           ),
@@ -221,120 +166,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// ── Google Sign-In button widget ──────────────────────────────────────────────
+// ── Google coloured "G" icon ──────────────────────────────────────────────────
 
-class _GoogleSignInButton extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onPressed;
-
-  const _GoogleSignInButton({
-    required this.isLoading,
-    required this.onPressed,
-  });
+class _GoogleIcon extends StatelessWidget {
+  const _GoogleIcon();
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton(
-        onPressed: isLoading ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: cs.outline),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: isLoading
-            ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: cs.primary),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _GoogleLogo(),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'تسجيل الدخول عبر Google',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                  ),
-                ],
-              ),
-      ),
-    );
+    return CustomPaint(size: const Size(20, 20), painter: _GooglePainter());
   }
 }
 
-class _GoogleLogo extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 22,
-      height: 22,
-      child: CustomPaint(painter: _GoogleLogoPainter()),
-    );
-  }
-}
-
-class _GoogleLogoPainter extends CustomPainter {
+class _GooglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r = size.width / 2;
-
-    // Red (top-right arc)
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset(cx, cy), radius: r),
-      -1.05, 1.57, false,
-      Paint()
-        ..color = const Color(0xFFEA4335)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-    // Blue (right → bottom arc)
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset(cx, cy), radius: r),
-      0.52, 1.57, false,
-      Paint()
-        ..color = const Color(0xFF4285F4)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-    // Yellow (bottom → left arc)
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset(cx, cy), radius: r),
-      2.09, 1.57, false,
-      Paint()
-        ..color = const Color(0xFFFBBC05)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-    // Green (left → top arc)
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset(cx, cy), radius: r),
-      3.66, 1.14, false,
-      Paint()
-        ..color = const Color(0xFF34A853)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-
-    // Horizontal bar of the "G"
-    canvas.drawLine(
-      Offset(cx, cy),
-      Offset(cx + r * 0.9, cy),
-      Paint()
-        ..color = const Color(0xFF4285F4)
-        ..strokeWidth = size.width * 0.17,
-    );
+    final cx = size.width / 2, cy = size.height / 2, r = size.width * 0.38;
+    for (final e in [
+      (-1.05, 1.57, const Color(0xFFEA4335)),
+      (0.52, 1.57, const Color(0xFF4285F4)),
+      (2.09, 1.57, const Color(0xFFFBBC05)),
+      (3.66, 1.14, const Color(0xFF34A853)),
+    ]) {
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: r),
+        e.$1, e.$2, false,
+        Paint()
+          ..color = e.$3
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.18,
+      );
+    }
+    canvas.drawLine(Offset(cx, cy), Offset(cx + r * 0.9, cy),
+        Paint()
+          ..color = const Color(0xFF4285F4)
+          ..strokeWidth = size.width * 0.17);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../domain/entities/user_entity.dart';
 
@@ -31,51 +32,52 @@ final authStateProvider =
   return AuthNotifier();
 });
 
-// ── Local admin credentials ───────────────────────────────────────────────────
-const _adminEmail = 'admin@spreadsheet.com';
-const _adminPassword = 'Spreadsheet123';
-
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(const AuthState.unauthenticated());
 
-  Future<bool> login(String email, String password) async {
+  /// Sign in with Google — the only supported login method.
+  Future<bool> loginWithGoogle() async {
     state = const AuthState.loading();
-    // Simulate a brief check
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (email.trim().toLowerCase() == _adminEmail &&
-        password == _adminPassword) {
+    try {
+      await GoogleSignIn.instance.signOut();
+      final account = await GoogleSignIn.instance.authenticate();
       state = AuthState.authenticated(
         user: UserEntity(
-          id: 1,
-          email: _adminEmail,
-          username: 'admin',
-          role: 'ADMIN',
+          id: 0,
+          email: account.email,
+          username: account.displayName ?? account.email.split('@').first,
+          role: 'USER',
           isActive: true,
+          avatarUrl: account.photoUrl,
           language: 'ar',
           theme: 'dark',
-          createdAt: DateTime(2024),
+          createdAt: DateTime.now(),
         ),
       );
       return true;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        state = const AuthState.unauthenticated();
+      } else {
+        state = AuthState.error(message: 'فشل تسجيل الدخول: ${e.description ?? e.code.name}');
+      }
+      return false;
+    } catch (e) {
+      state = AuthState.error(message: 'حدث خطأ غير متوقع');
+      return false;
     }
-
-    state = const AuthState.error(message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
-    return false;
   }
 
-  Future<bool> loginWithGoogle() async {
-    state = const AuthState.error(message: 'تسجيل الدخول عبر Google غير متاح حالياً');
-    return false;
-  }
-
-  Future<bool> register(
-      String email, String username, String password, String confirm) async {
-    state = const AuthState.error(message: 'التسجيل غير متاح في هذا الإصدار');
+  // Keep for compatibility with pin/biometric screens
+  Future<bool> login(String email, String password) async {
+    state = const AuthState.error(message: 'يُرجى تسجيل الدخول عبر Google');
     return false;
   }
 
   Future<void> logout() async {
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
     state = const AuthState.unauthenticated();
   }
 }

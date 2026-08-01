@@ -8,8 +8,13 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // ── API ─────────────────────────────────────────────────────────────────────
-  /// Override this at runtime (e.g. from env config) for staging/prod.
   static const String defaultApiBaseUrl = 'https://smart-spreadsheet.onrender.com/api/v1';
+
+  // ── Google Sign-In ──────────────────────────────────────────────────────────
+  /// Injected at build time via --dart-define=GOOGLE_CLIENT_ID=...
+  /// e.g. flutter run --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+  static const String googleClientId =
+      String.fromEnvironment('GOOGLE_CLIENT_ID');
 
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 60);
