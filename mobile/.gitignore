@@ -27,7 +27,6 @@ ios/Runner/GeneratedPluginRegistrant.*
 macos/Flutter/GeneratedPluginRegistrant.swift
 
 # Web
-lib/generated_plugin_registrant.dart
 
 # Environment / secrets
 .env
