@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'app.dart';
-import 'core/constants/app_constants.dart';
+import 'core/services/remote_config_service.dart';
 import 'core/storage/hive_storage.dart';
 
 Future<void> main() async {
@@ -25,13 +25,16 @@ Future<void> main() async {
   // Initialize Hive local database
   await HiveStorage.init();
 
-  // Initialize Google Sign-In with Client ID from --dart-define
+  // Fetch public config from backend (GOOGLE_CLIENT_ID etc.)
+  // Falls back to compile-time --dart-define values on failure.
+  await RemoteConfigService.fetch();
+
+  // Initialize Google Sign-In with the resolved client ID
   // Wrapped in try-catch — throws on platforms without google-services.json
   try {
+    final clientId = RemoteConfigService.googleClientId;
     await GoogleSignIn.instance.initialize(
-      clientId: AppConstants.googleClientId.isNotEmpty
-          ? AppConstants.googleClientId
-          : null,
+      clientId: clientId.isNotEmpty ? clientId : null,
     );
   } catch (_) {
     // Platform not configured yet — login screen will show an error on tap

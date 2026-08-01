@@ -53,6 +53,7 @@ from app.presentation.web import analytics as web_analytics
 from app.presentation.web import models_ui as web_models_ui
 from app.presentation.web import datasets as web_datasets
 
+from app.presentation.api.v1 import config as api_config
 from app.presentation.api.v1 import auth as api_auth
 from app.presentation.api.v1 import files as api_files
 from app.presentation.api.v1 import converter as api_converter
@@ -311,6 +312,7 @@ def create_app() -> FastAPI:
     app.include_router(api_analytics.router, prefix="/api/v1/analytics", tags=["api:analytics"])
     app.include_router(api_models.router, prefix="/api/v1/models", tags=["api:models"])
     app.include_router(api_datasets.router, prefix="/api/v1/datasets", tags=["api:datasets"])
+    app.include_router(api_config.router, tags=["api:config"])
     app.include_router(api_search.router, prefix="/api/v1/search", tags=["api:search"])
     app.include_router(api_hf.router, prefix="/api/v1/hf", tags=["api:hf"])
     app.include_router(api_websocket.router, tags=["api:websocket"])

@@ -3,8 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/services/remote_config_service.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerWidget {
@@ -17,8 +17,8 @@ class LoginScreen extends ConsumerWidget {
     final isLoading = auth.isLoading;
     final error = auth.maybeMap(error: (e) => e.message, orElse: () => null);
 
-    // No Google Client ID configured
-    final clientIdMissing = AppConstants.googleClientId.isEmpty;
+    // No Google Client ID configured (checked at runtime from backend)
+    final clientIdMissing = !RemoteConfigService.googleEnabled;
 
     return Scaffold(
       body: SafeArea(

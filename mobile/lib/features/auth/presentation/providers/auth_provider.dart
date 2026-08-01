@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../../../core/services/remote_config_service.dart';
 import '../../domain/entities/user_entity.dart';
 
 part 'auth_provider.freezed.dart';
@@ -37,6 +38,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Sign in with Google — the only supported login method.
   Future<bool> loginWithGoogle() async {
+    if (!RemoteConfigService.googleEnabled) {
+      state = const AuthState.error(
+          message: 'تسجيل الدخول عبر Google غير مفعّل — يرجى ضبط GOOGLE_CLIENT_ID');
+      return false;
+    }
     state = const AuthState.loading();
     try {
       await GoogleSignIn.instance.signOut();
