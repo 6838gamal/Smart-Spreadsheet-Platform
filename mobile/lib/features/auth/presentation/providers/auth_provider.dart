@@ -87,6 +87,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
+  Future<bool> loginWithGoogle() async {
+    state = const AuthState.loading();
+    final result =
+        await _ref.read(authRepositoryProvider).loginWithGoogle();
+    return result.fold(
+      (failure) {
+        state = AuthState.error(message: failure.userMessage);
+        return false;
+      },
+      (user) {
+        _cacheUserLocally(user);
+        state = AuthState.authenticated(user: user);
+        return true;
+      },
+    );
+  }
+
   Future<bool> login(String email, String password) async {
     state = const AuthState.loading();
     final result = await _ref

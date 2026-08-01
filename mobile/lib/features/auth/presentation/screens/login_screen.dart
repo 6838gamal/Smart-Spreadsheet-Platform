@@ -35,6 +35,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (success && mounted) context.go(AppRoutes.home);
   }
 
+  Future<void> _signInWithGoogle() async {
+    final success =
+        await ref.read(authStateProvider.notifier).loginWithGoogle();
+    if (success && mounted) context.go(AppRoutes.home);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -78,9 +84,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ?.copyWith(color: cs.onSurfaceVariant),
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
 
-                // Error banner
+                // ── Google Sign-In button ─────────────────────────────────────
+                _GoogleSignInButton(
+                  isLoading: isLoading,
+                  onPressed: _signInWithGoogle,
+                ).animate().fadeIn(delay: 100.ms),
+
+                const SizedBox(height: 20),
+
+                // ── Divider ───────────────────────────────────────────────────
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: cs.outlineVariant)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'أو',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: cs.outlineVariant)),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Error banner ──────────────────────────────────────────────
                 if (error != null) ...[
                   Container(
                     width: double.infinity,
@@ -104,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 16),
                 ],
 
-                // Email field
+                // ── Email field ───────────────────────────────────────────────
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
@@ -119,7 +153,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 16),
 
-                // Password field
+                // ── Password field ────────────────────────────────────────────
                 TextFormField(
                   controller: _passwordCtrl,
                   obscureText: _obscurePassword,
@@ -151,22 +185,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // Login button
+                // ── Login button ──────────────────────────────────────────────
                 FilledButton(
                   onPressed: isLoading ? null : _submit,
                   child: isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.5,
-                              color: Colors.white),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: Colors.white),
                         )
                       : const Text('تسجيل الدخول'),
                 ),
 
                 const SizedBox(height: 16),
 
-                // Register link
+                // ── Register link ─────────────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -185,4 +219,122 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
+}
+
+// ── Google Sign-In button widget ──────────────────────────────────────────────
+
+class _GoogleSignInButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  const _GoogleSignInButton({
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton(
+        onPressed: isLoading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: cs.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: isLoading
+            ? SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: cs.primary),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _GoogleLogo(),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'تسجيل الدخول عبر Google',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _GoogleLogo extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 22,
+      height: 22,
+      child: CustomPaint(painter: _GoogleLogoPainter()),
+    );
+  }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2;
+
+    // Red (top-right arc)
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      -1.05, 1.57, false,
+      Paint()
+        ..color = const Color(0xFFEA4335)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.18,
+    );
+    // Blue (right → bottom arc)
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      0.52, 1.57, false,
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.18,
+    );
+    // Yellow (bottom → left arc)
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      2.09, 1.57, false,
+      Paint()
+        ..color = const Color(0xFFFBBC05)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.18,
+    );
+    // Green (left → top arc)
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      3.66, 1.14, false,
+      Paint()
+        ..color = const Color(0xFF34A853)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.18,
+    );
+
+    // Horizontal bar of the "G"
+    canvas.drawLine(
+      Offset(cx, cy),
+      Offset(cx + r * 0.9, cy),
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..strokeWidth = size.width * 0.17,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
