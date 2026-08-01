@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
     # Database
     # Priority: POSTGRES_URL (explicit override) > DATABASE_URL (Replit-injected or default)
-    POSTGRES_URL: str = "postgresql://gamalalmaqtary:p89mb7i45Un9Yo9Qnbm8A2nq1ZapDiyQ@dpg-d9chrvvavr4c73aaan50-a.virginia-postgres.render.com/smart_spreadsheet_platform_db"
+    POSTGRES_URL: str = ""
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/app.db"
 
     @property
