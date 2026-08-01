@@ -1,11 +1,15 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/error/failures.dart';
+import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../providers/auth_provider.dart';
 
 enum PinMode { verify, set, change }
@@ -33,24 +37,20 @@ class _PinScreenState extends ConsumerState<PinScreen> {
     setState(() => _digits.removeLast());
   }
 
+  String _hash(String pin) => sha256.convert(utf8.encode(pin)).toString();
+
   Future<void> _verify() async {
     final pin = _digits.join();
-    final repo = ref.read(authRepositoryProvider);
 
     if (widget.mode == PinMode.verify) {
-      final result = await repo.verifyPin(pin);
-      result.fold(
-        (f) => _showError(f.userMessage),
-        (ok) {
-          if (ok) {
-            context.go(AppRoutes.home);
-          } else {
-            _showError('رمز PIN غير صحيح');
-          }
-        },
-      );
+      final stored = await SecureStorage.read(StorageKeys.pinHash);
+      if (stored == null || _hash(pin) != stored) {
+        _showError('رمز PIN غير صحيح');
+      } else if (mounted) {
+        context.go(AppRoutes.home);
+      }
     } else {
-      await repo.setPin(pin);
+      await SecureStorage.write(StorageKeys.pinHash, _hash(pin));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم حفظ رمز PIN بنجاح')),
@@ -73,12 +73,9 @@ class _PinScreenState extends ConsumerState<PinScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.mode == PinMode.verify
-            ? 'أدخل رمز PIN'
-            : 'تعيين رمز PIN'),
-        leading: widget.mode != PinMode.verify
-            ? const BackButton()
-            : null,
+        title: Text(
+            widget.mode == PinMode.verify ? 'أدخل رمز PIN' : 'تعيين رمز PIN'),
+        leading: widget.mode != PinMode.verify ? const BackButton() : null,
       ),
       body: SafeArea(
         child: Column(
@@ -108,8 +105,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
 
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!,
-                      style: TextStyle(color: cs.error))
+              Text(_error!, style: TextStyle(color: cs.error))
                   .animate()
                   .shakeX(duration: 400.ms),
             ],
@@ -131,16 +127,13 @@ class _PinScreenState extends ConsumerState<PinScreen> {
                     width: 80,
                     height: 72,
                     child: TextButton(
-                      style: TextButton.styleFrom(
-                        shape: const CircleBorder(),
-                      ),
-                      onPressed: d == '⌫'
-                          ? _onBackspace
-                          : () => _onDigitTap(d),
-                      child: Text(
-                        d,
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
+                      style:
+                          TextButton.styleFrom(shape: const CircleBorder()),
+                      onPressed:
+                          d == '⌫' ? _onBackspace : () => _onDigitTap(d),
+                      child: Text(d,
+                          style:
+                              Theme.of(context).textTheme.headlineMedium),
                     ),
                   );
                 }).toList(),

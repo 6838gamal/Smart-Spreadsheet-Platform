@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:local_auth/local_auth.dart';
 
-import '../../../../core/error/failures.dart';
 import '../../../../core/router/app_router.dart';
 import '../providers/auth_provider.dart';
 
@@ -15,6 +15,7 @@ class BiometricScreen extends ConsumerStatefulWidget {
 }
 
 class _BiometricScreenState extends ConsumerState<BiometricScreen> {
+  final _localAuth = LocalAuthentication();
   bool _isAuthenticating = false;
   String? _error;
 
@@ -30,26 +31,25 @@ class _BiometricScreenState extends ConsumerState<BiometricScreen> {
       _error = null;
     });
 
-    final result = await ref
-        .read(authRepositoryProvider)
-        .authenticateWithBiometric();
-
-    result.fold(
-      (failure) => setState(() {
+    try {
+      final ok = await _localAuth.authenticate(
+        localizedReason: 'تحقق من هويتك للدخول',
+        options: const AuthenticationOptions(biometricOnly: true),
+      );
+      if (ok && mounted) {
+        context.go(AppRoutes.home);
+      } else {
+        setState(() {
+          _isAuthenticating = false;
+          _error = 'فشل التحقق، حاول مجدداً';
+        });
+      }
+    } catch (e) {
+      setState(() {
         _isAuthenticating = false;
-        _error = failure.userMessage;
-      }),
-      (success) {
-        if (success && mounted) {
-          context.go(AppRoutes.home);
-        } else {
-          setState(() {
-            _isAuthenticating = false;
-            _error = 'فشل التحقق، حاول مجدداً';
-          });
-        }
-      },
-    );
+        _error = 'غير متاح على هذا الجهاز';
+      });
+    }
   }
 
   @override
@@ -63,11 +63,7 @@ class _BiometricScreenState extends ConsumerState<BiometricScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.fingerprint_rounded,
-                size: 96,
-                color: cs.primary,
-              )
+              Icon(Icons.fingerprint_rounded, size: 96, color: cs.primary)
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .scale(
                       begin: const Offset(0.95, 0.95),
@@ -115,8 +111,7 @@ class _BiometricScreenState extends ConsumerState<BiometricScreen> {
               TextButton(
                 onPressed: () async {
                   await ref.read(authStateProvider.notifier).logout();
-                  // ignore: use_build_context_synchronously
-                  context.go(AppRoutes.login);
+                  if (context.mounted) context.go(AppRoutes.login);
                 },
                 child: const Text('تسجيل الخروج'),
               ),

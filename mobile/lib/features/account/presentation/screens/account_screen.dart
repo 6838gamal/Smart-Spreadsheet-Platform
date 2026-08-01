@@ -232,6 +232,18 @@ class AccountScreen extends ConsumerWidget {
             },
           ),
 
+          // ── Admin: user management ────────────────────────────────────────
+          if (user?.role == 'ADMIN') ...[
+            const Divider(height: 32),
+            ListTile(
+              leading: const Icon(Icons.manage_accounts_rounded),
+              title: const Text('إدارة المستخدمين'),
+              subtitle: const Text('عرض وتعديل حسابات المستخدمين'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push(AppRoutes.adminUsers),
+            ),
+          ],
+
           // ── Logout ────────────────────────────────────────────────────────
           const SizedBox(height: 16),
           OutlinedButton.icon(

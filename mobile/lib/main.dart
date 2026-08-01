@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-
 import 'app.dart';
 import 'core/storage/hive_storage.dart';
 
@@ -25,10 +23,8 @@ Future<void> main() async {
   // Initialize Hive local database
   await HiveStorage.init();
 
-  // Initialize Google Sign-In (v7 requires one-time init before any call)
-  // Client ID is read from google-services.json (Android) / GoogleService-Info.plist (iOS).
-  // For web, pass clientId explicitly via --dart-define=GOOGLE_CLIENT_ID=...
-  await GoogleSignIn.instance.initialize();
+  // Google Sign-In init — skipped in local-only mode
+  // await GoogleSignIn.instance.initialize();
 
   runApp(
     // ProviderScope is the root of the Riverpod dependency graph.

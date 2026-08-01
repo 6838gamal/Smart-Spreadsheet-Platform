@@ -19,21 +19,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigate();
+    _startSplash();
   }
 
-  Future<void> _navigate() async {
+  Future<void> _startSplash() async {
     // Minimum splash duration for brand visibility
     await Future.delayed(const Duration(milliseconds: 1800));
     if (!mounted) return;
+    _doNavigate(ref.read(authStateProvider));
+  }
 
-    final authState = ref.read(authStateProvider);
-
+  Future<void> _doNavigate(AuthState authState) async {
+    if (!mounted) return;
     authState.when(
-      initial: () => _navigate(), // still loading
-      loading: () => _navigate(),
+      initial: () => context.go(AppRoutes.login),
+      loading: () => context.go(AppRoutes.login),
       authenticated: (_) async {
-        // Check if biometric is enabled
         final biometricEnabled =
             await SecureStorage.read(StorageKeys.biometricEnabled);
         if (biometricEnabled == 'true' && mounted) {
@@ -57,7 +58,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // App icon with scale animation
             Container(
               width: 100,
               height: 100,
@@ -81,7 +81,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
             const SizedBox(height: 24),
 
-            // App name
             Text(
               'Smart Spreadsheet',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -108,7 +107,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
             const SizedBox(height: 64),
 
-            // Loading indicator
             SizedBox(
               width: 32,
               height: 32,

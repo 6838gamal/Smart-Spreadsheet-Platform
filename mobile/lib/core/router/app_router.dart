@@ -15,6 +15,7 @@ import '../../features/files/presentation/screens/files_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/account/presentation/screens/account_screen.dart';
+import '../../features/admin/presentation/screens/admin_users_screen.dart';
 import '../../features/search/presentation/screens/search_screen.dart';
 import '../../features/splash/presentation/screens/splash_screen.dart';
 import '../../shared/widgets/app_shell.dart';
@@ -34,6 +35,7 @@ class AppRoutes {
   static const account = '/account';
   static const search = '/search';
   static const notifications = '/notifications';
+  static const adminUsers = '/admin/users';
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -118,6 +120,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.notifications,
         builder: (_, __) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.adminUsers,
+        builder: (_, __) => const AdminUsersScreen(),
       ),
     ],
   );
