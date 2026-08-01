@@ -71,15 +71,21 @@ A production-ready Flutter mobile app lives in `mobile/`. It targets Android & i
 cd mobile
 flutter pub get
 flutter pub run build_runner build --delete-conflicting-outputs  # regenerate freezed/json files
-flutter run   # requires connected device or emulator
+
+# Run with Google Sign-In (GOOGLE_CLIENT_ID stored as a Replit Secret)
+flutter run --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
 ```
 
+### Google Sign-In setup
+- Login is Google-only — no email/password form.
+- `GOOGLE_CLIENT_ID` is stored as a Replit Secret and injected via `--dart-define` at build time.
+- In Dart it's read as: `const String.fromEnvironment('GOOGLE_CLIENT_ID')` in `AppConstants`.
+- For Android builds you still need `google-services.json` in `mobile/android/app/`.
+- For iOS builds you still need `GoogleService-Info.plist` in `mobile/ios/Runner/`.
+
 ### Backend URL
-Set `AppConstants.defaultApiBaseUrl` in `mobile/lib/core/constants/app_constants.dart` to your Replit dev domain, e.g.:
-```
-static const String defaultApiBaseUrl = 'https://<repl-name>.replit.dev/api/v1';
-```
-Or override at runtime by storing the URL in Hive (`StorageKeys.apiBaseUrl`).
+Hardcoded to `https://smart-spreadsheet.onrender.com/api/v1` in `AppConstants.defaultApiBaseUrl`.
+Override at runtime by storing a URL in Hive under `StorageKeys.apiBaseUrl`.
 
 ### Design doc
 Full design document: `docs/flutter-design.md`
