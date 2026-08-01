@@ -143,7 +143,11 @@ def _start_keepalive() -> None:
                 _dsn = _raw_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres+asyncpg://", "postgresql://")
 
                 async def _pg_ping():
-                    _conn = await _asyncpg.connect(_dsn, timeout=10, ssl="require")
+                    _use_ssl = "sslmode=disable" not in _raw_url
+                    _conn = await _asyncpg.connect(
+                        _dsn, timeout=10,
+                        ssl="require" if _use_ssl else False,
+                    )
                     await _conn.execute("SELECT 1")
                     await _conn.close()
 

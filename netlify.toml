@@ -1,5 +1,5 @@
 [build]
-  command     = "flutter build web"
+  command     = "flutter build web --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID"
   base        = "mobile"
   publish     = "build/web"
   environment = { SECRETS_SCAN_ENABLED = "false" }
