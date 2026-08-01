@@ -9,7 +9,7 @@ class AppConstants {
 
   // ── API ─────────────────────────────────────────────────────────────────────
   /// Override this at runtime (e.g. from env config) for staging/prod.
-  static const String defaultApiBaseUrl = 'https://your-replit-domain.replit.dev/api/v1';
+  static const String defaultApiBaseUrl = 'https://smart-spreadsheet.onrender.com/api/v1';
 
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 60);
