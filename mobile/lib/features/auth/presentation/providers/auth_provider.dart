@@ -33,6 +33,15 @@ final authStateProvider =
   return AuthNotifier();
 });
 
+// ── Google Sign-In helper (v6 constructor API) ────────────────────────────────
+GoogleSignIn _buildGoogleSignIn() {
+  final clientId = RemoteConfigService.googleClientId;
+  return GoogleSignIn(
+    clientId: clientId.isNotEmpty ? clientId : null,
+    scopes: ['email', 'profile'],
+  );
+}
+
 class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier() : super(const AuthState.unauthenticated());
 
@@ -45,41 +54,44 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     state = const AuthState.loading();
     try {
-      await GoogleSignIn.instance.signOut();
+      final googleSignIn = _buildGoogleSignIn();
+      // Sign out first so the account picker always appears
+      await googleSignIn.signOut();
 
       // 30-second timeout — prevents the spinner from hanging forever
-      final account = await GoogleSignIn.instance
-          .authenticate()
+      final googleUser = await googleSignIn
+          .signIn()
           .timeout(const Duration(seconds: 30));
+
+      if (googleUser == null) {
+        // User cancelled the picker
+        state = const AuthState.unauthenticated();
+        return false;
+      }
 
       state = AuthState.authenticated(
         user: UserEntity(
           id: 0,
-          email: account.email,
-          username: account.displayName ?? account.email.split('@').first,
+          email: googleUser.email,
+          username: googleUser.displayName ?? googleUser.email.split('@').first,
           role: 'USER',
           isActive: true,
-          avatarUrl: account.photoUrl,
+          avatarUrl: googleUser.photoUrl,
           language: 'ar',
           theme: 'dark',
           createdAt: DateTime.now(),
         ),
       );
       return true;
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        state = const AuthState.unauthenticated();
-      } else {
-        state = AuthState.error(
-            message: 'فشل تسجيل الدخول: ${e.description ?? e.code.name}');
-      }
-      return false;
     } catch (e) {
-      // Covers TimeoutException and any platform errors
+      final msg = e.toString();
       state = AuthState.error(
-          message: e.toString().contains('TimeoutException')
-              ? 'انتهت مهلة تسجيل الدخول، حاول مجدداً'
-              : 'حدث خطأ: تأكد من إعداد Google Sign-In على الجهاز');
+        message: msg.contains('TimeoutException')
+            ? 'انتهت مهلة تسجيل الدخول، حاول مجدداً'
+            : msg.contains('canceled') || msg.contains('cancel')
+                ? 'تم إلغاء تسجيل الدخول'
+                : 'فشل تسجيل الدخول: $msg',
+      );
       return false;
     }
   }
@@ -92,7 +104,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     try {
-      await GoogleSignIn.instance.signOut();
+      await _buildGoogleSignIn().signOut();
     } catch (_) {}
     state = const AuthState.unauthenticated();
   }
