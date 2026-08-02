@@ -102,10 +102,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const ConversionScreen(),
           ),
           GoRoute(
-            path: AppRoutes.aiChat,
-            builder: (_, __) => const AiChatScreen(),
-          ),
-          GoRoute(
             path: AppRoutes.account,
             builder: (_, __) => const AccountScreen(),
           ),
@@ -113,6 +109,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── Full-screen routes (no bottom nav) ─────────────────────────────────
+      GoRoute(
+        path: AppRoutes.aiChat,
+        builder: (_, __) => const AiChatScreen(),
+      ),
       GoRoute(
         path: AppRoutes.search,
         builder: (_, __) => const SearchScreen(),
