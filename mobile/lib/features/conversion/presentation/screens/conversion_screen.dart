@@ -75,6 +75,9 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
         _isPickingFile = false;
         _filePickError = result.errorMessage;
       });
+      if (result.needsSettings) {
+        await showPermissionSettingsDialog(context);
+      }
       return;
     }
 

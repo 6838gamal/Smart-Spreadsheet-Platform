@@ -225,10 +225,14 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
 
     if (!picked.success) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(picked.errorMessage ?? 'حدث خطأ أثناء إرفاق الملف'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ));
+        if (picked.needsSettings) {
+          await showPermissionSettingsDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(picked.errorMessage ?? 'حدث خطأ أثناء إرفاق الملف'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ));
+        }
       }
       return;
     }
