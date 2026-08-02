@@ -16,14 +16,26 @@ class ApiConstants {
   static const String fileUpload = '/files/upload';
 
   // ── Conversion ────────────────────────────────────────────────────────────────
-  static const String convert = '/conversion/convert';
-  static String conversionStatus(String jobId) => '/conversion/status/$jobId';
-  static String conversionDownload(String jobId) => '/conversion/download/$jobId';
+  static const String convert = '/converter/convert';
+  static String conversionStatus(String jobId) => '/converter/status/$jobId';
+  static String conversionDownload(String jobId) => '/converter/download/$jobId';
+  static const String conversionDownloadBase = '/converter/download';
+
+  // ── Admin ─────────────────────────────────────────────────────────────────────
+  static const String adminUsers = '/admin/users';
+  static String adminToggleUser(int id) => '/admin/users/$id/toggle-active';
+  static String adminDeleteUser(int id) => '/admin/users/$id';
 
   // ── Analysis / AI ─────────────────────────────────────────────────────────────
   static const String aiChat = '/ai/chat';
   static const String aiAnalyze = '/ai/analyze';
   static String fileAnalyses(int fileId) => '/ai/analyses/$fileId';
+
+  // ── Hugging Face ───────────────────────────────────────────────────────────────
+  static const String hfModels = '/hf/models';
+  static const String hfChat   = '/hf/chat';
+  static const String hfAsk    = '/hf/ask';
+  static const String hfSummarize = '/hf/summarize';
 
   // ── Search ────────────────────────────────────────────────────────────────────
   static const String search = '/search/';

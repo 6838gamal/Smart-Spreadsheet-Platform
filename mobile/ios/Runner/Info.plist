@@ -54,5 +54,9 @@
 	<string>يحتاج التطبيق للوصول إلى مكتبة الصور لاختيار الملفات</string>
 	<key>NSDocumentPickerUsageDescription</key>
 	<string>يحتاج التطبيق للوصول إلى ملفاتك لرفعها ومعالجتها</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>يحتاج التطبيق للوصول إلى الميكروفون لإدخال الرسائل الصوتية</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>يحتاج التطبيق للتعرف على الكلام لتحويل صوتك إلى نص</string>
 </dict>
 </plist>

@@ -12,7 +12,9 @@ class ChatMessageEntity with _$ChatMessageEntity {
     required String content,
     required DateTime timestamp,
     @Default(false) bool isStreaming,
+    @Default(false) bool isError,
     int? fileId,
     String? fileName,
+    String? modelName,
   }) = _ChatMessageEntity;
 }

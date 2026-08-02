@@ -4,7 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../providers/conversion_provider.dart';
 
 class ConversionScreen extends ConsumerStatefulWidget {
@@ -100,6 +102,15 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
           sourceFormat: _selectedSourceFormat!,
           targetFormat: _selectedTargetFormat!,
         );
+  }
+
+  Future<void> _launchDownload(String relativeUrl) async {
+    final baseUrl = AppConstants.defaultApiBaseUrl;
+    final fullUrl = '$baseUrl$relativeUrl';
+    final uri = Uri.parse(fullUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -210,10 +221,19 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
             const SizedBox(height: 32),
 
             // ── Conversion status ──────────────────────────────────────────
+            if (convState.status == ConversionStatus.uploading) ...[
+              _ConvertingCard(
+                progress: convState.progress,
+                label: 'جارٍ رفع الملف...',
+              ).animate().fadeIn(duration: 250.ms),
+              const SizedBox(height: 16),
+            ],
+
             if (convState.status == ConversionStatus.converting) ...[
-              _ConvertingCard(progress: convState.progress)
-                  .animate()
-                  .fadeIn(duration: 250.ms),
+              _ConvertingCard(
+                progress: convState.progress,
+                label: 'جارٍ التحويل...',
+              ).animate().fadeIn(duration: 250.ms),
               const SizedBox(height: 16),
             ],
 
@@ -222,7 +242,9 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
                 isSuccess: true,
                 message: 'تم التحويل بنجاح!',
                 action: TextButton.icon(
-                  onPressed: () {},
+                  onPressed: convState.downloadUrl != null
+                      ? () => _launchDownload(convState.downloadUrl!)
+                      : null,
                   icon: const Icon(Icons.download_rounded, size: 18),
                   label: const Text('تنزيل الملف'),
                 ),
@@ -253,7 +275,7 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
               isReady: _selectedFilePath != null &&
                   _selectedSourceFormat != null &&
                   _selectedTargetFormat != null,
-              isConverting:
+              isConverting: convState.status == ConversionStatus.uploading ||
                   convState.status == ConversionStatus.converting,
               onPressed: _startConversion,
             ).animate().fadeIn(delay: 100.ms, duration: 300.ms),
@@ -543,8 +565,9 @@ class _FilePicker extends StatelessWidget {
 // ── Converting card ───────────────────────────────────────────────────────────
 
 class _ConvertingCard extends StatelessWidget {
-  const _ConvertingCard({required this.progress});
+  const _ConvertingCard({required this.progress, this.label = 'جارٍ التحويل...'});
   final double progress;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -572,7 +595,7 @@ class _ConvertingCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                'جارٍ التحويل...',
+                label,
                 style: TextStyle(
                     color: cs.primary, fontWeight: FontWeight.w600),
               ),

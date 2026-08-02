@@ -214,6 +214,99 @@ async def summarize_file(
         return {"ok": False, "loading": False, "error": "حدث خطأ غير متوقع، يُرجى المحاولة مجدداً."}
 
 
+class ChatRequest(BaseModel):
+    message: str
+    file_id: int | None = None
+    model_id: int | None = None          # override auto-selected model
+
+
+@router.post("/chat")
+async def chat(
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Smart chat endpoint — auto-routes to summarization or Q&A based on message intent.
+    Falls back to a helpful message when no models are configured.
+    """
+    from app.infrastructure.database.models import UserRole
+
+    # ── Detect intent ────────────────────────────────────────────────────────
+    summarize_keywords = ["لخص", "ملخص", "خلاصة", "summarize", "summary", "tldr"]
+    is_summarize = any(kw in body.message.lower() for kw in summarize_keywords)
+    target_task = "summarization" if is_summarize else "question-answering"
+
+    # ── Select model ─────────────────────────────────────────────────────────
+    if body.model_id:
+        model = await db.get(AIModelRegistry, body.model_id)
+        if not model or not model.is_active:
+            return {"ok": False, "error": "النموذج المحدد غير متاح"}
+    else:
+        # Auto-select: prefer qa/text2text for questions, summarization for summaries
+        task_priority = (
+            ["summarization"]
+            if is_summarize
+            else ["question-answering", "text2text-generation"]
+        )
+        model = None
+        for task in task_priority:
+            result = await db.execute(
+                select(AIModelRegistry).where(
+                    AIModelRegistry.source == "huggingface",
+                    AIModelRegistry.task_type == task,
+                    AIModelRegistry.is_active == True,
+                    AIModelRegistry.visible_to_users == True,
+                ).order_by(AIModelRegistry.is_default.desc()).limit(1)
+            )
+            model = result.scalar_one_or_none()
+            if model:
+                break
+
+        if not model:
+            return {
+                "ok": False,
+                "error": "لا توجد نماذج HF مفعّلة. يُرجى تفعيل نموذج من لوحة الإدارة أو إضافة HUGGINGFACE_TOKEN.",
+            }
+
+    if not model.hf_model_id:
+        return {"ok": False, "error": "معرّف Hugging Face مفقود لهذا النموذج"}
+
+    # ── Resolve file context ──────────────────────────────────────────────────
+    context = ""
+    if body.file_id:
+        context = await _extract_file_text(body.file_id, current_user.id, db)
+
+    # ── Run inference ─────────────────────────────────────────────────────────
+    try:
+        result = await run_task(
+            task_type=model.task_type,
+            hf_model_id=model.hf_model_id,
+            question=body.message,
+            context=context,
+        )
+        answer = result.get("answer") or result.get("summary") or ""
+        return {
+            "ok": True,
+            "answer": answer,
+            "model_name": model.name,
+            "model_id": model.id,
+            "task_type": model.task_type,
+        }
+    except HFModelLoadingError as exc:
+        return {
+            "ok": False,
+            "loading": True,
+            "estimated_seconds": exc.estimated_seconds,
+            "error": str(exc),
+        }
+    except HFError as exc:
+        return {"ok": False, "loading": False, "error": str(exc)}
+    except Exception as exc:
+        logger.error("HF chat error: %s", exc)
+        return {"ok": False, "loading": False, "error": "حدث خطأ غير متوقع، يُرجى المحاولة مجدداً."}
+
+
 @router.get("/extract/{file_id}")
 async def extract_file_text(
     file_id: int,

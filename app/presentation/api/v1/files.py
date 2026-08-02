@@ -14,6 +14,39 @@ from app.application.files.dto import RenameFileDTO
 router = APIRouter()
 
 
+@router.get("/")
+async def list_files(
+    page: int = 1,
+    per_page: int = 20,
+    section: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.application.files.service import FileService
+    svc = FileService(db)
+    limit = per_page
+    offset = (page - 1) * per_page
+    files, total = await svc.list_files(
+        current_user.id,
+        limit=limit,
+        offset=offset,
+    )
+    items = [
+        {
+            "id": f.id,
+            "filename": f.name,
+            "original_filename": f.original_name,
+            "file_type": f.extension,
+            "file_size": f.size_bytes,
+            "status": f.status.value if hasattr(f.status, "value") else str(f.status),
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+            "is_favorite": getattr(f, "is_favorite", False),
+        }
+        for f in files
+    ]
+    return {"items": items, "total": total, "page": page, "per_page": per_page}
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),

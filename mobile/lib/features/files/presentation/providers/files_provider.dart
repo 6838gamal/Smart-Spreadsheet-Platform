@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import '../../../../core/network/dio_client.dart';
+import '../../data/datasources/files_remote_datasource.dart';
 import '../../domain/entities/file_entity.dart';
 
 part 'files_provider.freezed.dart';
@@ -25,23 +27,65 @@ class FilesState with _$FilesState {
 
 final filesProvider =
     StateNotifierProvider<FilesNotifier, FilesState>((ref) {
-  return FilesNotifier();
+  final client = ref.read(dioClientProvider);
+  final dataSource = FilesRemoteDataSourceImpl(client);
+  return FilesNotifier(dataSource);
 });
 
 class FilesNotifier extends StateNotifier<FilesState> {
-  FilesNotifier() : super(const FilesState());
+  final FilesRemoteDataSource _dataSource;
+
+  FilesNotifier(this._dataSource) : super(const FilesState()) {
+    loadFiles();
+  }
 
   Future<void> loadFiles({bool refresh = false}) async {
-    // Offline mode — no API calls, return empty list immediately
-    state = state.copyWith(isLoading: false, files: [], error: null);
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final page = refresh ? 1 : state.currentPage;
+      final section =
+          state.activeSection == 'all' ? null : state.activeSection;
+      final models = await _dataSource.getFiles(page: page, section: section);
+      state = state.copyWith(
+        isLoading: false,
+        files: models.map((m) => m.toEntity()).toList(),
+        currentPage: page,
+        error: null,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
   }
 
   Future<void> setSection(String section) async {
-    state = state.copyWith(activeSection: section);
+    state = state.copyWith(activeSection: section, currentPage: 1);
+    await loadFiles(refresh: true);
   }
 
   Future<bool> uploadFile(File file) async {
-    return false;
+    state = state.copyWith(isUploading: true, uploadProgress: 0);
+    try {
+      final model = await _dataSource.uploadFile(
+        file,
+        onProgress: (sent, total) {
+          if (total > 0) {
+            state = state.copyWith(uploadProgress: sent / total);
+          }
+        },
+      );
+      state = state.copyWith(
+        isUploading: false,
+        uploadProgress: 0,
+        files: [model.toEntity(), ...state.files],
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+          isUploading: false,
+          uploadProgress: 0,
+          error: e.toString());
+      return false;
+    }
   }
 
   void cancelUpload() {
@@ -49,10 +93,26 @@ class FilesNotifier extends StateNotifier<FilesState> {
   }
 
   Future<void> deleteFile(int id) async {
-    state = state.copyWith(
-      files: state.files.where((f) => f.id != id).toList(),
-    );
+    try {
+      await _dataSource.deleteFile(id);
+      state = state.copyWith(
+        files: state.files.where((f) => f.id != id).toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
   }
 
-  Future<void> toggleFavorite(int id) async {}
+  Future<void> toggleFavorite(int id) async {
+    try {
+      final updated = await _dataSource.toggleFavorite(id);
+      state = state.copyWith(
+        files: state.files
+            .map((f) => f.id == id ? updated.toEntity() : f)
+            .toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
 }
