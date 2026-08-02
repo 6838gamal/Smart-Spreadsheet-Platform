@@ -10,8 +10,6 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/storage/secure_storage.dart';
-import '../providers/auth_provider.dart';
-
 enum PinMode { verify, set, change }
 
 class PinScreen extends ConsumerStatefulWidget {

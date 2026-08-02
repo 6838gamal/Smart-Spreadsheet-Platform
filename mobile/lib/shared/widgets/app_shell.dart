@@ -171,7 +171,7 @@ class _AppDrawer extends StatelessWidget {
                       user!.email as String,
                       style: TextStyle(
                         fontSize: 12,
-                        color: cs.onPrimaryContainer.withOpacity(0.7),
+                        color: cs.onPrimaryContainer.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -333,7 +333,7 @@ class _DrawerItem extends StatelessWidget {
           ),
         ),
         selected: selected,
-        selectedTileColor: cs.primaryContainer.withOpacity(0.5),
+        selectedTileColor: cs.primaryContainer.withValues(alpha: 0.5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         onTap: onTap,
         dense: true,

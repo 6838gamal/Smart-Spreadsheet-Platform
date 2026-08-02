@@ -271,7 +271,7 @@ class _UserCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: user.isActive
-              ? cs.outlineVariant.withOpacity(0.4)
+              ? cs.outlineVariant.withValues(alpha: 0.4)
               : cs.errorContainer,
           width: 1,
         ),

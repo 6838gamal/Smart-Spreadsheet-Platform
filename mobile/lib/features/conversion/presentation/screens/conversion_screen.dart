@@ -96,7 +96,9 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
   Future<void> _startConversion() async {
     if (_selectedFilePath == null ||
         _selectedSourceFormat == null ||
-        _selectedTargetFormat == null) return;
+        _selectedTargetFormat == null) {
+      return;
+    }
     await ref.read(conversionProvider.notifier).convert(
           sourceFile: File(_selectedFilePath!),
           sourceFormat: _selectedSourceFormat!,
@@ -359,7 +361,7 @@ class _FormatChip extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       child: Material(
-        color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
+        color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(50),
         child: InkWell(
           onTap: onTap,
@@ -431,10 +433,10 @@ class _FilePicker extends StatelessWidget {
             ? cs.primary
             : cs.outlineVariant;
     final bgColor = hasError
-        ? cs.errorContainer.withOpacity(0.15)
+        ? cs.errorContainer.withValues(alpha: 0.15)
         : hasFile
-            ? cs.primaryContainer.withOpacity(0.2)
-            : cs.surfaceContainerHighest.withOpacity(0.3);
+            ? cs.primaryContainer.withValues(alpha: 0.2)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.3);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,9 +577,9 @@ class _ConvertingCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withOpacity(0.3),
+        color: cs.primaryContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withOpacity(0.3)),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,7 +617,7 @@ class _ConvertingCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 6,
-                backgroundColor: cs.primary.withOpacity(0.15),
+                backgroundColor: cs.primary.withValues(alpha: 0.15),
               ),
             ),
           ],
@@ -646,9 +648,9 @@ class _ResultCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.35)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [

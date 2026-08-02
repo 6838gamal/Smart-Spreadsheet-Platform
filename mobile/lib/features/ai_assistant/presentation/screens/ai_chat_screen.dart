@@ -80,8 +80,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
           TextPosition(offset: _messageCtrl.text.length),
         );
       },
-      localeId: 'ar_SA',
-      listenMode: ListenMode.confirmation,
+      listenOptions: SpeechListenOptions(
+        localeId: 'ar_SA',
+        listenMode: ListenMode.confirmation,
+      ),
     );
     ref.read(aiChatProvider.notifier).setListeningVoice(true);
   }

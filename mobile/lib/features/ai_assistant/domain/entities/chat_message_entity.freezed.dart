@@ -22,8 +22,10 @@ mixin _$ChatMessageEntity {
   String get content => throw _privateConstructorUsedError;
   DateTime get timestamp => throw _privateConstructorUsedError;
   bool get isStreaming => throw _privateConstructorUsedError;
+  bool get isError => throw _privateConstructorUsedError;
   int? get fileId => throw _privateConstructorUsedError;
   String? get fileName => throw _privateConstructorUsedError;
+  String? get modelName => throw _privateConstructorUsedError;
 
   /// Create a copy of ChatMessageEntity
   /// with the given fields replaced by the non-null parameter values.
@@ -45,8 +47,10 @@ abstract class $ChatMessageEntityCopyWith<$Res> {
     String content,
     DateTime timestamp,
     bool isStreaming,
+    bool isError,
     int? fileId,
     String? fileName,
+    String? modelName,
   });
 }
 
@@ -70,8 +74,10 @@ class _$ChatMessageEntityCopyWithImpl<$Res, $Val extends ChatMessageEntity>
     Object? content = null,
     Object? timestamp = null,
     Object? isStreaming = null,
+    Object? isError = null,
     Object? fileId = freezed,
     Object? fileName = freezed,
+    Object? modelName = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -95,6 +101,10 @@ class _$ChatMessageEntityCopyWithImpl<$Res, $Val extends ChatMessageEntity>
                 ? _value.isStreaming
                 : isStreaming // ignore: cast_nullable_to_non_nullable
                       as bool,
+            isError: null == isError
+                ? _value.isError
+                : isError // ignore: cast_nullable_to_non_nullable
+                      as bool,
             fileId: freezed == fileId
                 ? _value.fileId
                 : fileId // ignore: cast_nullable_to_non_nullable
@@ -102,6 +112,10 @@ class _$ChatMessageEntityCopyWithImpl<$Res, $Val extends ChatMessageEntity>
             fileName: freezed == fileName
                 ? _value.fileName
                 : fileName // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            modelName: freezed == modelName
+                ? _value.modelName
+                : modelName // ignore: cast_nullable_to_non_nullable
                       as String?,
           )
           as $Val,
@@ -124,8 +138,10 @@ abstract class _$$ChatMessageEntityImplCopyWith<$Res>
     String content,
     DateTime timestamp,
     bool isStreaming,
+    bool isError,
     int? fileId,
     String? fileName,
+    String? modelName,
   });
 }
 
@@ -148,8 +164,10 @@ class __$$ChatMessageEntityImplCopyWithImpl<$Res>
     Object? content = null,
     Object? timestamp = null,
     Object? isStreaming = null,
+    Object? isError = null,
     Object? fileId = freezed,
     Object? fileName = freezed,
+    Object? modelName = freezed,
   }) {
     return _then(
       _$ChatMessageEntityImpl(
@@ -173,6 +191,10 @@ class __$$ChatMessageEntityImplCopyWithImpl<$Res>
             ? _value.isStreaming
             : isStreaming // ignore: cast_nullable_to_non_nullable
                   as bool,
+        isError: null == isError
+            ? _value.isError
+            : isError // ignore: cast_nullable_to_non_nullable
+                  as bool,
         fileId: freezed == fileId
             ? _value.fileId
             : fileId // ignore: cast_nullable_to_non_nullable
@@ -180,6 +202,10 @@ class __$$ChatMessageEntityImplCopyWithImpl<$Res>
         fileName: freezed == fileName
             ? _value.fileName
             : fileName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        modelName: freezed == modelName
+            ? _value.modelName
+            : modelName // ignore: cast_nullable_to_non_nullable
                   as String?,
       ),
     );
@@ -195,8 +221,10 @@ class _$ChatMessageEntityImpl implements _ChatMessageEntity {
     required this.content,
     required this.timestamp,
     this.isStreaming = false,
+    this.isError = false,
     this.fileId,
     this.fileName,
+    this.modelName,
   });
 
   @override
@@ -211,13 +239,18 @@ class _$ChatMessageEntityImpl implements _ChatMessageEntity {
   @JsonKey()
   final bool isStreaming;
   @override
+  @JsonKey()
+  final bool isError;
+  @override
   final int? fileId;
   @override
   final String? fileName;
+  @override
+  final String? modelName;
 
   @override
   String toString() {
-    return 'ChatMessageEntity(id: $id, role: $role, content: $content, timestamp: $timestamp, isStreaming: $isStreaming, fileId: $fileId, fileName: $fileName)';
+    return 'ChatMessageEntity(id: $id, role: $role, content: $content, timestamp: $timestamp, isStreaming: $isStreaming, isError: $isError, fileId: $fileId, fileName: $fileName, modelName: $modelName)';
   }
 
   @override
@@ -232,9 +265,12 @@ class _$ChatMessageEntityImpl implements _ChatMessageEntity {
                 other.timestamp == timestamp) &&
             (identical(other.isStreaming, isStreaming) ||
                 other.isStreaming == isStreaming) &&
+            (identical(other.isError, isError) || other.isError == isError) &&
             (identical(other.fileId, fileId) || other.fileId == fileId) &&
             (identical(other.fileName, fileName) ||
-                other.fileName == fileName));
+                other.fileName == fileName) &&
+            (identical(other.modelName, modelName) ||
+                other.modelName == modelName));
   }
 
   @override
@@ -245,8 +281,10 @@ class _$ChatMessageEntityImpl implements _ChatMessageEntity {
     content,
     timestamp,
     isStreaming,
+    isError,
     fileId,
     fileName,
+    modelName,
   );
 
   /// Create a copy of ChatMessageEntity
@@ -268,8 +306,10 @@ abstract class _ChatMessageEntity implements ChatMessageEntity {
     required final String content,
     required final DateTime timestamp,
     final bool isStreaming,
+    final bool isError,
     final int? fileId,
     final String? fileName,
+    final String? modelName,
   }) = _$ChatMessageEntityImpl;
 
   @override
@@ -283,9 +323,13 @@ abstract class _ChatMessageEntity implements ChatMessageEntity {
   @override
   bool get isStreaming;
   @override
+  bool get isError;
+  @override
   int? get fileId;
   @override
   String? get fileName;
+  @override
+  String? get modelName;
 
   /// Create a copy of ChatMessageEntity
   /// with the given fields replaced by the non-null parameter values.
