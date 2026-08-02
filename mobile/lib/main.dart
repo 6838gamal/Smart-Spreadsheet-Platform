@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'app.dart';
 import 'core/services/remote_config_service.dart';
 import 'core/storage/hive_storage.dart';
@@ -28,17 +27,6 @@ Future<void> main() async {
   // Fetch public config from backend (GOOGLE_CLIENT_ID etc.)
   // Falls back to compile-time --dart-define values on failure.
   await RemoteConfigService.fetch();
-
-  // Initialize Google Sign-In with the resolved client ID
-  // Wrapped in try-catch — throws on platforms without google-services.json
-  try {
-    final clientId = RemoteConfigService.googleClientId;
-    await GoogleSignIn.instance.initialize(
-      clientId: clientId.isNotEmpty ? clientId : null,
-    );
-  } catch (_) {
-    // Platform not configured yet — login screen will show an error on tap
-  }
 
   runApp(
     // ProviderScope is the root of the Riverpod dependency graph.

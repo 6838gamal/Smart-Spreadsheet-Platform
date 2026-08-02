@@ -68,7 +68,7 @@ dependencies:
   logger: ^2.5.0
 
   cupertino_icons: ^1.0.8
-  google_sign_in: ^7.2.0
+  google_sign_in: ^6.2.1
 
 dependency_overrides:
   permission_handler_html: 0.1.4+1

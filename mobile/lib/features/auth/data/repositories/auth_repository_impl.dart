@@ -7,10 +7,22 @@ import 'dart:convert';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/services/remote_config_service.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_remote_datasource.dart';
+
+// ── Google Sign-In instance (v6 constructor API) ────────────────────────────
+// Client ID is resolved at call time from RemoteConfigService (runtime fetch
+// from backend) with a compile-time --dart-define=GOOGLE_CLIENT_ID=... fallback.
+GoogleSignIn _buildGoogleSignIn() {
+  final clientId = RemoteConfigService.googleClientId;
+  return GoogleSignIn(
+    clientId: clientId.isNotEmpty ? clientId : null,
+    scopes: ['email', 'profile'],
+  );
+}
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource remote;
@@ -21,25 +33,29 @@ class AuthRepositoryImpl implements AuthRepository {
     required this.localAuth,
   });
 
-  // ── Google Sign-In (v7 singleton API) ───────────────────────────────────────
+  // ── Google Sign-In (v6 constructor API) ─────────────────────────────────────
 
   @override
   Future<Either<Failure, UserEntity>> loginWithGoogle() async {
     try {
+      final googleSignIn = _buildGoogleSignIn();
       // Sign out first so the account picker always appears
-      await GoogleSignIn.instance.signOut();
-      final account = await GoogleSignIn.instance.authenticate();
-      final idToken = account.authentication.idToken;
-      if (idToken == null) {
-        return const Left(Failure.auth(message: 'تعذّر الحصول على رمز Google'));
-      }
-      final model = await remote.loginWithGoogleIdToken(idToken);
-      return Right(model.toEntity());
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
+      await googleSignIn.signOut();
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        // User cancelled the picker
         return const Left(Failure.auth(message: 'تم إلغاء تسجيل الدخول عبر Google'));
       }
-      return Left(Failure.auth(message: e.toString()));
+      final googleAuth = await googleUser.authentication;
+      // On web, prefer idToken; fall back to accessToken
+      final idToken     = googleAuth.idToken;
+      final accessToken = googleAuth.accessToken;
+      final token = idToken ?? accessToken;
+      if (token == null) {
+        return const Left(Failure.auth(message: 'تعذّر الحصول على رمز Google'));
+      }
+      final model = await remote.loginWithGoogleIdToken(token);
+      return Right(model.toEntity());
     } on AuthException catch (e) {
       return Left(Failure.auth(message: e.message));
     } on NetworkException catch (e) {
@@ -97,7 +113,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, void>> logout() async {
     try {
       await remote.logout();
-      await GoogleSignIn.instance.signOut();
+      await _buildGoogleSignIn().signOut();
       return const Right(null);
     } catch (_) {
       await SecureStorage.delete(StorageKeys.accessToken);
