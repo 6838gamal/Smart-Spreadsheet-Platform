@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/app_router.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../providers/connectivity_banner_provider.dart';
+import '../providers/scaffold_key_provider.dart';
 
 /// Persistent shell that wraps all main-tab screens.
 /// Provides bottom navigation, a side drawer, an AI FAB, and the offline banner.
@@ -38,7 +39,10 @@ class AppShell extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final user = ref.watch(authStateProvider).user;
 
+    final scaffoldKey = ref.watch(shellScaffoldKeyProvider);
+
     return Scaffold(
+      key: scaffoldKey,
       drawer: _AppDrawer(user: user),
       body: Column(
         children: [

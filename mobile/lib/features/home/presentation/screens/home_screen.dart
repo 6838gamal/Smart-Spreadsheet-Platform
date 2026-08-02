@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../files/presentation/providers/files_provider.dart';
+import '../../../../shared/providers/scaffold_key_provider.dart';
 import '../../../../shared/widgets/file_card.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -17,8 +18,15 @@ class HomeScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final user = auth.user;
 
+    final scaffoldKey = ref.watch(shellScaffoldKeyProvider);
+
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          tooltip: 'القائمة',
+          onPressed: () => scaffoldKey.currentState?.openDrawer(),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/file_picker_util.dart';
 import '../../../../shared/widgets/file_card.dart';
 import '../providers/files_provider.dart';
 
@@ -31,38 +31,39 @@ class _FilesScreenState extends ConsumerState<FilesScreen> {
   ];
 
   Future<void> _pickAndUpload() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
-        type: FileType.any,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final path = result.files.first.path;
-      if (path == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('تعذّر الوصول إلى الملف، حاول مجدداً'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ));
-        }
-        return;
-      }
-      final success =
-          await ref.read(filesProvider.notifier).uploadFile(File(path));
+    final picked = await pickFile();
+
+    if (picked.cancelled) return;
+
+    if (!picked.success) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(success ? 'تم رفع الملف بنجاح' : 'فشل رفع الملف'),
-          backgroundColor:
-              success ? Colors.green : Theme.of(context).colorScheme.error,
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('حدث خطأ أثناء اختيار الملف'),
+          content: Text(picked.errorMessage ?? 'حدث خطأ أثناء اختيار الملف'),
           backgroundColor: Theme.of(context).colorScheme.error,
         ));
       }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final path = picked.path;
+    if (path == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('تعذّر الوصول إلى مسار الملف'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
+      return;
+    }
+
+    final success =
+        await ref.read(filesProvider.notifier).uploadFile(File(path));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(success ? 'تم رفع الملف بنجاح' : 'فشل رفع الملف'),
+        backgroundColor:
+            success ? Colors.green : Theme.of(context).colorScheme.error,
+      ));
     }
   }
 

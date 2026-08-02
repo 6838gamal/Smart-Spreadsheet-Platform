@@ -1,11 +1,11 @@
 import 'dart:io' as dart_io;
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import '../../../../core/utils/file_picker_util.dart';
 import '../../../../shared/widgets/chat_bubble.dart';
 import '../providers/ai_chat_provider.dart';
 import '../../../files/presentation/providers/files_provider.dart';
@@ -219,36 +219,29 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen>
   }
 
   Future<void> _attachFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles();
-      if (result == null || result.files.isEmpty) return;
-      final picked = result.files.first;
-      if (picked.path == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('تعذّر الوصول إلى الملف'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ));
-        }
-        return;
-      }
-      final notifier = ref.read(filesProvider.notifier);
-      final success =
-          await notifier.uploadFile(dart_io.File(picked.path!));
-      if (!success || !mounted) return;
-      final files = ref.read(filesProvider).files;
-      final uploadedId = files.isNotEmpty ? files.first.id : 0;
-      ref
-          .read(aiChatProvider.notifier)
-          .setActiveFile(uploadedId, picked.name);
-    } catch (e) {
+    final picked = await pickFile();
+
+    if (picked.cancelled) return;
+
+    if (!picked.success) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('حدث خطأ أثناء إرفاق الملف'),
+          content: Text(picked.errorMessage ?? 'حدث خطأ أثناء إرفاق الملف'),
           backgroundColor: Theme.of(context).colorScheme.error,
         ));
       }
+      return;
     }
+
+    if (picked.path == null || !mounted) return;
+
+    final notifier = ref.read(filesProvider.notifier);
+    final success = await notifier.uploadFile(dart_io.File(picked.path!));
+    if (!success || !mounted) return;
+
+    final files = ref.read(filesProvider).files;
+    final uploadedId = files.isNotEmpty ? files.first.id : 0;
+    ref.read(aiChatProvider.notifier).setActiveFile(uploadedId, picked.name ?? '');
   }
 }
 

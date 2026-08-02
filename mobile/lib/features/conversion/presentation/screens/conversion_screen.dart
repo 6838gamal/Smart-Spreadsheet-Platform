@@ -1,12 +1,12 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/file_picker_util.dart';
 import '../providers/conversion_provider.dart';
 
 class ConversionScreen extends ConsumerStatefulWidget {
@@ -60,37 +60,30 @@ class _ConversionScreenState extends ConsumerState<ConversionScreen> {
       _isPickingFile = true;
       _filePickError = null;
     });
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
-        withData: false,
-      );
-      if (!mounted) return;
-      if (result == null || result.files.isEmpty) {
-        setState(() => _isPickingFile = false);
-        return;
-      }
-      final file = result.files.first;
-      if (file.path == null) {
-        setState(() {
-          _isPickingFile = false;
-          _filePickError = 'تعذّر الوصول إلى الملف، حاول مجدداً';
-        });
-        return;
-      }
-      setState(() {
-        _isPickingFile = false;
-        _filePickError = null;
-        _selectedFilePath = file.path;
-        _selectedFileName = file.name;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isPickingFile = false;
-        _filePickError = 'حدث خطأ أثناء اختيار الملف';
-      });
+
+    final result = await pickFile();
+
+    if (!mounted) return;
+
+    if (result.cancelled) {
+      setState(() => _isPickingFile = false);
+      return;
     }
+
+    if (!result.success) {
+      setState(() {
+        _isPickingFile = false;
+        _filePickError = result.errorMessage;
+      });
+      return;
+    }
+
+    setState(() {
+      _isPickingFile = false;
+      _filePickError = null;
+      _selectedFilePath = result.path;
+      _selectedFileName = result.name;
+    });
   }
 
   Future<void> _startConversion() async {
