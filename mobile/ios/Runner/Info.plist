@@ -45,5 +45,14 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- file_picker: allow browsing and sharing files -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يحتاج التطبيق للوصول إلى مكتبة الصور لاختيار الملفات</string>
+	<key>NSDocumentPickerUsageDescription</key>
+	<string>يحتاج التطبيق للوصول إلى ملفاتك لرفعها ومعالجتها</string>
 </dict>
 </plist>
