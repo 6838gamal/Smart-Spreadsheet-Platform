@@ -102,6 +102,59 @@ def _detect_app_url() -> str:
     return f"http://localhost:{settings.PORT}"
 
 
+def _build_allowed_origins() -> list[str]:
+    """Build the CORS allowed-origins list from the current hosting environment.
+
+    When allow_credentials=True, browsers reject the wildcard '*' origin.
+    This function collects every known public URL for this deployment so
+    CORS works correctly for both the web frontend and the Flutter mobile app.
+    """
+    origins: set[str] = set()
+
+    # Replit dev workspace (e.g. https://<id>.replit.dev)
+    dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
+    if dev_domain:
+        origins.add(f"https://{dev_domain}")
+
+    # Replit deployed domains (comma-separated list)
+    replit_domains = os.environ.get("REPLIT_DOMAINS", "").strip()
+    for domain in replit_domains.split(","):
+        domain = domain.strip()
+        if domain:
+            origins.add(f"https://{domain}")
+
+    # Render
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if render_url:
+        origins.add(render_url)
+
+    # Railway
+    for key in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_URL"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            origins.add(f"https://{val}" if not val.startswith("http") else val.rstrip("/"))
+
+    # Fly.io
+    fly_app = os.environ.get("FLY_APP_NAME", "").strip()
+    if fly_app:
+        origins.add(f"https://{fly_app}.fly.dev")
+
+    # Explicit override (APP_URL / PUBLIC_URL / BASE_URL)
+    for key in ("APP_URL", "PUBLIC_URL", "BASE_URL", "HOST_URL"):
+        val = os.environ.get(key, "").strip().rstrip("/")
+        if val:
+            origins.add(val)
+
+    # Always include localhost for local development
+    origins.add(f"http://localhost:{settings.PORT}")
+    origins.add("http://localhost:3000")   # common Flutter web dev port
+    origins.add("http://127.0.0.1:5000")
+
+    result = sorted(origins)
+    logger.info("CORS allowed origins: %s", result)
+    return result
+
+
 def _start_keepalive() -> None:
     """Thread target: ping /health + DB every 7 min to prevent free-tier sleep."""
     time.sleep(20)  # let uvicorn finish startup first
@@ -275,7 +328,7 @@ def create_app() -> FastAPI:
     app.add_middleware(NoCacheMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_build_allowed_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
