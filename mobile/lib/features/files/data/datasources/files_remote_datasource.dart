@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -10,6 +11,13 @@ abstract class FilesRemoteDataSource {
   Future<List<FileModel>> getFiles({int page = 1, String? section});
   Future<FileModel> uploadFile(
     File file, {
+    ProgressCallback? onProgress,
+    CancelToken? cancelToken,
+  });
+  /// Upload from raw bytes — used on Flutter Web where dart:io File is unavailable.
+  Future<FileModel> uploadFileBytes(
+    Uint8List bytes,
+    String filename, {
     ProgressCallback? onProgress,
     CancelToken? cancelToken,
   });
@@ -63,6 +71,27 @@ class FilesRemoteDataSourceImpl implements FilesRemoteDataSource {
         file.path,
         filename: file.path.split('/').last,
       ),
+    });
+
+    final response = await _client.postFormData(
+      ApiConstants.fileUpload,
+      formData,
+      onSendProgress: onProgress,
+      cancelToken: cancelToken,
+    );
+
+    return FileModel.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<FileModel> uploadFileBytes(
+    Uint8List bytes,
+    String filename, {
+    ProgressCallback? onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
     });
 
     final response = await _client.postFormData(

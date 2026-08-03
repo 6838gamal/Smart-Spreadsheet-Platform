@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -81,9 +82,33 @@ class FilesNotifier extends StateNotifier<FilesState> {
       return true;
     } catch (e) {
       state = state.copyWith(
-          isUploading: false,
-          uploadProgress: 0,
-          error: e.toString());
+          isUploading: false, uploadProgress: 0, error: e.toString());
+      return false;
+    }
+  }
+
+  /// Upload from raw bytes — used on Flutter Web where dart:io File is unavailable.
+  Future<bool> uploadFileBytes(Uint8List bytes, String filename) async {
+    state = state.copyWith(isUploading: true, uploadProgress: 0);
+    try {
+      final model = await _dataSource.uploadFileBytes(
+        bytes,
+        filename,
+        onProgress: (sent, total) {
+          if (total > 0) {
+            state = state.copyWith(uploadProgress: sent / total);
+          }
+        },
+      );
+      state = state.copyWith(
+        isUploading: false,
+        uploadProgress: 0,
+        files: [model.toEntity(), ...state.files],
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+          isUploading: false, uploadProgress: 0, error: e.toString());
       return false;
     }
   }
