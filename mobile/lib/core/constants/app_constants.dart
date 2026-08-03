@@ -8,7 +8,9 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // ── API ─────────────────────────────────────────────────────────────────────
-  static const String defaultApiBaseUrl = 'https://smart-spreadsheet.onrender.com/api/v1';
+  // API calls go through the Netlify proxy (/api/* → Render backend).
+  // This avoids CORS entirely since the browser sees one origin only.
+  static const String defaultApiBaseUrl = 'https://spreadsheet-mob1.netlify.app/api/v1';
 
   // ── Google Sign-In ──────────────────────────────────────────────────────────
   /// Injected at build time via --dart-define=GOOGLE_CLIENT_ID=...

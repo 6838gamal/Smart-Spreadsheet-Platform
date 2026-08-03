@@ -4,6 +4,14 @@
   publish     = "build/web"
   environment = { SECRETS_SCAN_ENABLED = "false" }
 
+# Proxy all API calls to the Render backend — same origin, no CORS needed.
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://smart-spreadsheet.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
+# Flutter web SPA fallback (must come after the proxy rule)
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
