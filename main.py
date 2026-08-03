@@ -154,6 +154,9 @@ def _build_allowed_origins() -> list[str]:
         if val:
             origins.add(val)
 
+    # Known frontend deployments
+    origins.add("https://spreadsheet-mob1.netlify.app")
+
     # Always include localhost for local development
     origins.add(f"http://localhost:{settings.PORT}")
     origins.add("http://localhost:3000")   # common Flutter web dev port
