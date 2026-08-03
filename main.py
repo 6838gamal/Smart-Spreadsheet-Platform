@@ -139,6 +139,15 @@ def _build_allowed_origins() -> list[str]:
     if fly_app:
         origins.add(f"https://{fly_app}.fly.dev")
 
+    # Explicit extra origins — comma-separated list (e.g. Netlify / Vercel frontends)
+    # Set ALLOWED_ORIGINS="https://spreadsheet-mob1.netlify.app,https://app.example.com"
+    # in your Render / Railway / Fly.io environment variables.
+    extra = os.environ.get("ALLOWED_ORIGINS", "").strip()
+    for origin in extra.split(","):
+        origin = origin.strip().rstrip("/")
+        if origin:
+            origins.add(origin)
+
     # Explicit override (APP_URL / PUBLIC_URL / BASE_URL)
     for key in ("APP_URL", "PUBLIC_URL", "BASE_URL", "HOST_URL"):
         val = os.environ.get(key, "").strip().rstrip("/")

@@ -1,0 +1,95 @@
+[DIO] Content-Type:
+
+main.dart.js:34243
+
+application/json
+
+[DIO]
+
+main.dart.js:34243
+
+Access to XMLHttpRequest at 'https://smart-/#/home: 1 spreadsheet.onrender.com/api/v1/files/?page=1&per_pag e=20' from origin 'https://spreadsheet-mob1.netlify.a pp' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+
+smart-spreadsheet.on...age=1&per_page=20:1
+
+Failed
+
+to load resource: net::ERR_FAILED
+
+main.dart.js:34243
+
+[DIO] *** DioException ***:
+
+main.dart.js:34243
+
+[DIO] uri: https://smart-spreadshe et.onrender.com/api/v1/files/?page=1&per_page=20 z = 20
+
+[DIO] DioException [unknown]: null
+
+main.dart.js:34243
+
+Error: NetworkException(null): No internet connection or server unreachable
+
+[DIO]
+
+main.dart.js:34243
+
+[Ticker Trends] Tab navigation
+
+trendingInject.js:2
+
+complete: https://spreadsheet-mob1.netlify.app/#/conv ert
+
+2 t
+
+Object 123123123
+
+content-test.js:1
+
+Object 123123123
+
+content-script.js:30
+
+[TickerTrends] Page hidden,
+
+content-script.js:30
+
+ending current visit tracking
+
+trendingInject.js:2
+
+[Ticker Trends] Ending visit for h trendingInject.js:2 ttps://spreadsheet-mob1.netlify.app/#/convert in tab undefined
+
+[Ticker Trends] Updating visit
+
+trendingInject.js:2
+
+duration for ID 1757928: 10515ms (https://spreadsheet
+
+-mob1.netlify.app/#/convert)
+
+trendingInject.js:2
+
+[TickerTrends] Updating visit duration for ID 1757928: 10515ms
+
+[Ticker Trends] Successfully
+
+updated visit duration
+
+trendingInject.js:2
+
+[TickerTrends] Duration update succeeded for visit ID 1757928
+
+trendingInject.js:2
+
+▲ DevTools failed to load source map: Could not load content for https://spreadsheet-mob1.netlify.app/flut ter.js.map: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+
+>
+
+Unchecked runtime.lastError: A listener /#/convert:1 indicated an asynchronous response by returning true, but the message channel closed before a response was received
+
+Unchecked runtime.lastError: A listener /#/convert:1 indicated an asynchronous response by returning true, but the message channel closed before a response was received
+
+Unchecked runtime.lastError: A listener /#/convert:1 indicated an asynchronous response by returning true, but the message channel closed before a response was received
+
+Unchecked runtime.lastError: A listener /#/convert:1 indicated an asynchronous response by returning true, but the message channel closed before a response was received
