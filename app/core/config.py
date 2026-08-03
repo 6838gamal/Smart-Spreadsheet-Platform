@@ -144,6 +144,13 @@ class Settings(BaseSettings):
     MAX_PREVIEW_ROWS: int = 1_000  # rows to show in preview
     STREAMING_THRESHOLD_MB: int = 50  # files above this use streaming
 
+    # ── External APIs ─────────────────────────────────────────────────────────
+    # Set to true to re-enable all third-party HTTP calls (Google OAuth,
+    # OpenAI, Hugging Face).  While false every outbound call returns a
+    # clear 503 / disabled error — the database and all local features
+    # continue to work normally.
+    EXTERNAL_APIS_ENABLED: bool = False
+
     # Google OAuth (for regular-user login)
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""

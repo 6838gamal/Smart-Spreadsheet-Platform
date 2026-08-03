@@ -176,6 +176,9 @@ async def google_callback(
         logger.warning("Google OAuth: invalid/expired state token received=%r", state)
         return RedirectResponse("/auth/login?error=state_mismatch", status_code=302)
 
+    if not settings.EXTERNAL_APIS_ENABLED:
+        return RedirectResponse("/auth/login?error=google_disabled", status_code=302)
+
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             # Exchange code → access token

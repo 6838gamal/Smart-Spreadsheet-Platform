@@ -27,6 +27,8 @@ def _headers() -> dict[str, str]:
 
 async def _post(model_id: str, payload: dict) -> Any:
     """POST to HF Inference API and return parsed JSON."""
+    if not settings.EXTERNAL_APIS_ENABLED:
+        raise HFError("ميزات الذكاء الاصطناعي معطّلة مؤقتاً. يُرجى المحاولة لاحقاً.")
     url = f"{HF_API_BASE}/{model_id}"
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(url, json=payload, headers=_headers())

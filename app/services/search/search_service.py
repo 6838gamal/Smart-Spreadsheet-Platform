@@ -317,6 +317,10 @@ class SearchService:
         model: str,
     ) -> AsyncIterator[str]:
         """Stream tokens from OpenAI Chat API."""
+        from app.core.config import settings as _cfg
+        if not _cfg.EXTERNAL_APIS_ENABLED:
+            yield f"data: {__import__('json').dumps({'type': 'error', 'text': 'ميزة الإجابة الذكية معطّلة مؤقتاً.'}, ensure_ascii=False)}\n\n"
+            return
         import httpx
 
         # Build context block (up to 4000 chars total)
