@@ -1,0 +1,251 @@
+block the window.closed cali.
+
+[TickerTrends] Page visible, updating visit tracking
+
+trendingInject.js:2
+
+[TickerTrends] Resumed tracking
+
+trendingInject.js:2
+
+for existing visit: https://spreadsheet-mob1.netlify.
+
+app/#/login
+
+[TickerTrends] Tab 1539188794 was closed
+
+trendingInject.js:2
+
+▲ The google_sign_in plugin
+
+main.dart.js:110720
+
+signIn method is deprecated on the web, and will be removed in Q2 2024. Please use 'renderButton instead. See: https://pub.dev/packages/google_sign_in _web#migrating-to-v011-and-v012-google-identity-servi ces
+
+User data updated successfully
+
+[TickerTrends] Page hidden, ending current visit tracking
+
+trendingInject.js:2
+
+trendingInject.js:2
+
+[TickerTrends] Ending visit for h ttps://spreadsheet-mobi.netlify.app/#/login undefined
+
+trendingInject.js:2 in tab
+
+[TickerTrends] Updating visit
+
+trendingInject.js:2
+
+duration for ID 1757967: 2209ms (https://spreadsheet-
+
+mob1.netlify.app/#/login)
+
+[TickerTrends] Updating visit duration for ID 1757967: 2209ms
+
+trendingInject.js:2
+
+[TickerTrends] Successfully
+
+trendingInject.js:2
+
+updated visit duration
+
+trendingInject.js:2
+
+[Ticker Trends] Duration update succeeded for visit ID 1757967
+
+Cross-Origin-Opener-Policy policy would client:138 block the window.closed call.
+
+Cross-Origin-Opener-Policy policy would client:138 block the window.closed call.
+
+Cross-Origin-Opener-Policy policy would
+
+client:138
+
+block the window.closed call.
+
+Cross-Origin-Opener-Policy policy would block the window.closed call.
+
+client:138
+
+[TickerTrends] Page visible, updating visit tracking
+
+trendingInject.js:2
+
+[TickerTrends] Resumed tracking
+
+trendingInject.js:2
+
+for existing visit: https://spreadsheet-mob1.netlify. app/#/login
+
+[TickerTrends] Tab 1539188796 was trendingInject.js:2
+
+closed [TickerTrends] Tab navigation
+
+trendingInject.js:2
+
+complete: https://spreadsheet-mob1.netlify.app/#/home 2 t
+
+content-test.js:1
+
+[DIO] *** Request ***
+
+main.dart.js:34243
+
+[DIO] uri: https://smart-spreadshe main.dart.js:34243 et.onrender.com/api/v1/files/?page=1&per_page=20
+
+[DIO] method: GET
+
+main.dart.js:34243
+
+[DIO] responseType:
+
+main.dart.js:34243
+
+ResponseType.json
+
+[DIO] followRedirects: true
+
+main.dart.js:34243
+
+[DIO] persistentConnection: true
+
+main.dart.js:34243
+
+[DIO] connectTimeout:
+
+main.dart.js:34243
+
+[DIO] sendTimeout: 0:02:00.000000
+
+main.dart.js:34243
+
+[DIO] receiveTimeout:
+
+main.dart.js:34243
+
+[DIO] transformTimeout: null
+
+main.dart.js:34243
+
+[DIO] receiveDataWhenStatusError: true
+
+main.dart.js:34243
+
+[DIO] extra: {}
+
+[DIO] headers:
+
+[DIO] Content-Type:
+
+application/json
+
+[DIO]
+
+main.dart.js:34243
+
+main.dart.js: 34243
+
+main.dart.js:34243
+
+main.dart.js:34243
+
+Access to XMLHttpRequest at 'https://smart-/#/home:1
+
+spreadsheet.onrender.com/api/v1/files/?page=1&per_pag e=20' from origin 'https://spreadsheet-mob1.netlify.a pp' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+
+Failed
+
+smart-spreadsheet.on...age=1&per_page=20:1
+
+to load resource: net::ERR_FAILED
+
+[DIO] *** DioException ***:
+
+main.dart.js:34243
+
+[DIO] uri: https://smart-spreadshe main.dart.js:34243
+
+et.onrender.com/api/v1/files/?page=1&per_page=20
+
+[DIO] DioException [unknown]: null
+
+main.dart.js:34243
+
+Error: NetworkException(null): No or server unreachable
+
+internet connection.
+
+[DIO]
+
+main.dart.js:34243
+
+User data updated successfully
+
+trendingInject.js:2
+
+[TickerTrends] Tab navigation.
+
+trendingInject.js:2
+
+complete: https://spreadsheet-mob1.netlify.app/#/conv ert
+
+2 t
+
+Object 123123123
+
+Object 123123123
+
+[Ticker Trends] Page hidden,
+
+ending current visit tracking
+
+content-test.js:1
+
+content-script.js:30
+
+content-script.js:30
+
+trendingInject.js:2
+
+undefined ttps://spreadsheet-mobl.netlify.app/#/convert in tab
+
+[TickerTrends] Updating visit
+
+[TickerTrends] Ending visit for h
+
+trendingInject.js:2
+
+trendingInject.js:2
+
+duration for ID 1757967: 10782ms ( -mob1.netlify.app/#/convert)
+
+https://spreadsheet
+
+[TickerTrends] Updating visit
+
+trendingInject.js:2
+
+duration for ID 1757967: 10782ms
+
+[Ticker Trends] Successfully
+
+trendingInject.js:2
+
+updated visit duration
+
+[Ticker Trends] Duration update
+
+trending Inject.js:2
+
+succeeded for visit ID 1757967
+
+▲ DevTools failed to load source map: Could not load content for https://spreadsheet-mob1.netlify.app/flut ter.js.map: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+
+>
+
+Console Issues X
+
+X

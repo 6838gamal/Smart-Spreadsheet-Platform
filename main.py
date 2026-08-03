@@ -240,6 +240,10 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
     Without this, pressing the browser Back button after logout shows the
     previous page from cache without hitting the server, bypassing auth.
     Static assets are excluded so they can still be cached normally.
+
+    Also sets Cross-Origin-Opener-Policy: unsafe-none on all HTML pages so
+    that the Google OAuth popup can communicate back with window.closed /
+    window.opener without being blocked by the browser's COOP enforcement.
     """
 
     _SKIP_PREFIXES = ("/static",)
@@ -255,6 +259,10 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
+            # Allow Google OAuth popup to read window.closed on the opener.
+            # Without this, COOP same-origin (injected by some hosting proxies)
+            # blocks the popup ↔ opener channel and breaks the sign-in flow.
+            response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
         return response
 
 
