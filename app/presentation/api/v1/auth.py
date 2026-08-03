@@ -45,10 +45,6 @@ async def google_mobile_login(
     The Flutter app obtains the ID token via google_sign_in, then posts it here.
     We verify it with Google's tokeninfo endpoint and log in / auto-register.
     """
-    from app.core.config import settings as _cfg
-    if not _cfg.EXTERNAL_APIS_ENABLED:
-        raise HTTPException(status_code=503, detail="تسجيل الدخول عبر Google معطّل مؤقتاً.")
-
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
