@@ -70,31 +70,51 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # Database
-    # Priority: POSTGRES_URL (explicit override) > DATABASE_URL (Replit-injected or default)
+    # Database — PostgreSQL only.
+    # Must be set via the DATABASE_URL environment variable (or POSTGRES_URL as alias).
+    # No SQLite fallback: the app will refuse to start if neither is provided.
     POSTGRES_URL: str = ""
-    DATABASE_URL: str = "sqlite+aiosqlite:///./data/app.db"
+    DATABASE_URL: str = ""
 
     @property
     def _raw_db_url(self) -> str:
-        """Return whichever database URL is active (POSTGRES_URL takes priority)."""
-        return self.POSTGRES_URL or self.DATABASE_URL
+        """Return the active PostgreSQL URL. POSTGRES_URL takes priority over DATABASE_URL.
+
+        Only postgresql:// and postgres:// schemes are accepted.
+        Raises RuntimeError on startup if the URL is missing or uses any other scheme.
+        """
+        url = (self.POSTGRES_URL or self.DATABASE_URL).strip()
+        if not url:
+            raise RuntimeError(
+                "DATABASE_URL is not set. "
+                "Add a PostgreSQL connection string to your environment variables. "
+                "Accepted formats: postgresql://user:pass@host:5432/dbname  "
+                "or postgres://user:pass@host:5432/dbname"
+            )
+        _lower = url.lower()
+        _pg_prefixes = ("postgresql://", "postgres://", "postgresql+asyncpg://", "postgres+asyncpg://")
+        if not any(_lower.startswith(p) for p in _pg_prefixes):
+            raise RuntimeError(
+                f"Unsupported database URL scheme. "
+                f"Only PostgreSQL is supported (postgresql:// or postgres://). "
+                f"Got: {url[:40]}..."
+            )
+        return url
 
     @property
     def async_database_url(self) -> str:
-        """Return the active DATABASE_URL normalised for SQLAlchemy async drivers."""
+        """Return the DATABASE_URL normalised for SQLAlchemy asyncpg driver."""
         from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
         url = self._raw_db_url
         # Rewrite postgresql:// / postgres:// to the asyncpg dialect
-        if url.startswith("postgresql://") or url.startswith("postgres://"):
-            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-            # asyncpg does not accept sslmode query param — strip it
-            parsed = urlparse(url)
-            params = parse_qs(parsed.query)
-            params.pop("sslmode", None)
-            clean_query = urlencode({k: v[0] for k, v in params.items()})
-            url = urlunparse(parsed._replace(query=clean_query))
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        # asyncpg does not accept sslmode query param — strip it
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        params.pop("sslmode", None)
+        clean_query = urlencode({k: v[0] for k, v in params.items()})
+        url = urlunparse(parsed._replace(query=clean_query))
         return url
 
     @property
@@ -102,16 +122,13 @@ class Settings(BaseSettings):
         """Whether to use SSL for the database connection.
 
         Rules:
-        - SQLite: never.
         - sslmode=disable: never (explicit opt-out).
-        - Any other PostgreSQL URL: yes (Render / Supabase / Railway all require it).
+        - All other PostgreSQL URLs: yes (Render / Supabase / Railway / Replit all support it).
         """
         url = self._raw_db_url
-        if "sqlite" in url:
-            return False
         if "sslmode=disable" in url:
             return False
-        return url.startswith("postgresql") or url.startswith("postgres")
+        return True
 
     # File storage
     UPLOAD_DIR: str = "uploads"

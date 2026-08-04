@@ -197,32 +197,24 @@ def _start_keepalive() -> None:
         try:
             from app.core.config import settings as _cfg
             _raw_url = _cfg._raw_db_url
-            if "sqlite" in _raw_url:
-                # SQLite: just check the file exists / is readable
-                import sqlite3 as _sqlite3
-                _db_path = _raw_url.split("///")[-1]
-                _c = _sqlite3.connect(_db_path, timeout=5)
-                _c.execute("SELECT 1")
-                _c.close()
-            else:
-                import asyncpg as _asyncpg
-                # Strip driver prefix for asyncpg's own DSN parser
-                _dsn = _raw_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres+asyncpg://", "postgresql://")
+            import asyncpg as _asyncpg
+            # Strip driver prefix for asyncpg's own DSN parser
+            _dsn = _raw_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres+asyncpg://", "postgresql://")
 
-                async def _pg_ping():
-                    _use_ssl = "sslmode=disable" not in _raw_url
-                    _conn = await _asyncpg.connect(
-                        _dsn, timeout=10,
-                        ssl="require" if _use_ssl else False,
-                    )
-                    await _conn.execute("SELECT 1")
-                    await _conn.close()
+            async def _pg_ping():
+                _use_ssl = "sslmode=disable" not in _raw_url
+                _conn = await _asyncpg.connect(
+                    _dsn, timeout=10,
+                    ssl="require" if _use_ssl else False,
+                )
+                await _conn.execute("SELECT 1")
+                await _conn.close()
 
-                _loop = asyncio.new_event_loop()
-                try:
-                    _loop.run_until_complete(_pg_ping())
-                finally:
-                    _loop.close()
+            _loop = asyncio.new_event_loop()
+            try:
+                _loop.run_until_complete(_pg_ping())
+            finally:
+                _loop.close()
             _keepalive_state["db_ok"] = True
             logger.debug("Keep-alive: DB OK")
         except Exception as exc:
@@ -294,30 +286,28 @@ async def lifespan(app: FastAPI):
 
     # ── Column migrations: add new columns to existing tables ─────────────────
     # SQLAlchemy's create_all only creates missing tables, not missing columns.
-    # We add them manually when the DB is Postgres; SQLite recreates tables fresh.
-    if not settings._raw_db_url.startswith("sqlite"):
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(__import__("sqlalchemy").text(
-                    "ALTER TABLE ai_model_registry "
-                    "ADD COLUMN IF NOT EXISTS task_type VARCHAR(50);"
-                ))
-                await conn.execute(__import__("sqlalchemy").text(
-                    "ALTER TABLE ai_model_registry "
-                    "ADD COLUMN IF NOT EXISTS visible_to_users BOOLEAN DEFAULT TRUE;"
-                ))
-                await conn.execute(__import__("sqlalchemy").text(
-                    "ALTER TABLE ai_model_registry "
-                    "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
-                ))
-            logger.info("Column migrations applied to ai_model_registry")
-        except Exception as exc:
-            logger.warning("Column migration skipped: %s", exc)
+    # We add them manually here (PostgreSQL only — no SQLite support).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE ai_model_registry "
+                "ADD COLUMN IF NOT EXISTS task_type VARCHAR(50);"
+            ))
+            await conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE ai_model_registry "
+                "ADD COLUMN IF NOT EXISTS visible_to_users BOOLEAN DEFAULT TRUE;"
+            ))
+            await conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE ai_model_registry "
+                "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
+            ))
+        logger.info("Column migrations applied to ai_model_registry")
+    except Exception as exc:
+        logger.warning("Column migration skipped: %s", exc)
 
-    # Ensure upload/data directories exist
+    # Ensure upload/output directories exist
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
-    os.makedirs("data", exist_ok=True)
 
     # Seed default admin account
     await seed_admin()

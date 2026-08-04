@@ -8,13 +8,8 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 _db_url = settings.async_database_url
-_connect_args: dict = {}
-if "sqlite" in _db_url:
-    _connect_args = {"check_same_thread": False}
-else:
-    # use_ssl is True when the original DATABASE_URL contained sslmode=require
-    # (e.g. Render / Supabase / Railway); False for Replit's internal PostgreSQL.
-    _connect_args = {"ssl": settings.use_ssl}
+# use_ssl is True for all PostgreSQL URLs unless sslmode=disable is set explicitly.
+_connect_args: dict = {"ssl": settings.use_ssl}
 
 engine = create_async_engine(
     _db_url,
