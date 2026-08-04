@@ -1,79 +1,251 @@
-{# Clean panel — data cleaning operations #}
+{# Clean panel — Flutter-style vertical wizard #}
 {% set t = get_texts(lang) %}
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
-  <!-- Options -->
-  <div class="lg:col-span-2">
-    <div class="card p-4">
-      <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">خيارات التنظيف</h3>
-      <form hx-post="/cleaner/clean"
-            hx-target="#clean-result"
-            hx-swap="innerHTML"
-            hx-indicator="#clean-spinner"
-            class="space-y-4">
+{% set fmt_meta = {
+  'xlsx':    {'color':'emerald', 'emoji':'📊'},
+  'csv':     {'color':'blue',    'emoji':'📋'},
+  'json':    {'color':'yellow',  'emoji':'🔣'},
+  'parquet': {'color':'fuchsia', 'emoji':'🗄️'},
+  'tsv':     {'color':'cyan',    'emoji':'📋'},
+} %}
 
-        <!-- Source file -->
-        <div>
-          <label class="label text-xs">الملف المصدر</label>
-          {% if files %}
-          <select name="file_id" required class="input text-sm">
-            <option value="">اختر ملفاً</option>
-            {% for f in files %}
-            <option value="{{ f.id }}" {% if selected_file_id and selected_file_id == f.id %}selected{% endif %}>
-              {{ f.original_name }} ({{ f.size_human }})
-            </option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <p class="text-xs text-slate-400 text-center py-3">لا يوجد ملفات</p>
-          {% endif %}
-        </div>
+<div x-data="cleanWizard()" class="max-w-2xl mx-auto py-2 space-y-1">
 
-        <!-- Options -->
-        <div>
-          <label class="label text-xs">{{ t.get('clean_ops_lbl') }}</label>
-          <div class="space-y-1">
-            {% set options = [
-              ('remove_duplicates', 'remove_dups'),
-              ('trim_spaces',       'trim_spaces'),
-              ('remove_empty_rows', 'remove_empty_rows'),
-              ('remove_empty_cols', 'remove_empty_cols'),
-            ] %}
-            {% for name, label_key in options %}
-            <label class="flex items-center gap-2.5 p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer">
-              <input type="checkbox" name="{{ name }}" value="true"
-                     class="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"/>
-              <span class="text-sm text-slate-700 dark:text-slate-300">{{ t.get(label_key) }}</span>
-            </label>
-            {% endfor %}
-          </div>
-        </div>
-
-        <!-- Fill nulls -->
-        <div>
-          <label class="label text-xs">{{ t.get('fill_nulls') }}</label>
-          <input type="text" name="fill_nulls" placeholder="{{ t.get('fill_placeholder') }}" class="input text-sm"/>
-        </div>
-
-        <!-- Output format -->
-        <div>
-          <label class="label text-xs">{{ t.get('output_format') }}</label>
-          <select name="target_format" class="input text-sm">
-            {% for fmt in ['xlsx','csv','json','parquet','tsv'] %}
-            <option value="{{ fmt }}">{{ fmt|upper }}</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <button type="submit" class="btn-primary w-full justify-center py-2.5 text-sm">
+  {# ════════════════════════════════════════
+     STEP 1 — اختر الملف
+  ════════════════════════════════════════ #}
+  <div>
+    <div class="flex items-center gap-3 px-1 mb-3 cursor-pointer select-none"
+         @click="if(fileId) { step = 1 }">
+      <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
+           :class="fileId
+             ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/40'
+             : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'">
+        <template x-if="fileId">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m6 9l2 2 4-4"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
           </svg>
-          {{ t.get('start_clean') }}
-        </button>
-      </form>
+        </template>
+        <template x-if="!fileId"><span>١</span></template>
+      </div>
+      <div class="flex-1">
+        <p class="text-sm font-semibold"
+           :class="fileId ? 'text-brand-600 dark:text-brand-400' : 'text-slate-700 dark:text-slate-200'">
+          اختر الملف المصدر
+        </p>
+        <p x-show="fileId" x-cloak class="text-xs text-slate-500 mt-0.5 truncate" x-text="fileName"></p>
+      </div>
+    </div>
 
-      <div id="clean-spinner" class="htmx-indicator flex items-center justify-center gap-2 mt-3 text-xs text-slate-400">
+    <div x-show="step === 1 || !fileId"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="ms-10">
+      {% if files %}
+      <div class="space-y-1.5 max-h-60 overflow-y-auto pe-1 -me-1">
+        {% for f in files %}
+        {% set m = fmt_meta.get(f.format, {'color':'slate','emoji':'📄'}) %}
+        <button type="button"
+                @click="pickFile({{ f.id }}, '{{ f.original_name | e }}')"
+                class="w-full flex items-center gap-3 p-3 rounded-xl border text-start transition-all duration-150 group"
+                :class="{{ f.id }} === fileId
+                  ? 'border-brand-500/60 bg-brand-50 dark:bg-brand-900/20 shadow-sm'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/40'">
+          <span class="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-base
+                       bg-{{ m.color }}-100 dark:bg-{{ m.color }}-900/30">{{ m.emoji }}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-800 dark:text-white truncate">{{ f.original_name }}</p>
+            <p class="text-xs text-slate-400">{{ f.format|upper }} · {{ f.size_human }}</p>
+          </div>
+          <div :class="{{ f.id }} === fileId ? 'opacity-100' : 'opacity-0 group-hover:opacity-40'"
+               class="flex-shrink-0 w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center transition-opacity">
+            <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+        </button>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="flex flex-col items-center gap-2 py-10 text-center rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+        <svg class="w-10 h-10 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        <p class="text-sm text-slate-500 dark:text-slate-400">لا يوجد ملفات</p>
+        <p class="text-xs text-slate-400">ارفع ملفاً من الشريط الجانبي أولاً</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# connector #}
+  <div class="ms-[13px] w-px h-5 bg-slate-200 dark:bg-slate-700"
+       :class="fileId ? 'bg-brand-300 dark:bg-brand-700' : ''"></div>
+
+  {# ════════════════════════════════════════
+     STEP 2 — عمليات التنظيف
+  ════════════════════════════════════════ #}
+  <div>
+    <div class="flex items-center gap-3 px-1 mb-3">
+      <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
+           :class="anyOpSelected
+             ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/40'
+             : fileId
+               ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-2 ring-brand-400/60'
+               : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600'">
+        <template x-if="anyOpSelected">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+        </template>
+        <template x-if="!anyOpSelected"><span>٢</span></template>
+      </div>
+      <p class="text-sm font-semibold"
+         :class="anyOpSelected ? 'text-brand-600 dark:text-brand-400' : fileId ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-600'">
+        {{ t.get('clean_ops_lbl') }}
+      </p>
+    </div>
+
+    <div x-show="fileId"
+         x-transition:enter="transition ease-out duration-250"
+         x-transition:enter-start="opacity-0 translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="ms-10 space-y-4">
+
+      {# Cleaning ops — card-style toggles #}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {% set ops = [
+          ('remove_duplicates', 'إزالة المكرر',    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16', 'red'),
+          ('trim_spaces',       'حذف المسافات',    'M4 6h16M4 12h16M4 18h7',                                                                                                        'blue'),
+          ('remove_empty_rows', 'حذف الصفوف الفارغة','M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2','emerald'),
+          ('remove_empty_cols', 'حذف الأعمدة الفارغة','M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z',                                'violet'),
+        ] %}
+        {% for op_name, op_label, op_icon, op_color in ops %}
+        <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-150"
+               :class="ops.{{ op_name }}
+                 ? 'border-{{ op_color }}-400/60 bg-{{ op_color }}-50 dark:bg-{{ op_color }}-900/15 shadow-sm'
+                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/40'">
+          <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+               :class="ops.{{ op_name }} ? 'bg-{{ op_color }}-100 dark:bg-{{ op_color }}-900/40' : 'bg-slate-100 dark:bg-slate-800'">
+            <svg class="w-4 h-4 transition-colors"
+                 :class="ops.{{ op_name }} ? 'text-{{ op_color }}-600 dark:text-{{ op_color }}-400' : 'text-slate-400 dark:text-slate-500'"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ op_icon }}"/>
+            </svg>
+          </div>
+          <span class="flex-1 text-sm font-medium transition-colors"
+                :class="ops.{{ op_name }} ? 'text-{{ op_color }}-700 dark:text-{{ op_color }}-300' : 'text-slate-700 dark:text-slate-300'">
+            {{ op_label }}
+          </span>
+          <div class="flex-shrink-0 w-5 h-5 rounded-full border-2 transition-all duration-150 flex items-center justify-center"
+               :class="ops.{{ op_name }} ? 'border-{{ op_color }}-500 bg-{{ op_color }}-500' : 'border-slate-300 dark:border-slate-600'">
+            <svg x-show="ops.{{ op_name }}" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <input type="checkbox" class="sr-only" x-model="ops.{{ op_name }}"/>
+        </label>
+        {% endfor %}
+      </div>
+
+      {# Fill nulls #}
+      <div>
+        <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2 block">
+          {{ t.get('fill_nulls') }}
+        </label>
+        <input type="text" x-model="fillNulls"
+               placeholder="{{ t.get('fill_placeholder') }}"
+               class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700
+                      bg-white dark:bg-slate-800/40 text-sm text-slate-800 dark:text-white
+                      placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40
+                      focus:border-brand-400 transition"/>
+      </div>
+    </div>
+
+    <div x-show="!fileId" class="ms-10 py-2">
+      <p class="text-xs text-slate-400 dark:text-slate-600">اختر الملف أولاً</p>
+    </div>
+  </div>
+
+  {# connector #}
+  <div class="ms-[13px] w-px h-5 bg-slate-200 dark:bg-slate-700"
+       :class="anyOpSelected ? 'bg-brand-300 dark:bg-brand-700' : ''"></div>
+
+  {# ════════════════════════════════════════
+     STEP 3 — صيغة الناتج
+  ════════════════════════════════════════ #}
+  <div>
+    <div class="flex items-center gap-3 px-1 mb-3">
+      <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
+           :class="cleanStatus === 'success'
+             ? 'bg-emerald-500 text-white shadow-sm'
+             : fileId
+               ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-2 ring-brand-400/60'
+               : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600'">
+        <template x-if="cleanStatus === 'success'">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+        </template>
+        <template x-if="cleanStatus !== 'success'"><span>٣</span></template>
+      </div>
+      <p class="text-sm font-semibold"
+         :class="cleanStatus === 'success' ? 'text-emerald-600 dark:text-emerald-400' : fileId ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-600'">
+        {{ t.get('output_format') }}
+      </p>
+    </div>
+
+    <div x-show="fileId"
+         x-transition:enter="transition ease-out duration-250"
+         x-transition:enter-start="opacity-0 translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="ms-10 space-y-4">
+
+      {# Output format chips #}
+      <div class="flex flex-wrap gap-2">
+        {% for fmt, emoji in [('xlsx','📊'), ('csv','📋'), ('json','🔣'), ('parquet','🗄️'), ('tsv','📋')] %}
+        <button type="button"
+                @click="outputFormat = '{{ fmt }}'"
+                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold transition-all duration-150"
+                :class="outputFormat === '{{ fmt }}'
+                  ? 'bg-brand-600 border-brand-600 text-white shadow-md shadow-brand-500/30 scale-105'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 bg-white dark:bg-slate-800/40'">
+          {{ emoji }} .{{ fmt|upper }}
+        </button>
+        {% endfor %}
+      </div>
+
+      {# Action button #}
+      <button @click="startClean()"
+              :disabled="!fileId || !anyOpSelected || cleaning"
+              class="w-full h-12 rounded-xl font-bold text-white text-sm transition-all duration-200
+                     disabled:opacity-35 disabled:cursor-not-allowed
+                     enabled:hover:scale-[1.01] enabled:active:scale-[0.99]"
+              :class="cleaning
+                ? 'bg-slate-400 dark:bg-slate-600'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg shadow-emerald-500/25'">
+        <span class="flex items-center justify-center gap-2">
+          <template x-if="cleaning">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          </template>
+          <template x-if="!cleaning">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m6 9l2 2 4-4"/>
+            </svg>
+          </template>
+          <span x-text="cleaning ? 'جارٍ التنظيف…' : '{{ t.get(\"start_clean\") }}'"></span>
+        </span>
+      </button>
+
+      {# Result area #}
+      <div id="clean-result-panel"></div>
+
+      {# HTMX spinner #}
+      <div id="clean-spinner" class="htmx-indicator flex items-center justify-center gap-2 py-2 text-xs text-slate-400">
         <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
@@ -81,33 +253,95 @@
         {{ t.get('cleaning') }}
       </div>
     </div>
-  </div>
 
-  <!-- Result + Features -->
-  <div class="lg:col-span-3 space-y-4">
-    <div class="card p-4 min-h-48">
-      <h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">{{ t.get('clean_result') }}</h3>
-      <div id="clean-result" class="text-slate-400 text-sm text-center py-8">
-        <svg class="w-10 h-10 mx-auto mb-2 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        <p>{{ t.get('choose_to_clean') }}</p>
-      </div>
-    </div>
-
-    <div class="card p-4">
-      <h4 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">{{ t.get('what_cleaned') }}</h4>
-      <div class="grid grid-cols-2 gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-        {% set feats = ['feat_dups','feat_spaces','feat_empty_rows','feat_empty_cols','feat_fill_null','feat_norm_types','feat_norm_dates','feat_arabic'] %}
-        {% for feat_key in feats %}
-        <div class="flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-          </svg>
-          <span>{{ t.get(feat_key) }}</span>
-        </div>
-        {% endfor %}
-      </div>
+    <div x-show="!fileId" class="ms-10 py-2">
+      <p class="text-xs text-slate-400 dark:text-slate-600">اختر الملف أولاً</p>
     </div>
   </div>
+
 </div>
+
+{# ── Features info box ─────────────────────────────────────── #}
+<div class="max-w-2xl mx-auto mt-6">
+  <details class="group">
+    <summary class="flex items-center gap-2 cursor-pointer list-none text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors select-none py-1">
+      <svg class="w-3.5 h-3.5 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      {{ t.get('what_cleaned') }}
+    </summary>
+    <div class="mt-3 grid grid-cols-2 gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+      {% set feats = ['feat_dups','feat_spaces','feat_empty_rows','feat_empty_cols','feat_fill_null','feat_norm_types','feat_norm_dates','feat_arabic'] %}
+      {% for feat_key in feats %}
+      <div class="flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span>{{ t.get(feat_key) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+</div>
+
+<script>
+function cleanWizard() {
+  return {
+    step: 1,
+    fileId: {{ selected_file_id or 'null' }},
+    fileName: {% if selected_file_id %}'{{ files | selectattr("id", "equalto", selected_file_id) | map(attribute="original_name") | first | default("") | e }}'{% else %}''{% endif %},
+    outputFormat: 'xlsx',
+    fillNulls: '',
+    cleaning: false,
+    cleanStatus: 'idle',
+    ops: {
+      remove_duplicates: false,
+      trim_spaces: false,
+      remove_empty_rows: false,
+      remove_empty_cols: false,
+    },
+
+    get anyOpSelected() {
+      return Object.values(this.ops).some(v => v);
+    },
+
+    pickFile(id, name) {
+      this.fileId = id;
+      this.fileName = name;
+      this.cleanStatus = 'idle';
+      this.step = 2;
+    },
+
+    async startClean() {
+      if (!this.fileId || this.cleaning) return;
+      this.cleaning = true;
+      this.cleanStatus = 'loading';
+
+      const fd = new FormData();
+      fd.append('file_id', this.fileId);
+      fd.append('target_format', this.outputFormat);
+      if (this.fillNulls) fd.append('fill_nulls', this.fillNulls);
+      for (const [k, v] of Object.entries(this.ops)) {
+        if (v) fd.append(k, 'true');
+      }
+
+      try {
+        const res = await fetch('/cleaner/clean', {
+          method: 'POST',
+          body: fd,
+          headers: { 'HX-Request': 'true' }
+        });
+        const html = await res.text();
+        document.getElementById('clean-result-panel').innerHTML = html;
+        this.cleanStatus = 'success';
+      } catch(e) {
+        document.getElementById('clean-result-panel').innerHTML =
+          `<div class="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 text-red-600 dark:text-red-400 text-sm">حدث خطأ: ${e.message}</div>`;
+        this.cleanStatus = 'error';
+      } finally {
+        this.cleaning = false;
+      }
+    },
+  }
+}
+</script>
