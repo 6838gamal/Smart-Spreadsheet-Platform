@@ -54,13 +54,6 @@ class OperationStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class AnalysisStatus(str, enum.Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class User(Base):
@@ -80,7 +73,6 @@ class User(Base):
 
     files: Mapped[list["File"]] = relationship("File", back_populates="owner", cascade="all, delete-orphan")
     operations: Mapped[list["OperationLog"]] = relationship("OperationLog", back_populates="user")
-    chunks: Mapped[list["DocumentChunk"]] = relationship("DocumentChunk", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def default_theme(self) -> str:
@@ -113,15 +105,6 @@ class File(Base):
 
     owner: Mapped["User"] = relationship("User", back_populates="files")
     operations: Mapped[list["OperationLog"]] = relationship("OperationLog", back_populates="file")
-    analyses: Mapped[list["DocumentAnalysis"]] = relationship(
-        "DocumentAnalysis", back_populates="file", cascade="all, delete-orphan"
-    )
-    suggestions: Mapped[list["AISuggestion"]] = relationship(
-        "AISuggestion", back_populates="file", cascade="all, delete-orphan"
-    )
-    chunks: Mapped[list["DocumentChunk"]] = relationship(
-        "DocumentChunk", back_populates="file", cascade="all, delete-orphan"
-    )
 
     @property
     def size_human(self) -> str:
@@ -188,162 +171,46 @@ class Workflow(Base):
     )
 
 
-# ─── Intelligence / Analysis Models ──────────────────────────────────────────
+# ─── AI Model Registry ───────────────────────────────────────────────────────
 
-class DocumentAnalysis(Base):
-    """تحليل المستندات - نتائج معالجة الذكاء الاصطناعي"""
-    __tablename__ = "document_analyses"
+class AIModelRegistry(Base):
+    """Registry for AI models used in the application."""
+    __tablename__ = "ai_model_registry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    model_type: Mapped[str] = mapped_column(String(50), nullable=False)  # llm, embedding, ocr, ner, etc.
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # classification, summarization, etc.
+    version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="huggingface")
+    model_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    visible_to_users: Mapped[bool] = mapped_column(Boolean, default=True)
+    size_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    languages: Mapped[list] = mapped_column(JSON, default=list)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    loaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ─── Search / Index ─────────────────────────────────────────────────────────
+
+class SearchIndex(Base):
+    """Search index for files."""
+    __tablename__ = "search_index"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
-    status: Mapped[AnalysisStatus] = mapped_column(Enum(AnalysisStatus), default=AnalysisStatus.PENDING)
-    doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    doc_type_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    has_tables: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_images: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_handwriting: Mapped[bool] = mapped_column(Boolean, default=False)
-    layout_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    processing_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    pipeline_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    model_versions: Mapped[dict] = mapped_column(JSON, default=dict)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
     # العلاقات
-    file: Mapped["File"] = relationship("File", back_populates="analyses", foreign_keys=[file_id])
-    extracted_tables: Mapped[list["ExtractedTable"]] = relationship(
-        "ExtractedTable", back_populates="analysis", cascade="all, delete-orphan"
-    )
-    extracted_entities: Mapped[list["ExtractedEntity"]] = relationship(
-        "ExtractedEntity", back_populates="analysis", cascade="all, delete-orphan"
-    )
-    suggestions: Mapped[list["AISuggestion"]] = relationship(
-        "AISuggestion", back_populates="analysis", cascade="all, delete-orphan"
-    )
-    layout_elements: Mapped[list["LayoutElement"]] = relationship(
-        "LayoutElement", back_populates="analysis", cascade="all, delete-orphan"
-    )
-    chunks: Mapped[list["DocumentChunk"]] = relationship(
-        "DocumentChunk", back_populates="analysis", cascade="all, delete-orphan"
-    )
-
-
-class ExtractedTable(Base):
-    """جداول مستخرجة من المستندات"""
-    __tablename__ = "extracted_tables"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    analysis_id: Mapped[int] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="CASCADE"), nullable=False)
-    layout_element_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("layout_elements.id"), nullable=True)
-    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    col_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    table_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    has_header: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_merged_cells: Mapped[bool] = mapped_column(Boolean, default=False)
-    spans_pages: Mapped[bool] = mapped_column(Boolean, default=False)
-    table_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    headers: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    excel_output_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    # العلاقات
-    analysis: Mapped["DocumentAnalysis"] = relationship("DocumentAnalysis", back_populates="extracted_tables")
-    layout_element: Mapped["LayoutElement | None"] = relationship("LayoutElement", back_populates="extracted_tables")
-
-
-class ExtractedEntity(Base):
-    """كيانات مستخرجة من المستندات (أسماء، بريد، هاتف، إلخ)"""
-    __tablename__ = "extracted_entities"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    analysis_id: Mapped[int] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="CASCADE"), nullable=False)
-    entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    value: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_value: Mapped[str | None] = mapped_column(Text, nullable=True)
-    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    x1: Mapped[float | None] = mapped_column(Float, nullable=True)
-    y1: Mapped[float | None] = mapped_column(Float, nullable=True)
-    x2: Mapped[float | None] = mapped_column(Float, nullable=True)
-    y2: Mapped[float | None] = mapped_column(Float, nullable=True)
-    context: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    corrected_value: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    # العلاقات
-    analysis: Mapped["DocumentAnalysis"] = relationship("DocumentAnalysis", back_populates="extracted_entities")
-
-
-class AISuggestion(Base):
-    """اقتراحات ذكية من الذكاء الاصطناعي"""
-    __tablename__ = "ai_suggestions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
-    analysis_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="CASCADE"), nullable=True)
-    suggestion_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    action_params: Mapped[dict] = mapped_column(JSON, default=dict)
-    priority: Mapped[int] = mapped_column(Integer, default=0)
-    accepted: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    # العلاقات
-    file: Mapped["File"] = relationship("File", back_populates="suggestions", foreign_keys=[file_id])
-    analysis: Mapped["DocumentAnalysis | None"] = relationship("DocumentAnalysis", back_populates="suggestions")
-
-
-class LayoutElement(Base):
-    """عناصر تخطيط المستند"""
-    __tablename__ = "layout_elements"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    analysis_id: Mapped[int] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="CASCADE"), nullable=False)
-    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    element_type: Mapped[str] = mapped_column(String(50), nullable=False)  # paragraph, header, table, image, etc.
-    x1: Mapped[float] = mapped_column(Float, nullable=False)
-    y1: Mapped[float] = mapped_column(Float, nullable=False)
-    x2: Mapped[float] = mapped_column(Float, nullable=False)
-    y2: Mapped[float] = mapped_column(Float, nullable=False)
-    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    meta: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    # العلاقات
-    analysis: Mapped["DocumentAnalysis"] = relationship("DocumentAnalysis", back_populates="layout_elements")
-    extracted_tables: Mapped[list["ExtractedTable"]] = relationship(
-        "ExtractedTable", back_populates="layout_element", cascade="all, delete-orphan"
-    )
-
-
-class DocumentChunk(Base):
-    """أجزاء المستند للبحث الدلالي"""
-    __tablename__ = "document_chunks"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
-    analysis_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("document_analyses.id", ondelete="CASCADE"), nullable=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-    filename: Mapped[str] = mapped_column(String(500), nullable=False)
-    doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    language: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    # العلاقات
-    file: Mapped["File"] = relationship("File", back_populates="chunks", foreign_keys=[file_id])
-    analysis: Mapped["DocumentAnalysis | None"] = relationship("DocumentAnalysis", back_populates="chunks")
-    user: Mapped["User"] = relationship("User", back_populates="chunks", foreign_keys=[user_id])
+    file: Mapped["File"] = relationship("File", backref="search_index", foreign_keys=[file_id])
