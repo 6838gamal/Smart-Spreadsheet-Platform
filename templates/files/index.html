@@ -1,49 +1,61 @@
 {% extends "base.html" %}
 
-{% block title %}{{ t.get('nav_files') }} — Smart Spreadsheet{% endblock %}
-{% block page_title %}{{ t.get('nav_files') }}{% endblock %}
+{% block title %}
+  {{ t.get('nav_files') }} — Smart Spreadsheet
+{% endblock %}
+
+{% block page_title %}
+  {{ t.get('nav_files') }}
+{% endblock %}
 
 {% block content %}
+
 {% set t = get_texts(lang) %}
 
 <div
   class="space-y-5"
   x-data="filesPage()"
-  @file-uploaded.window="handleExternalUpload($event)"
+  x-init="init()"
 >
 
   <!-- =========================================================
-       Upload Zone
+       UPLOAD ZONE
   ========================================================== -->
+
   <div
-    class="card p-5 sm:p-6 transition-all duration-200"
+    class="card p-6 transition-all duration-200"
     x-on:dragover.prevent="dragging = true"
     x-on:dragleave.prevent="dragging = false"
     x-on:drop.prevent="handleDrop($event)"
-    :class="dragging
-      ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/5'
-      : ''"
+    :class="
+      dragging
+        ? 'border-indigo-500 bg-indigo-50/5 shadow-md'
+        : ''
+    "
   >
 
     <div
-      class="border-2 border-dashed rounded-2xl p-7 sm:p-8 text-center transition-all duration-200"
-      :class="dragging
-        ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-900/10'
-        : 'border-slate-200 dark:border-slate-600'"
+      class="border-2 border-dashed
+             border-slate-200 dark:border-slate-600
+             rounded-2xl p-8 text-center
+             transition-all duration-200"
+      :class="
+        dragging
+          ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10 scale-[1.01]'
+          : 'hover:border-slate-300 dark:hover:border-slate-500'
+      "
     >
 
       <!-- Upload icon -->
+
       <div
-        class="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center transition-all duration-200"
-        :class="dragging
-          ? 'bg-indigo-100 dark:bg-indigo-900/40 scale-105'
-          : 'bg-slate-100 dark:bg-slate-800'"
+        class="w-14 h-14 mx-auto mb-4 rounded-2xl
+               bg-indigo-50 dark:bg-indigo-900/20
+               flex items-center justify-center"
       >
+
         <svg
-          class="w-7 h-7 transition-colors"
-          :class="dragging
-            ? 'text-indigo-600 dark:text-indigo-400'
-            : 'text-slate-400 dark:text-slate-500'"
+          class="w-7 h-7 text-indigo-500"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -55,9 +67,13 @@
             d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
           />
         </svg>
+
       </div>
 
-      <p class="text-slate-700 dark:text-slate-200 font-semibold mb-1">
+
+      <!-- Main text -->
+
+      <p class="text-slate-700 dark:text-slate-300 font-semibold mb-1">
         {{ t.get('drag_drop') }}
       </p>
 
@@ -65,31 +81,98 @@
         {{ t.get('file_limit') }}
       </p>
 
+
       <!-- Choose files -->
+
       <label
-        class="btn-primary cursor-pointer inline-flex items-center gap-2"
-        :class="uploading ? 'opacity-60 pointer-events-none' : ''"
+        class="btn-primary cursor-pointer inline-flex items-center
+               justify-center gap-2"
       >
 
-        <template x-if="!uploading">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-            />
-          </svg>
-        </template>
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+          />
+        </svg>
 
-        <template x-if="uploading">
+        {{ t.get('choose_files') }}
+
+        <input
+          type="file"
+          multiple
+          class="hidden"
+          x-ref="fileInput"
+          @change="uploadFiles($event)"
+          accept="
+            .xlsx,.xls,.xlsm,.xlsb,
+            .ods,.csv,.tsv,.txt,
+            .json,.xml,.yaml,.yml,
+            .parquet,.feather,
+            .sqlite,.db,.sql,
+            .docx,.doc,
+            .pdf,.pptx,
+            .html,.htm,
+            .jpg,.jpeg,.png,.bmp,
+            .gif,.webp,.svg
+          "
+        />
+
+      </label>
+
+
+      <!-- Drop hint -->
+
+      <p
+        x-show="dragging"
+        x-cloak
+        class="mt-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400"
+      >
+        أفلت الملفات هنا لبدء الرفع
+      </p>
+
+    </div>
+
+
+    <!-- =======================================================
+         UPLOAD RESULT
+    ======================================================== -->
+
+    <div
+      id="upload-result"
+      class="mt-3"
+    ></div>
+
+
+    <!-- =======================================================
+         UPLOADING STATUS
+    ======================================================== -->
+
+    <div
+      x-show="uploading"
+      x-cloak
+      class="mt-4 p-3 rounded-xl
+             bg-slate-50 dark:bg-slate-800/50
+             border border-slate-200 dark:border-slate-700"
+    >
+
+      <div class="flex items-center gap-3">
+
+        <div
+          class="w-8 h-8 rounded-lg
+                 bg-indigo-100 dark:bg-indigo-900/30
+                 flex items-center justify-center"
+        >
+
           <svg
-            class="animate-spin w-4 h-4"
+            class="animate-spin w-4 h-4 text-indigo-500"
             fill="none"
             viewBox="0 0 24 24"
           >
@@ -99,66 +182,58 @@
               cy="12"
               r="10"
               stroke="currentColor"
-              stroke-width="4"
+              stroke-width="3"
             />
+
             <path
-              class="opacity-75"
+              class="opacity-90"
               fill="currentColor"
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
             />
           </svg>
-        </template>
 
-        <span x-text="uploading ? 'جارٍ الرفع…' : '{{ t.get('choose_files') }}'"></span>
+        </div>
 
-        <input
-          type="file"
-          multiple
-          class="hidden"
-          x-ref="fileInput"
-          @change="uploadFiles($event)"
-          accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.doc,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
-        />
+        <div class="flex-1">
 
-      </label>
+          <p class="text-sm font-medium text-slate-600 dark:text-slate-300">
+            {{ t.get('uploading') }}
+          </p>
 
-    </div>
+          <p
+            class="text-xs text-slate-400 mt-0.5"
+            x-text="uploadCount > 1 ? uploadCount + ' ملفات' : 'ملف واحد'"
+          ></p>
 
-    <!-- Upload result -->
-    <div id="upload-result" class="mt-3"></div>
+        </div>
 
-    <!-- Upload status -->
-    <div
-      x-show="uploading"
-      x-cloak
-      x-transition
-      class="mt-4"
-    >
-      <div class="flex items-center justify-between text-xs mb-2">
-        <span class="text-slate-500 dark:text-slate-400">
-          جاري رفع الملفات…
-        </span>
-
-        <span
-          class="font-semibold text-indigo-600 dark:text-indigo-400"
-          x-text="uploadProgress + '%'"
-        ></span>
       </div>
 
-      <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+
+      <!-- Upload progress -->
+
+      <div
+        class="mt-3 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
+      >
+
         <div
-          class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+          class="h-full rounded-full
+                 bg-gradient-to-r from-indigo-500 to-violet-500
+                 transition-all duration-300"
           :style="'width:' + uploadProgress + '%'"
         ></div>
+
       </div>
+
     </div>
 
   </div>
 
 
   <!-- =========================================================
-       Filters & Search
+       FILTERS & SEARCH
   ========================================================== -->
+
   <div class="flex flex-wrap gap-3">
 
     <form
@@ -178,6 +253,7 @@
         name="fmt"
         class="input w-32"
       >
+
         <option value="">
           {{ t.get('all_formats') }}
         </option>
@@ -185,18 +261,14 @@
         {% for ext in [
           'xlsx',
           'xls',
-          'xlsm',
-          'xlsb',
-          'ods',
           'csv',
-          'tsv',
           'json',
           'pdf',
           'docx',
           'parquet',
           'xml',
           'yaml',
-          'feather'
+          'ods'
         ] %}
 
         <option
@@ -207,7 +279,9 @@
         </option>
 
         {% endfor %}
+
       </select>
+
 
       <button
         type="submit"
@@ -215,6 +289,7 @@
       >
         {{ t.get('search') }}
       </button>
+
 
       {% if search or fmt %}
 
@@ -229,7 +304,10 @@
 
     </form>
 
-    <span class="text-sm text-slate-500 dark:text-slate-400 self-center">
+
+    <span
+      class="text-sm text-slate-500 dark:text-slate-400 self-center"
+    >
       {{ total }}
     </span>
 
@@ -237,7 +315,7 @@
 
 
   <!-- =========================================================
-       Files Grid
+       FILES GRID
   ========================================================== -->
 
   {% if files %}
@@ -250,64 +328,100 @@
     {% for f in files %}
 
     <div
-      id="file-card-{{ f.id }}"
-      class="card p-4 flex flex-col gap-3 hover:shadow-md dark:hover:shadow-slate-900 transition-all duration-200 group"
+      class="card p-4 flex flex-col gap-3
+             hover:shadow-md
+             dark:hover:shadow-slate-900
+             transition-all duration-200
+             group"
+      data-file-id="{{ f.id }}"
     >
 
-      <!-- Type + favorite -->
+      <!-- File type + favorite -->
+
       <div class="flex items-start justify-between">
 
         <span
           class="badge text-xs font-bold px-2 py-1
           {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}
-            bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
+            bg-emerald-100 text-emerald-700
+            dark:bg-emerald-900/40 dark:text-emerald-400
           {% elif f.format == 'csv' %}
-            bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
+            bg-blue-100 text-blue-700
+            dark:bg-blue-900/40 dark:text-blue-400
           {% elif f.format == 'json' %}
-            bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400
+            bg-yellow-100 text-yellow-700
+            dark:bg-yellow-900/40 dark:text-yellow-400
           {% elif f.format == 'pdf' %}
-            bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
+            bg-red-100 text-red-700
+            dark:bg-red-900/40 dark:text-red-400
           {% elif f.format == 'parquet' %}
-            bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400
+            bg-purple-100 text-purple-700
+            dark:bg-purple-900/40 dark:text-purple-400
+          {% elif f.format in ['docx','doc'] %}
+            bg-indigo-100 text-indigo-700
+            dark:bg-indigo-900/40 dark:text-indigo-400
+          {% elif f.format in ['xml'] %}
+            bg-purple-100 text-purple-700
+            dark:bg-purple-900/40 dark:text-purple-400
+          {% elif f.format in ['yaml','yml'] %}
+            bg-violet-100 text-violet-700
+            dark:bg-violet-900/40 dark:text-violet-400
           {% else %}
-            bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300
+            bg-slate-100 text-slate-600
+            dark:bg-slate-700 dark:text-slate-300
           {% endif %}
           "
         >
           .{{ f.format | upper }}
         </span>
 
+
         <button
+          type="button"
           hx-post="/files/{{ f.id }}/favorite"
           hx-swap="outerHTML"
           class="text-lg leading-none transition-colors"
           title="{{ t.get('favorite') }}"
         >
+
           <span
-            class="{% if f.is_favorite %}
-              text-yellow-400
-            {% else %}
-              text-slate-200 dark:text-slate-600 hover:text-yellow-300
-            {% endif %}"
+            class="
+              {% if f.is_favorite %}
+                text-yellow-400
+              {% else %}
+                text-slate-200 dark:text-slate-600
+                hover:text-yellow-300
+              {% endif %}
+            "
           >
-            {% if f.is_favorite %}★{% else %}☆{% endif %}
+            {% if f.is_favorite %}
+              ★
+            {% else %}
+              ☆
+            {% endif %}
           </span>
+
         </button>
 
       </div>
 
 
-      <!-- Name -->
+      <!-- Name & size -->
+
       <div class="min-w-0">
 
         <p
-          class="text-sm font-medium text-slate-800 dark:text-white truncate"
+          class="text-sm font-medium
+                 text-slate-800 dark:text-white
+                 truncate"
           title="{{ f.original_name }}"
         >
           {{ f.original_name }}
         </p>
 
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+        <p
+          class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"
+        >
           {{ f.size_human }}
         </p>
 
@@ -315,22 +429,31 @@
 
 
       <!-- Meta -->
+
       {% if f.meta %}
 
-      <div class="text-xs text-slate-500 dark:text-slate-400 flex gap-3">
+      <div
+        class="text-xs text-slate-500 dark:text-slate-400
+               flex gap-3"
+      >
 
         {% if f.meta.rows %}
+
         <span>
           {{ "{:,}".format(f.meta.rows) }}
           {{ t.get('rows_unit') }}
         </span>
+
         {% endif %}
 
+
         {% if f.meta.columns %}
+
         <span>
           {{ f.meta.columns }}
           {{ t.get('cols_unit') }}
         </span>
+
         {% endif %}
 
       </div>
@@ -339,42 +462,68 @@
 
 
       <!-- Actions -->
+
       <div
-        class="flex gap-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50"
+        class="flex gap-1.5 mt-auto pt-2
+               border-t border-slate-100
+               dark:border-slate-700/50"
       >
 
         <a
           href="/files/{{ f.id }}"
-          class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
+          class="flex-1 text-center text-xs
+                 py-1.5 px-2 rounded-lg
+                 bg-slate-50 dark:bg-slate-700/50
+                 hover:bg-slate-100 dark:hover:bg-slate-700
+                 text-slate-600 dark:text-slate-300
+                 transition-colors font-medium"
         >
           {{ t.get('view') }}
         </a>
 
+
         <a
           href="/files/{{ f.id }}/download"
-          class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
+          class="flex-1 text-center text-xs
+                 py-1.5 px-2 rounded-lg
+                 bg-slate-50 dark:bg-slate-700/50
+                 hover:bg-slate-100 dark:hover:bg-slate-700
+                 text-slate-600 dark:text-slate-300
+                 transition-colors font-medium"
         >
           {{ t.get('download') }}
         </a>
 
+
         <a
           href="/converter?file_id={{ f.id }}"
-          class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors font-medium"
+          class="flex-1 text-center text-xs
+                 py-1.5 px-2 rounded-lg
+                 bg-indigo-50 dark:bg-indigo-900/30
+                 hover:bg-indigo-100 dark:hover:bg-indigo-900/50
+                 text-indigo-600 dark:text-indigo-400
+                 transition-colors font-medium"
         >
           {{ t.get('convert') }}
         </a>
+
 
         <form
           method="post"
           action="/files/{{ f.id }}/delete"
           onsubmit="return confirm('{{ t.get('confirm_delete') }}')"
         >
+
           <button
             type="submit"
-            class="text-xs py-1.5 px-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 transition-colors font-medium"
+            class="text-xs py-1.5 px-2 rounded-lg
+                   bg-red-50 dark:bg-red-900/20
+                   hover:bg-red-100 dark:hover:bg-red-900/40
+                   text-red-500 transition-colors font-medium"
           >
             {{ t.get('delete') }}
           </button>
+
         </form>
 
       </div>
@@ -387,7 +536,7 @@
 
 
   <!-- =========================================================
-       Pagination
+       PAGINATION
   ========================================================== -->
 
   {% if total_pages > 1 %}
@@ -398,12 +547,17 @@
 
     <a
       href="?page={{ p }}{% if search %}&search={{ search }}{% endif %}{% if fmt %}&fmt={{ fmt }}{% endif %}"
-      class="w-9 h-9 flex items-center justify-center rounded-lg text-sm font-medium transition-colors
-        {% if p == page %}
-          bg-indigo-600 text-white
-        {% else %}
-          bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700
-        {% endif %}"
+      class="w-9 h-9 flex items-center justify-center
+             rounded-lg text-sm font-medium
+             transition-colors
+             {% if p == page %}
+               bg-indigo-600 text-white
+             {% else %}
+               bg-white dark:bg-slate-800
+               border border-slate-200 dark:border-slate-600
+               text-slate-600 dark:text-slate-300
+               hover:bg-slate-50 dark:hover:bg-slate-700
+             {% endif %}"
     >
       {{ p }}
     </a>
@@ -417,26 +571,45 @@
 
   {% else %}
 
-  <!-- Empty state -->
-  <div class="card p-16 text-center">
 
-    <svg
-      class="w-16 h-16 mx-auto text-slate-200 dark:text-slate-700 mb-4"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
+  <!-- =========================================================
+       EMPTY STATE
+  ========================================================== -->
+
+  <div
+    class="card p-16 text-center"
+  >
+
+    <div
+      class="w-16 h-16 mx-auto mb-4 rounded-2xl
+             bg-slate-50 dark:bg-slate-800
+             flex items-center justify-center"
     >
-      <path
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="1"
-        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-      />
-    </svg>
 
-    <h3 class="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-2">
+      <svg
+        class="w-8 h-8 text-slate-300 dark:text-slate-600"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1"
+          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+        />
+      </svg>
+
+    </div>
+
+
+    <h3
+      class="text-lg font-semibold
+             text-slate-600 dark:text-slate-300 mb-2"
+    >
       {{ t.get('no_files_empty') }}
     </h3>
+
 
     <p class="text-slate-400 text-sm">
       {{ t.get('upload_to_start') }}
@@ -455,218 +628,192 @@
 
 <script>
 function filesPage() {
+
   return {
 
     dragging: false,
+
     uploading: false,
+
     uploadProgress: 0,
 
+    uploadCount: 0,
+
+
+    init() {
+
+      /*
+       * Reset upload state if the page is restored from
+       * browser back/forward cache.
+       */
+      window.addEventListener('pageshow', () => {
+
+        this.dragging = false;
+
+        this.uploading = false;
+
+        this.uploadProgress = 0;
+
+      });
+
+    },
+
+
     handleDrop(event) {
+
       this.dragging = false;
 
-      const files = event.dataTransfer?.files;
+      const files = event.dataTransfer.files;
 
-      if (!files || !files.length) {
-        return;
+      if (files && files.length) {
+
+        this.uploadFileList(files);
+
       }
 
-      this.uploadFileList(files);
     },
 
 
     uploadFiles(event) {
-      const files = event.target?.files;
 
-      if (!files || !files.length) {
-        return;
+      const files = event.target.files;
+
+      if (files && files.length) {
+
+        this.uploadFileList(files);
+
       }
 
-      this.uploadFileList(files);
-
-      // Allow selecting the same file again.
-      event.target.value = '';
     },
 
 
     async uploadFileList(fileList) {
 
       if (!fileList || !fileList.length) {
+
         return;
+
       }
 
+
       this.uploading = true;
-      this.uploadProgress = 0;
+
+      this.uploadProgress = 5;
+
+      this.uploadCount = fileList.length;
+
 
       const formData = new FormData();
 
+
       for (const file of fileList) {
+
         formData.append('files', file);
+
       }
+
 
       try {
 
-        const xhr = new XMLHttpRequest();
-
-        xhr.open('POST', '/files/upload', true);
-
-        xhr.setRequestHeader('HX-Request', 'true');
-
-        xhr.upload.addEventListener('progress', (event) => {
-
-          if (event.lengthComputable) {
-
-            this.uploadProgress = Math.min(
-              99,
-              Math.round((event.loaded / event.total) * 100)
-            );
-
-          }
-
-        });
-
-
-        const response = await new Promise((resolve, reject) => {
-
-          xhr.onload = () => {
-
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(xhr);
-            } else {
-              reject(
-                new Error(
-                  `Upload failed: HTTP ${xhr.status}`
-                )
-              );
-            }
-
-          };
-
-          xhr.onerror = () => {
-            reject(new Error('Network error'));
-          };
-
-          xhr.send(formData);
-
-        });
+        /*
+         * XMLHttpRequest is used instead of fetch here because
+         * it gives us real upload progress.
+         */
+        const result = await this.uploadWithProgress(formData);
 
 
         this.uploadProgress = 100;
 
-        const result = document.getElementById('upload-result');
 
-        if (result) {
-          result.innerHTML = response.responseText;
-        }
+        const resultBox =
+          document.getElementById('upload-result');
 
 
-        /*
-         * Try to extract uploaded file information from the
-         * server response.
-         *
-         * The response can contain:
-         *   window.__uploadedFiles = [...]
-         *
-         * or
-         *   data-uploaded-files='[...]'
-         *
-         * If neither exists, reload the page as fallback.
-         */
+        if (resultBox) {
 
-        let uploadedFiles = [];
-
-
-        if (window.__uploadedFiles) {
-
-          uploadedFiles = Array.isArray(window.__uploadedFiles)
-            ? window.__uploadedFiles
-            : [];
-
-          try {
-            delete window.__uploadedFiles;
-          } catch (_) {}
+          resultBox.innerHTML = result.html || '';
 
         }
 
 
         /*
-         * Custom event.
+         * IMPORTANT:
          *
-         * Any component in the application can listen for:
+         * Tell the rest of the application that the file list
+         * changed.
          *
-         *   @file-uploaded.window="..."
-         *
+         * Same-tab listeners receive the custom event.
          */
+        window.dispatchEvent(
+          new CustomEvent('files-uploaded', {
+            detail: {
+              count: fileList.length
+            }
+          })
+        );
 
-        if (uploadedFiles.length) {
 
-          window.dispatchEvent(
-            new CustomEvent('file-uploaded', {
-              detail: {
-                files: uploadedFiles
-              }
-            })
+        /*
+         * Cross-tab listeners receive the storage event.
+         */
+        try {
+
+          localStorage.setItem(
+            'smart-spreadsheet-files-updated',
+            String(Date.now())
           );
 
-        }
+        } catch (_) {}
 
 
         /*
-         * If server response contains a redirect script,
-         * let it run normally.
+         * If server response contains its own redirect script,
+         * keep it working.
+         *
+         * Otherwise refresh the file list so the newly uploaded
+         * files immediately appear in the grid.
          */
+        if (
+          result.redirect &&
+          typeof result.redirect === 'string'
+        ) {
 
-        setTimeout(() => {
+          window.location.href = result.redirect;
 
-          /*
-           * If there is no explicit redirect from the backend,
-           * refresh the file list so the newly uploaded files
-           * are visible.
-           */
+        } else {
 
-          const hasRedirect =
-            response.responseText.includes('window.location') ||
-            response.responseText.includes('location.href') ||
-            response.responseText.includes('location.replace');
+          setTimeout(() => {
 
-          if (!hasRedirect) {
             window.location.reload();
-          }
 
-        }, 350);
+          }, 350);
+
+        }
 
 
       } catch (error) {
 
-        console.error('Upload error:', error);
+        console.error(
+          'Upload failed:',
+          error
+        );
 
-        const result = document.getElementById('upload-result');
 
-        if (result) {
+        const resultBox =
+          document.getElementById('upload-result');
 
-          result.innerHTML = `
-            <div class="flex items-center gap-2 px-3 py-2 rounded-xl
-                        bg-red-50 dark:bg-red-900/20
-                        border border-red-200 dark:border-red-800/40
-                        text-red-600 dark:text-red-400 text-sm">
 
-              <svg
-                class="w-4 h-4 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+        if (resultBox) {
 
-              <span>
-                فشل رفع الملف — حاول مجدداً
-              </span>
-
+          resultBox.innerHTML = `
+            <div class="
+              p-3 rounded-xl
+              border border-red-200 dark:border-red-700/40
+              bg-red-50 dark:bg-red-900/20
+              text-red-600 dark:text-red-400
+              text-sm
+            ">
+              فشل رفع الملفات — حاول مجدداً.
             </div>
           `;
 
@@ -674,34 +821,156 @@ function filesPage() {
 
       } finally {
 
-        setTimeout(() => {
-          this.uploading = false;
-          this.uploadProgress = 0;
-        }, 500);
+        this.uploading = false;
+
+        /*
+         * Reset input so selecting the same file again
+         * still triggers the change event.
+         */
+        if (this.$refs.fileInput) {
+
+          this.$refs.fileInput.value = '';
+
+        }
 
       }
 
     },
 
 
-    handleExternalUpload(event) {
+    uploadWithProgress(formData) {
 
-      /*
-       * Reserved for other pages/components that may dispatch
-       * file-uploaded events.
-       */
+      return new Promise((resolve, reject) => {
 
-      const files = event.detail?.files || [];
+        const xhr = new XMLHttpRequest();
 
-      if (!files.length) {
-        return;
-      }
 
-      console.log('External uploaded files:', files);
+        xhr.open(
+          'POST',
+          '/files/upload',
+          true
+        );
+
+
+        xhr.setRequestHeader(
+          'HX-Request',
+          'true'
+        );
+
+
+        xhr.upload.addEventListener(
+          'progress',
+          (event) => {
+
+            if (!event.lengthComputable) {
+
+              /*
+               * Indeterminate-ish progress while the browser
+               * cannot calculate exact bytes.
+               */
+              this.uploadProgress =
+                Math.min(
+                  90,
+                  Math.max(
+                    10,
+                    this.uploadProgress
+                  )
+                );
+
+              return;
+
+            }
+
+
+            const percent =
+              Math.round(
+                (event.loaded / event.total) * 100
+              );
+
+
+            this.uploadProgress =
+              Math.max(
+                5,
+                Math.min(95, percent)
+              );
+
+          }
+        );
+
+
+        xhr.addEventListener(
+          'load',
+          () => {
+
+            if (
+              xhr.status >= 200 &&
+              xhr.status < 300
+            ) {
+
+              let html = '';
+
+              try {
+
+                html = xhr.responseText || '';
+
+              } catch (_) {}
+
+
+              resolve({
+                html: html,
+                redirect: null
+              });
+
+            } else {
+
+              reject(
+                new Error(
+                  `Upload failed with HTTP ${xhr.status}`
+                )
+              );
+
+            }
+
+          }
+        );
+
+
+        xhr.addEventListener(
+          'error',
+          () => {
+
+            reject(
+              new Error(
+                'Network error during upload'
+              )
+            );
+
+          }
+        );
+
+
+        xhr.addEventListener(
+          'abort',
+          () => {
+
+            reject(
+              new Error(
+                'Upload aborted'
+              )
+            );
+
+          }
+        );
+
+
+        xhr.send(formData);
+
+      });
 
     }
 
   };
+
 }
 </script>
 
