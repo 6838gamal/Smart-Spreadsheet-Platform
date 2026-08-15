@@ -175,7 +175,32 @@ async def panel_analyze(
     current_user: User = Depends(get_current_user),
 ):
     from sqlalchemy import select
-    from app.infrastructure.database.models import ExtractedTable, ExtractedEntity, AISuggestion
+    
+    # محاولة استيراد النماذج بشكل آمن
+    ExtractedTable = None
+    ExtractedEntity = None
+    AISuggestion = None
+    
+    try:
+        # المحاولة الأولى: الاستيراد من الموقع الرئيسي
+        from app.infrastructure.database.models import ExtractedTable, ExtractedEntity, AISuggestion
+        logger.debug("✅ ExtractedTable models imported from models.py")
+    except ImportError:
+        try:
+            # المحاولة الثانية: الاستيراد من ملف intelligence
+            from app.infrastructure.database.models_intelligence import ExtractedTable, ExtractedEntity, AISuggestion
+            logger.debug("✅ ExtractedTable models imported from models_intelligence.py")
+        except ImportError:
+            # إذا لم توجد النماذج، استخدم تعريفات مؤقتة
+            logger.warning("⚠️ ExtractedTable models not found, using fallback definitions")
+            
+            # تعريف فئات مؤقتة للتعامل مع الحالات التي لا توجد فيها بيانات
+            class ExtractedTable:
+                pass
+            class ExtractedEntity:
+                pass
+            class AISuggestion:
+                pass
 
     repo = FileRepository(db)
     file = await repo.get_by_id(file_id)
@@ -190,30 +215,39 @@ async def panel_analyze(
     if file:
         analysis = await _get_latest_analysis(db, file_id)
         if analysis and analysis.status.value == "completed":
-            # Tables
-            tbl_result = await db.execute(
-                select(ExtractedTable)
-                .where(ExtractedTable.analysis_id == analysis.id)
-                .order_by(ExtractedTable.table_index)
-            )
-            tables = tbl_result.scalars().all()
+            # فقط حاول استرجاع البيانات إذا كانت النماذج موجودة
+            try:
+                # التحقق من أن النماذج ليست الفئات المؤقتة
+                if ExtractedTable.__name__ != "ExtractedTable" or hasattr(ExtractedTable, '__table__'):
+                    # Tables
+                    tbl_result = await db.execute(
+                        select(ExtractedTable)
+                        .where(ExtractedTable.analysis_id == analysis.id)
+                        .order_by(ExtractedTable.table_index)
+                    )
+                    tables = tbl_result.scalars().all()
 
-            # Entities
-            ent_result = await db.execute(
-                select(ExtractedEntity)
-                .where(ExtractedEntity.analysis_id == analysis.id)
-            )
-            entities = ent_result.scalars().all()
-            for e in entities:
-                entity_groups.setdefault(e.entity_type, []).append(e)
+                    # Entities
+                    ent_result = await db.execute(
+                        select(ExtractedEntity)
+                        .where(ExtractedEntity.analysis_id == analysis.id)
+                    )
+                    entities = ent_result.scalars().all()
+                    for e in entities:
+                        entity_groups.setdefault(e.entity_type, []).append(e)
 
-            # Suggestions
-            sug_result = await db.execute(
-                select(AISuggestion)
-                .where(AISuggestion.analysis_id == analysis.id)
-                .order_by(AISuggestion.priority)
-            )
-            suggestions = sug_result.scalars().all()
+                    # Suggestions
+                    sug_result = await db.execute(
+                        select(AISuggestion)
+                        .where(AISuggestion.analysis_id == analysis.id)
+                        .order_by(AISuggestion.priority)
+                    )
+                    suggestions = sug_result.scalars().all()
+                else:
+                    logger.info("ℹ️ Using fallback models, skipping data fetch")
+            except Exception as e:
+                logger.warning(f"Could not fetch analysis data: {e}")
+                # الاستمرار بدون بيانات
 
     return templates.TemplateResponse(
         request,
