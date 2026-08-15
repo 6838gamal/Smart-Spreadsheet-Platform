@@ -222,7 +222,7 @@
 
     </button>
 
-    <!-- Body - قائمة الملفات -->
+    <!-- Body - قائمة الملفات (تظهر دائماً في الخطوة 1) -->
     <div
       x-show="step === 1"
       x-transition:enter="transition ease-out duration-200"
@@ -453,7 +453,7 @@
 
     </div>
 
-    <!-- Format selection -->
+    <!-- Format selection (تظهر فقط عندما يكون هناك ملف محدد وفي الخطوة 2) -->
     <div
       x-show="fileId && step === 2"
       x-transition:enter="transition ease-out duration-250"
@@ -586,7 +586,7 @@
 
     </div>
 
-    <!-- Locked -->
+    <!-- Locked (عند عدم وجود ملف) -->
     <div
       x-show="!fileId"
       class="wizard-body pt-1 pb-3"
@@ -2433,16 +2433,20 @@ function convertWizard() {
 
     init() {
 
+      console.log('🔄 Init called, fileId:', this.fileId);
+
       if (this.fileId) {
         // تم تحديد ملف مسبقاً من صفحة الملفات
         this.step = 2;
         this.targetFormat = this.getDefaultTargetFormat();
         this.convStatus = 'idle';
+        console.log('✅ File pre-selected, step:', this.step, 'target:', this.targetFormat);
       } else {
         // لا يوجد ملف محدد، ابق في الخطوة 1
         this.step = 1;
         this.targetFormat = '';
         this.convStatus = 'idle';
+        console.log('ℹ️ No file selected, step:', this.step);
       }
 
     },
@@ -2455,6 +2459,8 @@ function convertWizard() {
     getDefaultTargetFormat() {
 
       const formats = {{ export_formats | tojson }};
+
+      console.log('📋 Available formats:', formats);
 
       if (!Array.isArray(formats) || !formats.length) {
         return '';
@@ -2480,16 +2486,18 @@ function convertWizard() {
 
     pickFile(id, name, format) {
 
+      console.log('📂 pickFile called:', { id, name, format });
+
       if (this.converting) {
         return;
       }
 
-      // الحفاظ على fileId و update المعلومات
+      // تحديث معلومات الملف
       this.fileId = id;
       this.fileName = name;
       this.fileFormat = format;
       
-      // إعادة تعيين targetFormat فقط إذا لم يكن محدداً مسبقاً
+      // تعيين الصيغة الافتراضية إذا لم تكن محددة
       if (!this.targetFormat) {
         this.targetFormat = this.getDefaultTargetFormat();
       }
@@ -2506,6 +2514,8 @@ function convertWizard() {
       // الانتقال إلى الخطوة 2 لعرض صيغ الهدف
       this.step = 2;
 
+      console.log('✅ File picked, step:', this.step, 'target:', this.targetFormat);
+
     },
 
 
@@ -2515,7 +2525,10 @@ function convertWizard() {
 
     selectFormat(format) {
 
+      console.log('🎯 selectFormat called:', format);
+
       if (!this.fileId || this.converting) {
+        console.warn('⚠️ Cannot select format: fileId=', this.fileId, 'converting=', this.converting);
         return;
       }
 
@@ -2524,6 +2537,8 @@ function convertWizard() {
 
       // الانتقال إلى الخطوة 3 لعرض زر التحويل
       this.step = 3;
+
+      console.log('✅ Format selected, step:', this.step);
 
     },
 
@@ -2534,6 +2549,8 @@ function convertWizard() {
 
     goToStep(step) {
 
+      console.log('🔀 goToStep called:', step);
+
       if (this.converting) {
         return;
       }
@@ -2541,7 +2558,7 @@ function convertWizard() {
       if (step === 1) {
         // العودة لاختيار الملف - نحافظ على fileId لكن نعرض القائمة
         this.step = 1;
-        // لا نمسح targetFormat حتى لا نفقد الصيغة المختارة
+        console.log('↩️ Back to step 1');
         return;
       }
 
@@ -2549,11 +2566,13 @@ function convertWizard() {
         // العودة لاختيار الصيغة
         this.step = 2;
         this.convStatus = 'idle';
+        console.log('↩️ Back to step 2');
         return;
       }
 
       if (step === 3 && this.fileId && this.targetFormat) {
         this.step = 3;
+        console.log('↩️ Forward to step 3');
       }
 
     },
