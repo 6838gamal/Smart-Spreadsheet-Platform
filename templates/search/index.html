@@ -2,52 +2,83 @@
 {% block title %}البحث الذكي — Smart Spreadsheet{% endblock %}
 
 {% block content %}
-<div class="flex flex-col h-full" x-data="searchApp()">
+<div class="flex flex-col h-full" x-data="searchApp()" x-init="initResponsive()">
 
   <!-- ── Header ─────────────────────────────────────────────────── -->
-  <div class="flex items-center justify-between mb-6 flex-shrink-0">
+  <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6 flex-shrink-0">
     <div>
-      <h1 class="text-xl font-bold text-white">البحث الذكي في المستندات</h1>
-      <p class="text-sm text-zinc-400 mt-0.5">اسأل أي سؤال وسيجيبك النظام بناءً على محتوى مستنداتك المعالجة</p>
+      <h1 class="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-brand-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        البحث الذكي في المستندات
+      </h1>
+      <p class="text-xs sm:text-sm text-zinc-400 mt-0.5 hidden sm:block">اسأل أي سؤال وسيجيبك النظام بناءً على محتوى مستنداتك المعالجة</p>
     </div>
-    <!-- Stats badges -->
-    <div class="flex gap-3 text-xs">
-      <div class="flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5">
-        <div class="w-2 h-2 rounded-full {% if indexed_count > 0 %}bg-emerald-400{% else %}bg-zinc-500{% endif %}"></div>
-        <span class="text-zinc-300">{{ indexed_count }} ملف مفهرس</span>
+    
+    <!-- Stats badges - mobile friendly -->
+    <div class="flex flex-wrap gap-1.5 sm:gap-2 text-xs">
+      <div class="flex items-center gap-1 sm:gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
+        <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full {% if indexed_count > 0 %}bg-emerald-400{% else %}bg-zinc-500{% endif %}"></div>
+        <span class="text-zinc-300 text-[10px] sm:text-xs">{{ indexed_count }} ملف</span>
       </div>
-      <div class="flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5">
-        <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="flex items-center gap-1 sm:gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
+        <svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
         </svg>
-        <span class="text-zinc-300">{{ total_chunks }} مقطع نصي</span>
+        <span class="text-zinc-300 text-[10px] sm:text-xs">{{ total_chunks }} مقطع</span>
       </div>
     </div>
+  </header>
+
+  <!-- ── Mobile: Toggle Sidebar Button ────────────────────────── -->
+  <div class="sm:hidden mb-3">
+    <button @click="showMobileSidebar = !showMobileSidebar" 
+            class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-zinc-300 text-sm flex items-center justify-between transition-colors hover:bg-zinc-700">
+      <span class="flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+        {{ 'إظهار نطاق البحث' if not showMobileSidebar else 'إخفاء نطاق البحث' }}
+      </span>
+      <span class="text-zinc-500 text-xs" x-text="selectedFiles.length ? selectedFiles.length + ' ملفات' : 'كل الملفات'"></span>
+    </button>
   </div>
 
   <!-- ── Main layout: sidebar + chat ────────────────────────────── -->
-  <div class="flex gap-4 flex-1 min-h-0">
+  <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1 min-h-0">
 
     <!-- Sidebar: file filter -->
-    <div class="w-56 flex-shrink-0 flex flex-col gap-3">
-      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-        <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">نطاق البحث</p>
+    <aside class="sm:w-56 lg:w-64 flex-shrink-0"
+           :class="showMobileSidebar ? 'block' : 'hidden sm:block'">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">نطاق البحث</p>
+          <button @click="showMobileSidebar = false" 
+                  class="sm:hidden text-zinc-500 hover:text-zinc-300">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
 
         {% if files_info %}
           <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer mb-2 hover:text-white transition-colors">
             <input type="checkbox" x-model="allFiles" @change="toggleAll()"
-                   class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1">
+                   class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-3.5 h-3.5 sm:w-4 sm:h-4">
             <span>كل الملفات</span>
+            <span class="text-[10px] text-zinc-500 mr-auto" x-text="'(' + selectedFiles.length + '/' + {{ files_info|length }} + ')'"></span>
           </label>
-          <div class="space-y-1 max-h-80 overflow-y-auto">
+          
+          <div class="space-y-1 max-h-48 sm:max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
             {% for f in files_info %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer rounded-lg px-1.5 py-1 hover:bg-zinc-800 transition-colors"
-                   :class="selectedFiles.includes({{ f.id }}) ? 'text-white' : 'text-zinc-400'">
+            <label class="flex items-center gap-2 text-xs cursor-pointer rounded-lg px-1.5 sm:px-2 py-1.5 hover:bg-zinc-800 transition-colors group"
+                   :class="selectedFiles.includes({{ f.id }}) ? 'text-white bg-zinc-800/50' : 'text-zinc-400'">
               <input type="checkbox" value="{{ f.id }}"
                      x-model="selectedFiles"
                      @change="allFiles = selectedFiles.length === 0"
-                     class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1">
-              <span class="truncate flex-1" title="{{ f.original_name }}">{{ f.original_name }}</span>
+                     class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0">
+              <span class="truncate flex-1 text-[11px] sm:text-xs" title="{{ f.original_name }}">{{ f.original_name }}</span>
               {% if f.is_indexed %}
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="مفهرس"></span>
               {% else %}
@@ -57,45 +88,51 @@
             {% endfor %}
           </div>
         {% else %}
-          <p class="text-xs text-zinc-500 text-center py-4">لا توجد ملفات بعد</p>
+          <p class="text-xs text-zinc-500 text-center py-6">لا توجد ملفات بعد</p>
         {% endif %}
       </div>
 
       <!-- Index file tip -->
-      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-400 space-y-1.5">
-        <p class="font-semibold text-zinc-300">كيفية الفهرسة؟</p>
-        <p>افتح أي ملف ← اضغط "تحليل" ← يُفهرس تلقائياً.</p>
-        <p>أو أدخل معرّف الملف وأفهرسه هنا:</p>
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4 mt-3 text-xs text-zinc-400 space-y-2">
+        <p class="font-semibold text-zinc-300 text-[11px] sm:text-xs">📄 كيفية الفهرسة؟</p>
+        <p class="text-[11px] sm:text-xs leading-relaxed">افتح أي ملف ← اضغط "تحليل" ← يُفهرس تلقائياً.</p>
         <div class="flex gap-1.5 mt-2">
-          <input type="number" x-model="indexFileId" placeholder="ID"
-                 class="w-16 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-white text-xs focus:outline-none focus:border-brand-500">
+          <input type="number" x-model="indexFileId" placeholder="رقم الملف"
+                 class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-white text-xs sm:text-sm focus:outline-none focus:border-brand-500">
           <button @click="indexFile()"
                   :disabled="indexing"
-                  class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white rounded px-2 py-1 transition-colors disabled:opacity-50 text-xs">
+                  class="bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 transition-colors text-xs sm:text-sm whitespace-nowrap">
             <span x-show="!indexing">فهرسة</span>
-            <span x-show="indexing">...</span>
+            <span x-show="indexing" class="flex items-center gap-1">
+              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+              </svg>
+              جاري
+            </span>
           </button>
         </div>
-        <p x-show="indexMsg" x-text="indexMsg" class="text-emerald-400 mt-1"></p>
+        <p x-show="indexMsg" x-text="indexMsg" 
+           class="text-emerald-400 mt-1 text-[11px] sm:text-xs animate-pulse"></p>
       </div>
-    </div>
+    </aside>
 
     <!-- Chat panel -->
-    <div class="flex-1 flex flex-col min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+    <main class="flex-1 flex flex-col min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
 
       <!-- Empty state -->
       <div x-show="messages.length === 0 && !loading"
-           class="flex-1 flex flex-col items-center justify-center p-8 text-center">
-        <div class="w-16 h-16 rounded-2xl bg-brand-600/20 border border-brand-600/30 flex items-center justify-center mb-4">
-          <svg class="w-8 h-8 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+           class="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center">
+        <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-brand-600/20 border border-brand-600/30 flex items-center justify-center mb-3 sm:mb-4">
+          <svg class="w-7 h-7 sm:w-8 sm:h-8 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                   d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
         </div>
         {% if indexed_count > 0 %}
-          <h3 class="text-white font-semibold mb-1">{{ indexed_count }} ملف جاهز للبحث</h3>
-          <p class="text-zinc-400 text-sm mb-4">اكتب سؤالك أدناه وسيجيب النظام من محتوى مستنداتك</p>
-          <div class="grid grid-cols-1 gap-2 w-full max-w-sm">
+          <h3 class="text-white font-semibold mb-1 text-sm sm:text-base">{{ indexed_count }} ملف جاهز للبحث</h3>
+          <p class="text-zinc-400 text-xs sm:text-sm mb-4 px-2">اكتب سؤالك أدناه وسيجيب النظام من محتوى مستنداتك</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm px-2">
             {% set examples = [
               "ما هو رقم الفاتورة؟",
               "من هو المورد في هذا المستند؟",
@@ -104,70 +141,76 @@
             ] %}
             {% for ex in examples %}
             <button @click="question = '{{ ex }}'; sendQuestion()"
-                    class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg px-3 py-2 text-right transition-colors">
+                    class="text-[11px] sm:text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg px-3 py-2 text-right transition-colors hover:scale-105 transform duration-200">
               {{ ex }}
             </button>
             {% endfor %}
           </div>
         {% else %}
-          <h3 class="text-white font-semibold mb-1">لا توجد مستندات مفهرسة بعد</h3>
-          <p class="text-zinc-400 text-sm mb-4">افتح ملفاً من قسم "ذكاء المستندات" وحلّله لفهرسته تلقائياً</p>
-          <a href="/intelligence" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-4 py-2 text-sm transition-colors">
+          <h3 class="text-white font-semibold mb-1 text-sm sm:text-base">لا توجد مستندات مفهرسة بعد</h3>
+          <p class="text-zinc-400 text-xs sm:text-sm mb-4 px-2">افتح ملفاً من قسم "ذكاء المستندات" وحلّله لفهرسته تلقائياً</p>
+          <a href="/intelligence" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-5 sm:px-6 py-2.5 sm:py-3 text-sm transition-colors inline-flex items-center gap-2">
             الذهاب إلى ذكاء المستندات
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+            </svg>
           </a>
         {% endif %}
       </div>
 
       <!-- Messages -->
       <div x-show="messages.length > 0 || loading"
-           class="flex-1 overflow-y-auto p-4 space-y-4"
+           class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
            x-ref="messagesContainer">
 
         <template x-for="(msg, idx) in messages" :key="idx">
-          <div>
+          <div class="space-y-2 sm:space-y-3">
             <!-- User question -->
-            <div class="flex justify-end mb-2">
-              <div class="max-w-lg bg-brand-600/20 border border-brand-600/30 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white text-right">
+            <div class="flex justify-end">
+              <div class="max-w-[85%] sm:max-w-lg bg-brand-600/20 border border-brand-600/30 rounded-2xl rounded-tr-sm px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-white text-right break-words">
                 <span x-text="msg.question"></span>
               </div>
             </div>
 
             <!-- Answer -->
             <div class="flex justify-start">
-              <div class="max-w-2xl w-full">
+              <div class="max-w-[95%] sm:max-w-2xl w-full">
 
                 <!-- No results -->
                 <div x-show="!msg.has_results"
-                     class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-zinc-300 text-right">
-                  لم أجد معلومات ذات صلة بسؤالك في المستندات المفهرسة.
-                  <span class="text-zinc-500 text-xs block mt-1">تأكد من فهرسة الملفات المناسبة أو وسّع نطاق البحث.</span>
+                     class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-sm text-zinc-300 text-right">
+                  <p>لم أجد معلومات ذات صلة بسؤالك في المستندات المفهرسة.</p>
+                  <span class="text-zinc-500 text-[10px] sm:text-xs block mt-1">💡 تأكد من فهرسة الملفات المناسبة أو وسّع نطاق البحث.</span>
                 </div>
 
                 <!-- Answer card -->
                 <div x-show="msg.has_results" class="space-y-2">
                   <!-- Main answer -->
-                  <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-4 py-3 text-right">
+                  <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-right">
                     <div class="flex items-center gap-2 mb-2">
                       <div class="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0">
                         <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                         </svg>
                       </div>
-                      <span class="text-xs text-zinc-400">الإجابة المستخرجة</span>
+                      <span class="text-[10px] sm:text-xs text-zinc-400">الإجابة المستخرجة</span>
                     </div>
-                    <p class="text-sm text-white leading-relaxed" x-text="msg.answer"></p>
+                    <p class="text-sm sm:text-base text-white leading-relaxed break-words" x-text="msg.answer"></p>
+                    
                     <!-- Source badge -->
                     <div x-show="msg.answer_source" class="mt-2 flex justify-end">
-                      <span class="text-xs text-zinc-500 bg-zinc-700/50 rounded px-2 py-0.5"
-                            x-text="'📄 ' + (msg.answer_source?.file_name || '')"></span>
+                      <span class="text-[10px] sm:text-xs text-zinc-500 bg-zinc-700/50 rounded px-2 py-0.5 flex items-center gap-1">
+                        <span>📄</span>
+                        <span x-text="msg.answer_source?.file_name || ''"></span>
+                      </span>
                     </div>
                   </div>
 
                   <!-- Additional sources -->
                   <div x-show="msg.sources && msg.sources.length > 1">
                     <button @click="msg.showSources = !msg.showSources"
-                            class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1">
-                      <svg class="w-3.5 h-3.5 transition-transform" :class="msg.showSources ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            class="text-[10px] sm:text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1">
+                      <svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 transition-transform" :class="msg.showSources ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                       </svg>
                       <span x-text="(msg.sources?.length - 1) + ' مصادر أخرى'"></span>
@@ -176,13 +219,13 @@
                     <div x-show="msg.showSources" class="space-y-1.5 mt-2">
                       <template x-for="(src, si) in msg.sources.slice(1)" :key="si">
                         <div class="bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2.5 text-right">
-                          <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs text-zinc-500" x-text="'مقطع ' + (src.chunk_index + 1)"></span>
-                            <span class="text-xs font-medium text-zinc-300 truncate max-w-[200px]" x-text="src.file_name"></span>
+                          <div class="flex flex-wrap items-center justify-between gap-1 mb-1">
+                            <span class="text-[10px] sm:text-xs text-zinc-500" x-text="'مقطع ' + (src.chunk_index + 1)"></span>
+                            <span class="text-[10px] sm:text-xs font-medium text-zinc-300 truncate max-w-[150px] sm:max-w-[200px]" x-text="src.file_name"></span>
                           </div>
-                          <p class="text-xs text-zinc-400 leading-relaxed line-clamp-3" x-text="src.chunk_text"></p>
+                          <p class="text-[11px] sm:text-xs text-zinc-400 leading-relaxed line-clamp-3 break-words" x-text="src.chunk_text"></p>
                           <div class="flex justify-start mt-1">
-                            <span class="text-xs text-zinc-600" x-text="'تطابق: ' + (src.score * 100).toFixed(0) + '%'"></span>
+                            <span class="text-[10px] sm:text-xs text-zinc-600" x-text="'تطابق: ' + (src.score * 100).toFixed(0) + '%'"></span>
                           </div>
                         </div>
                       </template>
@@ -191,11 +234,13 @@
 
                   <!-- Backend badge -->
                   <div class="flex justify-end">
-                    <span class="text-xs text-zinc-600 flex items-center gap-1">
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span class="text-[9px] sm:text-xs text-zinc-600 flex items-center gap-1">
+                      <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                       </svg>
-                      <span x-text="msg.backend?.toUpperCase()"></span> · <span x-text="msg.total_chunks_searched + ' مقطع'"></span>
+                      <span x-text="msg.backend?.toUpperCase()"></span>
+                      <span class="hidden xs:inline">·</span>
+                      <span class="xs:inline hidden" x-text="msg.total_chunks_searched + ' مقطع'"></span>
                     </span>
                   </div>
                 </div>
@@ -207,25 +252,25 @@
 
         <!-- Loading indicator -->
         <div x-show="loading" class="flex justify-start">
-          <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2">
+          <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 flex items-center gap-2">
             <div class="flex gap-1">
               <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
               <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
               <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
             </div>
-            <span class="text-xs text-zinc-400">جاري البحث في المستندات...</span>
+            <span class="text-[11px] sm:text-xs text-zinc-400">جاري البحث في المستندات...</span>
           </div>
         </div>
 
       </div>
 
       <!-- Input area -->
-      <div class="border-t border-zinc-800 p-3 flex-shrink-0">
+      <div class="border-t border-zinc-800 p-2 sm:p-3 flex-shrink-0">
         <div class="flex gap-2">
           <button @click="sendQuestion()"
                   :disabled="loading || !question.trim()"
-                  class="w-9 h-9 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  class="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-colors">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
           </button>
@@ -234,17 +279,95 @@
             x-model="question"
             @keydown.enter.prevent="sendQuestion()"
             placeholder="اكتب سؤالك هنا... مثال: ما هو رقم الفاتورة؟"
-            class="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 text-right"
+            class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 text-right"
             dir="auto"
           />
         </div>
-        <p class="text-xs text-zinc-600 mt-1.5 text-center">
-          البحث باستخدام BM25 — المرحلة الأولى (يمكن الترقية إلى Vector Search لاحقاً)
-        </p>
+        <div class="flex flex-wrap items-center justify-between gap-1 mt-1.5">
+          <p class="text-[9px] sm:text-xs text-zinc-600">
+            🔍 البحث باستخدام BM25
+            <span class="hidden sm:inline">— المرحلة الأولى (يمكن الترقية إلى Vector Search لاحقاً)</span>
+          </p>
+          <span class="text-[9px] sm:text-xs text-zinc-600" x-text="question.length ? question.length + ' حرف' : ''"></span>
+        </div>
       </div>
-    </div>
+    </main>
   </div>
 </div>
+
+<style>
+/* Custom scrollbar styles */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Line clamp for text truncation */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Mobile extra small screens */
+@media (max-width: 360px) {
+  .text-xs {
+    font-size: 0.65rem;
+  }
+  .text-sm {
+    font-size: 0.8rem;
+  }
+  .px-3 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .gap-2 {
+    gap: 0.35rem;
+  }
+}
+
+/* Smooth animations */
+.animate-bounce {
+  animation-duration: 1s;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid #0d9488;
+  outline-offset: 2px;
+}
+
+/* Touch-friendly tap targets */
+@media (max-width: 640px) {
+  button, 
+  label,
+  input[type="checkbox"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  input[type="checkbox"] {
+    min-height: 20px;
+    min-width: 20px;
+  }
+  .p-3 {
+    padding: 0.75rem;
+  }
+}
+</style>
 
 <script>
 function searchApp() {
@@ -260,6 +383,16 @@ function searchApp() {
     indexFileId: '',
     indexing: false,
     indexMsg: '',
+    showMobileSidebar: false,
+
+    initResponsive() {
+      // Auto-close sidebar on resize to desktop
+      window.addEventListener('resize', () => {
+        if (window.innerWidth >= 640) {
+          this.showMobileSidebar = false;
+        }
+      });
+    },
 
     toggleAll() {
       if (this.allFiles) this.selectedFiles = [];
@@ -268,11 +401,14 @@ function searchApp() {
     async sendQuestion() {
       const q = this.question.trim();
       if (!q || this.loading) return;
+      
+      // Store current question for later
+      const currentQuestion = q;
       this.loading = true;
       this.question = '';
 
       const body = {
-        question: q,
+        question: currentQuestion,
         top_k: 5,
         file_ids: this.selectedFiles.length > 0 ? this.selectedFiles.map(Number) : null,
       };
@@ -288,7 +424,7 @@ function searchApp() {
         this.messages.push({ ...data, showSources: false });
       } catch (e) {
         this.messages.push({
-          question: q,
+          question: currentQuestion,
           has_results: false,
           answer: '',
           sources: [],
@@ -307,20 +443,31 @@ function searchApp() {
 
     async indexFile() {
       const id = parseInt(this.indexFileId);
-      if (!id) return;
+      if (!id || isNaN(id)) {
+        this.indexMsg = '⚠️ الرجاء إدخال رقم ملف صحيح';
+        return;
+      }
+      
       this.indexing = true;
       this.indexMsg = '';
+      
       try {
         const res = await fetch(`/api/v1/search/index/${id}`, { method: 'POST' });
         const data = await res.json();
         this.indexMsg = data.indexed
-          ? `✓ فُهرس بنجاح (${data.chunks} مقطع)`
-          : `✗ ${data.reason}`;
+          ? `✅ فُهرس بنجاح (${data.chunks} مقطع)`
+          : `❌ ${data.reason || 'فشلت الفهرسة'}`;
+        if (data.indexed) {
+          // Refresh file list or update UI
+          setTimeout(() => window.location.reload(), 1500);
+        }
       } catch {
-        this.indexMsg = '✗ حدث خطأ';
+        this.indexMsg = '❌ حدث خطأ في الاتصال';
       } finally {
         this.indexing = false;
         this.indexFileId = '';
+        // Clear message after 5 seconds
+        setTimeout(() => { this.indexMsg = ''; }, 5000);
       }
     },
   };
