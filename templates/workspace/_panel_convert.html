@@ -23,20 +23,6 @@
   'feather': {'color':'pink',    'emoji':'🗄️', 'label':'Feather'}
 } %}
 
-{% macro fmt_dot(fmt) %}
-  {% set m = fmt_meta.get(fmt, {
-    'color':'slate',
-    'emoji':'📄',
-    'label':fmt|upper
-  }) %}
-
-  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold
-               bg-{{ m.color }}-100 text-{{ m.color }}-700
-               dark:bg-{{ m.color }}-900/40 dark:text-{{ m.color }}-300">
-    {{ m.emoji }} {{ fmt|upper }}
-  </span>
-{% endmacro %}
-
 <div
   x-data="convertWizard()"
   x-init="init()"
@@ -430,23 +416,23 @@
         <p
           x-show="targetFormat"
           x-cloak
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
-          x-text="'.' + targetFormat.toUpperCase()"
+          class="text-xs text-brand-600 dark:text-brand-400 mt-1 font-semibold"
+          x-text="'.' + targetFormat.toUpperCase() + ' ✓'"
         ></p>
 
         <p
           x-show="!targetFormat && fileId"
           x-cloak
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
+          class="text-xs text-amber-600 dark:text-amber-400 mt-1 font-semibold"
         >
-          اختر الصيغة المطلوبة
+          ⚠️ الرجاء اختيار صيغة من القائمة أدناه
         </p>
 
         <p
-          x-show="fileId && step === 2 && !targetFormat"
-          class="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-semibold"
+          x-show="!fileId"
+          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
         >
-          ✅ اختر الصيغة من القائمة أدناه
+          اختر ملفاً أولاً
         </p>
 
       </div>
@@ -701,6 +687,13 @@
           class="text-xs text-slate-400 dark:text-slate-500 mt-1"
         >
           الملف جاهز للتحويل
+        </p>
+
+        <p
+          x-show="!fileId || !targetFormat"
+          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
+        >
+          اختر ملفاً وصيغة للبدء
         </p>
 
       </div>
@@ -2433,18 +2426,23 @@ function convertWizard() {
 
     init() {
 
-      console.log('🔄 Init called, fileId:', this.fileId);
-      console.log('📁 fileName:', this.fileName);
-      console.log('📋 fileFormat:', this.fileFormat);
+      console.log('🔄 [convertWizard] init() called');
+      console.log('📌 fileId:', this.fileId);
+      console.log('📌 fileName:', this.fileName);
+      console.log('📌 fileFormat:', this.fileFormat);
+
+      // عرض الصيغ المتاحة من الخادم
+      const formats = {{ export_formats | tojson }};
+      console.log('📋 export_formats from server:', formats);
 
       if (this.fileId) {
-        // تم تحديد ملف مسبقاً من صفحة الملفات
+        // تم تحديد ملف مسبقاً
         this.step = 2;
         this.targetFormat = this.getDefaultTargetFormat();
         this.convStatus = 'idle';
         console.log('✅ File pre-selected, step:', this.step, 'target:', this.targetFormat);
       } else {
-        // لا يوجد ملف محدد، ابق في الخطوة 1
+        // لا يوجد ملف محدد
         this.step = 1;
         this.targetFormat = '';
         this.convStatus = 'idle';
@@ -2462,17 +2460,12 @@ function convertWizard() {
 
       const formats = {{ export_formats | tojson }};
 
-      console.log('📋 Available formats from server:', formats);
+      console.log('📋 getDefaultTargetFormat - formats:', formats);
 
       if (!Array.isArray(formats) || !formats.length) {
         console.warn('⚠️ No export formats available');
         return '';
       }
-
-      /*
-       * Prefer XLSX when available,
-       * otherwise use the first supported format.
-       */
 
       if (formats.includes('xlsx')) {
         console.log('✅ Using default format: xlsx');
@@ -2492,19 +2485,17 @@ function convertWizard() {
 
     pickFile(id, name, format) {
 
-      console.log('📂 pickFile called:', { id, name, format });
+      console.log('📂 pickFile() called:', { id, name, format });
 
       if (this.converting) {
         console.warn('⚠️ Cannot pick file while converting');
         return;
       }
 
-      // تحديث معلومات الملف
       this.fileId = id;
       this.fileName = name;
       this.fileFormat = format;
       
-      // تعيين الصيغة الافتراضية إذا لم تكن محددة
       if (!this.targetFormat) {
         this.targetFormat = this.getDefaultTargetFormat();
         console.log('🔄 Set default target format:', this.targetFormat);
@@ -2519,7 +2510,7 @@ function convertWizard() {
       this.errorTitle = '';
       this.errorDetail = '';
 
-      // الانتقال إلى الخطوة 2 لعرض صيغ الهدف
+      // ✅ الانتقال إلى الخطوة 2 لعرض صيغ الهدف
       this.step = 2;
 
       console.log('✅ File picked, step:', this.step, 'target:', this.targetFormat);
@@ -2533,7 +2524,7 @@ function convertWizard() {
 
     selectFormat(format) {
 
-      console.log('🎯 selectFormat called:', format);
+      console.log('🎯 selectFormat() called:', format);
 
       if (!this.fileId) {
         console.warn('⚠️ Cannot select format: no file selected');
@@ -2548,10 +2539,10 @@ function convertWizard() {
       this.targetFormat = format;
       this.convStatus = 'idle';
 
-      // الانتقال إلى الخطوة 3 لعرض زر التحويل
+      // ✅ الانتقال إلى الخطوة 3 لعرض زر التحويل
       this.step = 3;
 
-      console.log('✅ Format selected, target:', this.targetFormat, 'step:', this.step);
+      console.log('✅ Format selected:', this.targetFormat, 'step:', this.step);
 
     },
 
@@ -2562,7 +2553,7 @@ function convertWizard() {
 
     goToStep(step) {
 
-      console.log('🔀 goToStep called:', step);
+      console.log('🔀 goToStep() called:', step);
 
       if (this.converting) {
         console.warn('⚠️ Cannot navigate while converting');
@@ -2570,14 +2561,12 @@ function convertWizard() {
       }
 
       if (step === 1) {
-        // العودة لاختيار الملف - نحافظ على fileId لكن نعرض القائمة
         this.step = 1;
         console.log('↩️ Back to step 1');
         return;
       }
 
       if (step === 2 && this.fileId) {
-        // العودة لاختيار الصيغة
         this.step = 2;
         this.convStatus = 'idle';
         console.log('↩️ Back to step 2');
@@ -2752,11 +2741,7 @@ function convertWizard() {
 
     startConvert() {
 
-      if (
-        !this.fileId ||
-        !this.targetFormat ||
-        this.converting
-      ) {
+      if (!this.fileId || !this.targetFormat || this.converting) {
         console.warn('⚠️ Cannot start conversion:', {
           fileId: this.fileId,
           targetFormat: this.targetFormat,
@@ -2766,10 +2751,6 @@ function convertWizard() {
       }
 
       console.log('🚀 Starting conversion...');
-
-      /*
-       * Close any previous connection.
-       */
 
       this.closeEventSource();
 
@@ -2797,53 +2778,32 @@ function convertWizard() {
         const es = new EventSource(url);
         this.eventSource = es;
 
-        /* ----------------------------------------------------
-           Progress
-           ---------------------------------------------------- */
-
         es.addEventListener('progress', event => {
-
           try {
-
             const d = JSON.parse(event.data || '{}');
-
             if (typeof d.pct === 'number') {
               this.currentPct = Math.max(0, Math.min(100, d.pct));
             }
-
-            if (d.msg) {
-              this.progressMsg = d.msg;
-            }
-
+            if (d.msg) this.progressMsg = d.msg;
             if (d.stage) {
               const validStages = ['read', 'analyze', 'convert', 'save'];
               if (validStages.includes(d.stage)) {
                 this.stage = d.stage;
               }
             }
-
             if (d.processed !== undefined && d.processed !== null) {
               this.processed = d.processed;
             }
-
             if (d.total !== undefined && d.total !== null) {
               this.total = d.total;
             }
-
           } catch (error) {
             console.warn('Invalid progress event:', error);
           }
-
         });
 
-        /* ----------------------------------------------------
-           Done
-           ---------------------------------------------------- */
-
         es.addEventListener('done', event => {
-
           let d = {};
-
           try {
             d = JSON.parse(event.data || '{}');
           } catch (error) {
@@ -2859,11 +2819,6 @@ function convertWizard() {
           this.converting = false;
 
           if (d.ok) {
-
-            /*
-             * Smoothly complete progress.
-             */
-
             this.currentPct = 100;
             this.stage = 'save';
             this.progressMsg = 'اكتمل التحويل بنجاح';
@@ -2877,57 +2832,32 @@ function convertWizard() {
               this.convStatus = 'success';
               console.log('✅ Conversion completed successfully!');
             }, 350);
-
           } else {
-
             this.errorTitle = d.title || 'خطأ في التحويل';
             this.errorDetail = d.detail || 'تعذر إتمام عملية التحويل.';
             this.convStatus = 'error';
             console.error('❌ Conversion failed:', this.errorTitle);
-
           }
-
         });
 
-        /* ----------------------------------------------------
-           SSE error
-           ---------------------------------------------------- */
-
         es.onerror = () => {
-
-          /*
-           * EventSource can fire an error while
-           * reconnecting. Since our endpoint is a
-           * one-shot conversion stream, close it.
-           */
-
           this.closeEventSource();
           this.converting = false;
 
-          /*
-           * If the server already sent a high percentage,
-           * avoid unnecessarily replacing a success state.
-           */
-
           if (this.convStatus !== 'success') {
-
             this.errorTitle = 'انقطع الاتصال';
             this.errorDetail = 'تعذر الاتصال بخدمة التحويل. تحقق من الاتصال وحاول مجدداً.';
             this.convStatus = 'error';
             console.error('❌ SSE connection error');
-
           }
-
         };
 
       } catch (error) {
-
         this.converting = false;
         this.errorTitle = 'تعذر بدء التحويل';
         this.errorDetail = 'حدث خطأ أثناء إنشاء اتصال التحويل. حاول مجدداً.';
         this.convStatus = 'error';
         console.error('❌ Start conversion error:', error);
-
       }
 
     },
@@ -2938,18 +2868,15 @@ function convertWizard() {
        -------------------------------------------------------- */
 
     retryConvert() {
-
       if (!this.fileId || !this.targetFormat) {
         return;
       }
-
       this.convStatus = 'idle';
       this.currentPct = 0;
       this.stage = 'read';
       this.errorTitle = '';
       this.errorDetail = '';
       this.startConvert();
-
     },
 
 
@@ -2958,13 +2885,11 @@ function convertWizard() {
        -------------------------------------------------------- */
 
     finishWithError(title, detail) {
-
       this.closeEventSource();
       this.converting = false;
       this.errorTitle = title;
       this.errorDetail = detail;
       this.convStatus = 'error';
-
     },
 
 
@@ -2973,19 +2898,14 @@ function convertWizard() {
        -------------------------------------------------------- */
 
     closeEventSource() {
-
       if (this.eventSource) {
-
         try {
           this.eventSource.close();
         } catch (error) {
           console.warn('Failed to close EventSource:', error);
         }
-
         this.eventSource = null;
-
       }
-
     },
 
 
@@ -2994,7 +2914,6 @@ function convertWizard() {
        -------------------------------------------------------- */
 
     resetConvert() {
-
       this.closeEventSource();
       this.converting = false;
       this.currentPct = 0;
@@ -3012,9 +2931,7 @@ function convertWizard() {
       this.fileFormat = '';
       this.targetFormat = '';
       this.step = 1;
-
       console.log('🔄 Reset conversion state');
-
     }
 
   };
