@@ -289,6 +289,7 @@ async def lifespan(app: FastAPI):
     # We add them manually here (PostgreSQL only — no SQLite support).
     try:
         async with engine.begin() as conn:
+            # 1. تعديلات ai_model_registry
             await conn.execute(__import__("sqlalchemy").text(
                 "ALTER TABLE ai_model_registry "
                 "ADD COLUMN IF NOT EXISTS task_type VARCHAR(50);"
@@ -301,13 +302,43 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE ai_model_registry "
                 "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
             ))
-        logger.info("Column migrations applied to ai_model_registry")
+            
+            # 2. ✅ إصلاح extracted_tables - إضافة table_index
+            try:
+                await conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE extracted_tables "
+                    "ADD COLUMN IF NOT EXISTS table_index INTEGER;"
+                ))
+                logger.info("✅ Column 'table_index' added to extracted_tables")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not add table_index column: {e}")
+            
+            # 3. إنشاء فهرس للعمود الجديد
+            try:
+                await conn.execute(__import__("sqlalchemy").text(
+                    "CREATE INDEX IF NOT EXISTS ix_extracted_tables_table_index "
+                    "ON extracted_tables (table_index);"
+                ))
+                logger.info("✅ Index created on extracted_tables.table_index")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not create index on table_index: {e}")
+                
+        logger.info("✅ Column migrations applied successfully")
     except Exception as exc:
-        logger.warning("Column migration skipped: %s", exc)
+        logger.warning("⚠️ Column migration skipped: %s", exc)
 
     # Ensure upload/output directories exist
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
+    
+    # إنشاء مجلدات المستخدمين (للمستخدمين الموجودين)
+    try:
+        # إنشاء مجلد للمستخدم 2 (admin)
+        user_dir = os.path.join(settings.UPLOAD_DIR, "2")
+        os.makedirs(user_dir, exist_ok=True)
+        logger.info("✅ Upload directories created")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not create user directories: {e}")
 
     # Seed default admin account
     await seed_admin()
@@ -317,10 +348,10 @@ async def lifespan(app: FastAPI):
 
     # Start intelligence job queue workers
     await _job_queue.start()
-    logger.info("Smart Spreadsheet Platform starting on port %s", settings.PORT)
+    logger.info("🚀 Smart Spreadsheet Platform starting on port %s", settings.PORT)
     yield
     await _job_queue.stop()
-    logger.info("Application shutting down")
+    logger.info("👋 Application shutting down")
 
 
 def create_app() -> FastAPI:
