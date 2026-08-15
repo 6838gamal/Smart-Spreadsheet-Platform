@@ -191,6 +191,7 @@ class ExtractedTable(Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     col_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    table_index: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ← هذا العمود المطلوب
     has_header: Mapped[bool] = mapped_column(Boolean, default=True)
     has_merged_cells: Mapped[bool] = mapped_column(Boolean, default=False)
     spans_pages: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -273,14 +274,14 @@ class AIModelRegistry(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # question-answering | summarization | text-generation | feature-extraction | text-extraction
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     version: Mapped[str] = mapped_column(String(30), nullable=False)
-    source: Mapped[str | None] = mapped_column(String(50), nullable=True)  # huggingface | local | builtin
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    visible_to_users: Mapped[bool] = mapped_column(Boolean, default=True)  # admin controls user visibility
+    visible_to_users: Mapped[bool] = mapped_column(Boolean, default=True)
     size_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
     languages: Mapped[list] = mapped_column(JSON, default=list)
     metrics: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -357,7 +358,6 @@ class DocumentChunk(Base):
     filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    # Phase 2: add embedding JSON column here (vector stored as list[float])
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
