@@ -206,7 +206,7 @@ class SearchIndex(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    meta_data: Mapped[dict] = mapped_column(JSON, default=dict)  # ← تم التغيير من metadata إلى meta_data
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
