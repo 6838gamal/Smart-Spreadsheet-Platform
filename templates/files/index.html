@@ -47,7 +47,6 @@
     >
 
       <!-- Upload icon -->
-
       <div
         class="w-14 h-14 mx-auto mb-4 rounded-2xl
                bg-indigo-50 dark:bg-indigo-900/20
@@ -70,9 +69,7 @@
 
       </div>
 
-
       <!-- Main text -->
-
       <p class="text-slate-700 dark:text-slate-300 font-semibold mb-1">
         {{ t.get('drag_drop') }}
       </p>
@@ -81,9 +78,7 @@
         {{ t.get('file_limit') }}
       </p>
 
-
       <!-- Choose files -->
-
       <label
         class="btn-primary cursor-pointer inline-flex items-center
                justify-center gap-2"
@@ -127,9 +122,7 @@
 
       </label>
 
-
       <!-- Drop hint -->
-
       <p
         x-show="dragging"
         x-cloak
@@ -140,7 +133,6 @@
 
     </div>
 
-
     <!-- =======================================================
          UPLOAD RESULT
     ======================================================== -->
@@ -149,7 +141,6 @@
       id="upload-result"
       class="mt-3"
     ></div>
-
 
     <!-- =======================================================
          UPLOADING STATUS
@@ -209,9 +200,7 @@
 
       </div>
 
-
       <!-- Upload progress -->
-
       <div
         class="mt-3 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
       >
@@ -228,7 +217,6 @@
     </div>
 
   </div>
-
 
   <!-- =========================================================
        FILTERS & SEARCH
@@ -282,14 +270,12 @@
 
       </select>
 
-
       <button
         type="submit"
         class="btn-primary"
       >
         {{ t.get('search') }}
       </button>
-
 
       {% if search or fmt %}
 
@@ -304,7 +290,6 @@
 
     </form>
 
-
     <span
       class="text-sm text-slate-500 dark:text-slate-400 self-center"
     >
@@ -312,7 +297,6 @@
     </span>
 
   </div>
-
 
   <!-- =========================================================
        FILES GRID
@@ -337,7 +321,6 @@
     >
 
       <!-- File type + favorite -->
-
       <div class="flex items-start justify-between">
 
         <span
@@ -375,7 +358,6 @@
           .{{ f.format | upper }}
         </span>
 
-
         <button
           type="button"
           hx-post="/files/{{ f.id }}/favorite"
@@ -405,9 +387,7 @@
 
       </div>
 
-
       <!-- Name & size -->
-
       <div class="min-w-0">
 
         <p
@@ -427,9 +407,7 @@
 
       </div>
 
-
       <!-- Meta -->
-
       {% if f.meta %}
 
       <div
@@ -446,7 +424,6 @@
 
         {% endif %}
 
-
         {% if f.meta.columns %}
 
         <span>
@@ -460,9 +437,7 @@
 
       {% endif %}
 
-
       <!-- Actions -->
-
       <div
         class="flex gap-1.5 mt-auto pt-2
                border-t border-slate-100
@@ -481,7 +456,6 @@
           {{ t.get('view') }}
         </a>
 
-
         <a
           href="/files/{{ f.id }}/download"
           class="flex-1 text-center text-xs
@@ -494,7 +468,6 @@
           {{ t.get('download') }}
         </a>
 
-
         <a
           href="/converter?file_id={{ f.id }}"
           class="flex-1 text-center text-xs
@@ -506,7 +479,6 @@
         >
           {{ t.get('convert') }}
         </a>
-
 
         <form
           method="post"
@@ -533,7 +505,6 @@
     {% endfor %}
 
   </div>
-
 
   <!-- =========================================================
        PAGINATION
@@ -568,9 +539,7 @@
 
   {% endif %}
 
-
   {% else %}
-
 
   <!-- =========================================================
        EMPTY STATE
@@ -602,14 +571,12 @@
 
     </div>
 
-
     <h3
       class="text-lg font-semibold
              text-slate-600 dark:text-slate-300 mb-2"
     >
       {{ t.get('no_files_empty') }}
     </h3>
-
 
     <p class="text-slate-400 text-sm">
       {{ t.get('upload_to_start') }}
@@ -622,7 +589,6 @@
 </div>
 
 {% endblock %}
-
 
 {% block scripts %}
 
@@ -649,9 +615,7 @@ function filesPage() {
       window.addEventListener('pageshow', () => {
 
         this.dragging = false;
-
         this.uploading = false;
-
         this.uploadProgress = 0;
 
       });
