@@ -99,7 +99,7 @@ class File(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # NEW FIELDS FOR LOCAL STORAGE
+    # Storage fields for local storage support
     storage_key: Mapped[str | None] = mapped_column(
         String(100), unique=True, nullable=True, index=True
     )
