@@ -98,6 +98,18 @@ class File(Base):
     tags: Mapped[list] = mapped_column(JSON, default=list)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # ✅ NEW FIELDS FOR LOCAL STORAGE
+    storage_key: Mapped[str | None] = mapped_column(
+        String(100), unique=True, nullable=True, index=True
+    )
+    is_locally_stored: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, index=True
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -119,6 +131,18 @@ class File(Base):
     @property
     def extension(self) -> str:
         return self.format.lower().lstrip(".")
+
+    @property
+    def is_available_on_server(self) -> bool:
+        """Check if file exists on server."""
+        import os
+        return os.path.exists(self.path) if self.path else False
+    
+    @property
+    def is_cached_locally(self) -> bool:
+        """Check if file is cached locally (client-side check)."""
+        # This is a client-side property - server returns False by default
+        return False
 
 
 class OperationLog(Base):
