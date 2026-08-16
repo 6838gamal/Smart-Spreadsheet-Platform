@@ -11,19 +11,17 @@ from fastapi import APIRouter, Depends, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from app.core.templates import templates
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.infrastructure.database.models import User, OperationType, OperationStatus
+from app.infrastructure.database.models import User, OperationType, OperationStatus, File, Operation
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.storage.local_storage import storage
 from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
-
-# ===== IMPORT Stats Service =====
-from app.application.stats.service import StatsService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -124,6 +122,61 @@ def _friendly_error(raw: str) -> tuple[str, str]:
     return "خطأ في التحويل", raw[:200] if raw else "حدث خطأ غير متوقع."
 
 
+# ── Helper function to get user stats ──────────────────────────────────────
+
+async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
+    """Get user statistics directly from database."""
+    try:
+        # Get total files
+        files_query = select(func.count()).select_from(File).where(File.owner_id == user_id)
+        total_files = await db.scalar(files_query) or 0
+        
+        # Get total size
+        size_query = select(func.sum(File.size_bytes)).where(File.owner_id == user_id)
+        total_bytes = await db.scalar(size_query) or 0
+        
+        # Format size
+        if total_bytes < 1024:
+            total_size_human = f"{total_bytes} B"
+        elif total_bytes < 1024 * 1024:
+            total_size_human = f"{total_bytes / 1024:.1f} KB"
+        elif total_bytes < 1024 * 1024 * 1024:
+            total_size_human = f"{total_bytes / (1024 * 1024):.1f} MB"
+        else:
+            total_size_human = f"{total_bytes / (1024 * 1024 * 1024):.2f} GB"
+        
+        # Get total operations
+        ops_query = select(func.count()).select_from(Operation).where(Operation.user_id == user_id)
+        total_operations = await db.scalar(ops_query) or 0
+        
+        # Get favorites
+        fav_query = select(File).where(File.owner_id == user_id, File.is_favorite == True).order_by(File.created_at.desc()).limit(10)
+        favorites = await db.execute(fav_query)
+        favorites_list = favorites.scalars().all()
+        
+        # Get recent files (last 5)
+        recent_query = select(File).where(File.owner_id == user_id).order_by(File.created_at.desc()).limit(5)
+        recent = await db.execute(recent_query)
+        recent_files = recent.scalars().all()
+        
+        return {
+            "total_files": total_files,
+            "total_size_human": total_size_human,
+            "total_operations": total_operations,
+            "favorites": favorites_list,
+            "recent_files": recent_files,
+        }
+    except Exception as e:
+        logger.error(f"Error getting user stats: {e}")
+        return {
+            "total_files": 0,
+            "total_size_human": "0 B",
+            "total_operations": 0,
+            "favorites": [],
+            "recent_files": []
+        }
+
+
 # ── Pages ────────────────────────────────────────────────────────────────────
 
 @router.get("/converter", response_class=HTMLResponse)
@@ -148,20 +201,8 @@ async def converter_page(
             except Exception as e:
                 logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
     
-    # ===== FIX: Get user stats =====
-    try:
-        stats_service = StatsService(db)
-        stats = await stats_service.get_user_stats(current_user.id)
-    except Exception as e:
-        logger.error(f"Error getting user stats: {e}")
-        # Provide fallback empty stats
-        stats = {
-            "total_files": 0,
-            "total_size_human": "0 B",
-            "total_operations": 0,
-            "favorites": [],
-            "recent_files": []
-        }
+    # ===== Get user stats =====
+    stats = await get_user_stats(db, current_user.id)
     
     return templates.TemplateResponse(
         request,
@@ -172,7 +213,7 @@ async def converter_page(
             "export_formats": EXPORT_FORMATS,
             "current_page": "converter",
             "lang": current_user.default_lang,
-            "stats": stats,  # <-- ADDED: Pass stats to template
+            "stats": stats,  # <-- Pass stats to template
         },
     )
 
