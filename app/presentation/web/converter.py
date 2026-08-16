@@ -22,6 +22,9 @@ from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
 
+# ===== IMPORT Stats Service =====
+from app.application.stats.service import StatsService
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -145,6 +148,21 @@ async def converter_page(
             except Exception as e:
                 logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
     
+    # ===== FIX: Get user stats =====
+    try:
+        stats_service = StatsService(db)
+        stats = await stats_service.get_user_stats(current_user.id)
+    except Exception as e:
+        logger.error(f"Error getting user stats: {e}")
+        # Provide fallback empty stats
+        stats = {
+            "total_files": 0,
+            "total_size_human": "0 B",
+            "total_operations": 0,
+            "favorites": [],
+            "recent_files": []
+        }
+    
     return templates.TemplateResponse(
         request,
         "workspace/index.html",
@@ -154,6 +172,7 @@ async def converter_page(
             "export_formats": EXPORT_FORMATS,
             "current_page": "converter",
             "lang": current_user.default_lang,
+            "stats": stats,  # <-- ADDED: Pass stats to template
         },
     )
 
