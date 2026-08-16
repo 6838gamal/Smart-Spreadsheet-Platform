@@ -108,7 +108,7 @@ class FileService:
         
         # Save file to server (temporary/backup)
         try:
-            meta = await storage.save_upload(file, user_id)
+            meta = await self.storage.save_upload(file, user_id)
         except Exception as e:
             logger.error(f"Failed to save file to server: {e}")
             raise ValidationError(f"Failed to save file: {str(e)}")
