@@ -204,6 +204,12 @@
             </svg>
             {{ file.created_at.strftime('%Y-%m-%d') }}
           </span>
+          
+          <!-- File status badge -->
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px]"
+                :class="fileExists ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'">
+            <span x-text="fileExists ? '✅ موجود' : '⚠️ مفقود'"></span>
+          </span>
         </div>
       </div>
       
@@ -224,12 +230,38 @@
     <!-- Right: Actions -->
     <div class="flex items-center gap-1.5 flex-wrap">
       
+      <!-- Preview Button -->
+      <button 
+        @click="previewFile({{ file.id }})"
+        class="btn-primary text-xs py-1.5 px-3"
+        :disabled="isPreviewing"
+        :class="isPreviewing ? 'opacity-50 cursor-not-allowed' : ''">
+        <template x-if="!isPreviewing">
+          <span class="flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            معاينة
+          </span>
+        </template>
+        <template x-if="isPreviewing">
+          <span class="flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            جاري التحميل...
+          </span>
+        </template>
+      </button>
+      
       <!-- Analyze -->
       <button 
         @click="startAnalysis()"
-        class="btn-primary text-xs py-1.5 px-3"
-        :disabled="isAnalyzing"
-        :class="isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''">
+        class="btn-secondary text-xs py-1.5 px-3"
+        :disabled="isAnalyzing || !fileExists"
+        :class="(isAnalyzing || !fileExists) ? 'opacity-50 cursor-not-allowed' : ''">
         <template x-if="!isAnalyzing">
           <span class="flex items-center gap-1">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,8 +285,8 @@
       <button 
         @click="convertFile({{ file.id }}, 'excel')"
         class="btn-secondary text-xs py-1.5 px-3"
-        :disabled="isConverting"
-        :class="isConverting ? 'opacity-50 cursor-not-allowed' : ''">
+        :disabled="isConverting || !fileExists"
+        :class="(isConverting || !fileExists) ? 'opacity-50 cursor-not-allowed' : ''">
         <template x-if="!isConverting">
           <span class="flex items-center gap-1">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -278,8 +310,8 @@
       <button 
         @click="cleanFile({{ file.id }})"
         class="btn-secondary text-xs py-1.5 px-3"
-        :disabled="isCleaning"
-        :class="isCleaning ? 'opacity-50 cursor-not-allowed' : ''">
+        :disabled="isCleaning || !fileExists"
+        :class="(isCleaning || !fileExists) ? 'opacity-50 cursor-not-allowed' : ''">
         <template x-if="!isCleaning">
           <span class="flex items-center gap-1">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -301,7 +333,8 @@
       
       <!-- Download -->
       <a href="/files/{{ file.id }}/download" 
-         class="btn-secondary text-xs py-1.5 px-3">
+         class="btn-secondary text-xs py-1.5 px-3"
+         :class="!fileExists ? 'opacity-50 pointer-events-none' : ''">
         <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
         </svg>
@@ -361,9 +394,11 @@
                this.docType = d.doc_type || '';
                if (d.status === 'completed' || d.status === 'failed') {
                  this.polling = false;
-                 if (d.status === 'completed') {
-                   setTimeout(() => window.location.reload(), 1000);
-                 }
+                 // لا نقوم بتحديث الصفحة تلقائياً
+                 // بدلاً من ذلك نرسل حدث لتحديث الواجهة
+                 window.dispatchEvent(new CustomEvent('analysis-completed', {
+                   detail: { analysisId: this.analysisId, status: d.status }
+                 }));
                } else {
                  setTimeout(() => this.pollStatus(), 2000);
                }
@@ -375,7 +410,6 @@
              this.polling = true;
              this.pollStatus();
            }
-           // ربط المكون بالكائن العالمي لاستخدامه من fileViewer
            window.analysisComponent = this;
          }
        }">
@@ -386,11 +420,13 @@
       <div class="flex items-center gap-3">
         
         <!-- Status icon -->
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
-                    {{ 'bg-emerald-100 dark:bg-emerald-900/30' if analysis and analysis.status.value == 'completed' else 
-                       'bg-amber-100 dark:bg-amber-900/30' if analysis and analysis.status.value in ['pending', 'running', 'queued'] else 
-                       'bg-red-100 dark:bg-red-900/30' if analysis and analysis.status.value in ['failed', 'error'] else 
-                       'bg-slate-100 dark:bg-slate-700' }}">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    :class="{
+                      'bg-emerald-100 dark:bg-emerald-900/30': status === 'completed',
+                      'bg-amber-100 dark:bg-amber-900/30': ['pending', 'running', 'queued'].includes(status),
+                      'bg-red-100 dark:bg-red-900/30': ['failed', 'error'].includes(status),
+                      'bg-slate-100 dark:bg-slate-700': status === 'none'
+                    }">
           
           <template x-if="status === 'completed'">
             <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -398,14 +434,14 @@
             </svg>
           </template>
           
-          <template x-if="status === 'pending' || status === 'running' || status === 'queued'">
+          <template x-if="['pending', 'running', 'queued'].includes(status)">
             <svg class="w-4 h-4 text-amber-600 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
             </svg>
           </template>
           
-          <template x-if="status === 'failed' || status === 'error'">
+          <template x-if="['failed', 'error'].includes(status)">
             <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
             </svg>
@@ -426,7 +462,7 @@
               ✅ تم تحليل الملف
               <span x-show="docType" x-text="' — ' + docType" class="font-normal text-slate-500"></span>
             </span>
-            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">
+            <span x-show="['pending', 'running', 'queued'].includes(status)">
               ⏳ جاري التحليل…
             </span>
             <span x-show="status === 'none'">
@@ -441,9 +477,9 @@
           </p>
           <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             <span x-show="status === 'completed'">يمكنك الدردشة مع الملف أو عرض النتائج</span>
-            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">يرجى الانتظار…</span>
+            <span x-show="['pending', 'running', 'queued'].includes(status)">يرجى الانتظار…</span>
             <span x-show="status === 'none'">قم بتحليل الملف لاستخراج المعلومات</span>
-            <span x-show="status === 'failed' || status === 'error'">حاول إعادة التحليل</span>
+            <span x-show="['failed', 'error'].includes(status)">حاول إعادة التحليل</span>
           </p>
         </div>
         
@@ -471,9 +507,10 @@
           دردشة
         </button>
         
-        <button x-show="status === 'none' || status === 'failed' || status === 'error'"
+        <button x-show="['none', 'failed', 'error'].includes(status)"
                 @click="startAnalysis()"
-                class="btn-primary text-xs py-1.5 px-3">
+                class="btn-primary text-xs py-1.5 px-3"
+                :disabled="!fileExists">
           <span x-text="status === 'failed' ? '🔄 إعادة التحليل' : '🚀 تحليل الملف'"></span>
         </button>
         
@@ -482,7 +519,7 @@
     </div>
     
     <!-- Progress bar (while analyzing) -->
-    <div x-show="status === 'pending' || status === 'running' || status === 'queued'" 
+    <div x-show="['pending', 'running', 'queued'].includes(status)" 
          x-cloak
          class="mt-3">
       <div class="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -499,7 +536,7 @@
   </div>
 
   <!-- =========================================================
-       DATA PREVIEW
+       DATA PREVIEW - DYNAMIC LOADING
        ========================================================= -->
 
   <div class="card overflow-hidden">
@@ -511,16 +548,27 @@
         <h3 class="font-semibold text-slate-900 dark:text-white text-sm">
           معاينة البيانات
         </h3>
-        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
-          {% if preview and preview.total_rows is defined %}{{ "{:,}".format(preview.total_rows) }} صف{% endif %}
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+              x-show="previewData && previewData.total_rows !== undefined">
+          <span x-text="formatNumber(previewData.total_rows)"></span> صف
         </span>
       </div>
       
       <div class="flex items-center gap-2">
         
-        <!-- View toggle (table / text) -->
+        <!-- Refresh preview -->
         <button 
-          x-show="contentType === 'tabular'"
+          @click="previewFile({{ file.id }})"
+          class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          title="تحديث المعاينة">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+        
+        <!-- View toggle -->
+        <button 
+          x-show="previewData && previewData.content_type === 'tabular'"
           @click="viewMode = viewMode === 'table' ? 'compact' : 'table'"
           class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           title="تبديل عرض الجدول">
@@ -543,7 +591,10 @@
     <div x-data="{
       viewMode: 'table',
       isFullscreen: false,
-      contentType: '{{ preview.content_type if preview and preview.content_type else 'tabular' }}',
+      previewData: null,
+      previewError: null,
+      isLoading: false,
+      
       toggleFullscreen() {
         this.isFullscreen = !this.isFullscreen;
         const el = this.$el.closest('.card');
@@ -555,117 +606,195 @@
           document.body.style.overflow = '';
         }
       },
-      sortBy(col) {
-        // دالة ترتيب (يمكن تنفيذها حسب الحاجة)
-        window.showInfo('🔃 ترتيب', `جاري ترتيب حسب: ${col}`);
+      
+      formatNumber(num) {
+        return new Intl.NumberFormat('ar-EG').format(num);
+      },
+      
+      async loadPreview(fileId) {
+        this.isLoading = true;
+        this.previewError = null;
+        
+        try {
+          const response = await fetch(`/api/files/${fileId}/preview`);
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error || 'فشل تحميل المعاينة');
+          }
+          
+          this.previewData = data;
+          
+          // إظهار رسالة نجاح
+          if (window.showSuccess) {
+            window.showSuccess('✅ تم تحميل المعاينة', 'تم عرض محتوى الملف بنجاح');
+          }
+          
+        } catch (error) {
+          this.previewError = error.message;
+          if (window.showError) {
+            window.showError('❌ فشل المعاينة', error.message);
+          }
+        } finally {
+          this.isLoading = false;
+        }
+      },
+      
+      init() {
+        // تحميل المعاينة تلقائياً عند تحميل المكون
+        this.loadPreview({{ file.id }});
+        
+        // الاستماع لأحداث تحديث المعاينة
+        window.addEventListener('preview-update', (e) => {
+          if (e.detail && e.detail.fileId === {{ file.id }}) {
+            this.loadPreview(e.detail.fileId);
+          }
+        });
       }
     }">
     
-    {% if not preview or preview.error %}
+    <!-- Loading state -->
+    <template x-if="isLoading">
+      <div class="p-12 text-center">
+        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+          <svg class="w-6 h-6 text-brand-500 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+        </div>
+        <p class="text-sm font-medium text-slate-700 dark:text-slate-300">جاري تحميل المعاينة...</p>
+        <p class="text-xs text-slate-400 mt-1">قد يستغرق هذا بضع ثوانٍ</p>
+      </div>
+    </template>
     
     <!-- Error state -->
-    <div class="p-12 text-center">
-      <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-red-50 dark:bg-red-900/10 flex items-center justify-center">
-        <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
-        </svg>
+    <template x-if="!isLoading && previewError">
+      <div class="p-12 text-center">
+        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 flex items-center justify-center">
+          <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
+          </svg>
+        </div>
+        <p class="text-sm font-medium text-amber-700 dark:text-amber-300" x-text="previewError || 'تعذّرت المعاينة'"></p>
+        <p class="text-xs text-amber-500 dark:text-amber-400/70 mt-1">
+          قد يكون الملف غير مدعوم للمعاينة أو مفقوداً
+        </p>
+        <button @click="loadPreview({{ file.id }})"
+                class="mt-4 text-xs py-1.5 px-4 rounded-lg bg-brand-50 dark:bg-brand-900/20 
+                       hover:bg-brand-100 dark:hover:bg-brand-900/40 text-brand-600 
+                       transition-colors font-medium">
+          🔄 إعادة المحاولة
+        </button>
       </div>
-      <p class="text-sm font-medium text-slate-700 dark:text-slate-300">
-        {{ preview.error if preview else 'تعذّرت المعاينة' }}
-      </p>
-      <p class="text-xs text-slate-400 mt-1">
-        قد يكون الملف فارغاً أو غير مدعوم للمعاينة
-      </p>
-    </div>
+    </template>
     
-    {% elif preview.rows and preview.content_type == 'text' %}
-    
-    <!-- Text preview -->
-    <div class="overflow-auto max-h-[60vh] p-4 space-y-1 font-mono text-xs text-slate-700 dark:text-slate-300 leading-relaxed"
-         :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[60vh]'">
-      {% for row in preview.rows %}
-      <p class="border-b border-slate-50 dark:border-slate-800 pb-1 break-words 
-                hover:bg-slate-50 dark:hover:bg-slate-800/30 px-1 rounded transition-colors">
-        {{ row[preview.columns[0]] or '' }}
-      </p>
-      {% endfor %}
-    </div>
-    
-    {% elif preview.rows %}
-    
-    <!-- Tabular preview -->
-    <div class="overflow-auto"
-         :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[50vh]'">
+    <!-- Preview content -->
+    <template x-if="!isLoading && !previewError && previewData">
       
-      <table class="w-full text-xs"
-             :class="viewMode === 'compact' ? 'text-[10px]' : ''">
-        
-        <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
-          <tr>
-            <th class="px-3 py-2 text-slate-400 font-medium text-center w-8">#</th>
-            {% for col in preview.columns %}
-            <th class="px-3 py-2 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start 
-                       hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                @click="sortBy('{{ col }}')"
-                title="ترتيب حسب {{ col }}">
-              {{ col }}
-              <span class="text-slate-400">↕</span>
-            </th>
-            {% endfor %}
-          </tr>
-        </thead>
-        
-        <tbody class="divide-y divide-slate-50 dark:divide-slate-700/30">
-          {% for row in preview.rows %}
-          <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
-            <td class="px-3 py-1.5 text-slate-400 text-center text-[10px] 
-                       group-hover:text-slate-600 dark:group-hover:text-slate-300">
-              {{ loop.index }}
-            </td>
-            {% for col in preview.columns %}
-            <td class="px-3 py-1.5 text-slate-700 dark:text-slate-300 
-                       whitespace-nowrap max-w-[180px] truncate"
-                :class="viewMode === 'compact' ? 'py-1 text-[10px]' : 'py-1.5'"
-                title="{{ row[col] if row[col] is not none else '' }}">
-              {{ row[col] if row[col] is not none else '—' }}
-            </td>
-            {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-        
-      </table>
+      <!-- Text preview -->
+      <template x-if="previewData.content_type === 'text'">
+        <div class="overflow-auto max-h-[60vh] p-4 space-y-1 font-mono text-xs text-slate-700 dark:text-slate-300 leading-relaxed"
+             :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[60vh]'">
+          <template x-for="row in previewData.rows" :key="row.id">
+            <p class="border-b border-slate-50 dark:border-slate-800 pb-1 break-words 
+                      hover:bg-slate-50 dark:hover:bg-slate-800/30 px-1 rounded transition-colors"
+               x-text="row.content || row.text || ''"></p>
+          </template>
+        </div>
+      </template>
       
-    </div>
+      <!-- Tabular preview -->
+      <template x-if="previewData.content_type === 'tabular'">
+        <div class="overflow-auto"
+             :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[50vh]'">
+          
+          <table class="w-full text-xs"
+                 :class="viewMode === 'compact' ? 'text-[10px]' : ''">
+            
+            <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
+              <tr>
+                <th class="px-3 py-2 text-slate-400 font-medium text-center w-8">#</th>
+                <template x-for="col in previewData.columns" :key="col">
+                  <th class="px-3 py-2 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start 
+                             hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
+                      @click="sortBy(col)"
+                      :title="'ترتيب حسب ' + col">
+                    <span x-text="col"></span>
+                    <span class="text-slate-400">↕</span>
+                  </th>
+                </template>
+              </tr>
+            </thead>
+            
+            <tbody class="divide-y divide-slate-50 dark:divide-slate-700/30">
+              <template x-for="(row, index) in previewData.rows" :key="index">
+                <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                  <td class="px-3 py-1.5 text-slate-400 text-center text-[10px] 
+                             group-hover:text-slate-600 dark:group-hover:text-slate-300"
+                      x-text="index + 1"></td>
+                  <template x-for="col in previewData.columns" :key="col">
+                    <td class="px-3 py-1.5 text-slate-700 dark:text-slate-300 
+                               whitespace-nowrap max-w-[180px] truncate"
+                        :class="viewMode === 'compact' ? 'py-1 text-[10px]' : 'py-1.5'"
+                        :title="row[col] || ''">
+                      <span x-text="row[col] !== null && row[col] !== undefined ? row[col] : '—'"></span>
+                    </td>
+                  </template>
+                </tr>
+              </template>
+            </tbody>
+            
+          </table>
+          
+        </div>
+        
+        <!-- Footer with stats -->
+        <div class="p-2 border-t border-slate-100 dark:border-slate-700/50 
+                    flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
+          <span>
+            عرض <span x-text="previewData.rows ? previewData.rows.length : 0"></span> صف
+            <span x-show="previewData.total_rows > (previewData.rows ? previewData.rows.length : 0)">
+              من أصل <span x-text="formatNumber(previewData.total_rows)"></span>
+            </span>
+          </span>
+          <span>
+            <span x-text="previewData.columns ? previewData.columns.length : 0"></span> أعمدة
+          </span>
+        </div>
+      </template>
+      
+      <!-- Empty state -->
+      <template x-if="previewData && (!previewData.rows || previewData.rows.length === 0)">
+        <div class="p-12 text-center">
+          <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+            <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <p class="text-sm font-medium text-slate-700 dark:text-slate-300">لا توجد بيانات للمعاينة</p>
+          <p class="text-xs text-slate-400 mt-1">الملف فارغ أو غير مدعوم للمعاينة المباشرة</p>
+        </div>
+      </template>
+      
+    </template>
     
-    <!-- Footer with stats -->
-    <div class="p-2 border-t border-slate-100 dark:border-slate-700/50 
-                flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-      <span>
-        عرض {{ preview.rows|length }} صف
-        {% if preview.total_rows > preview.rows|length %}
-        من أصل {{ "{:,}".format(preview.total_rows) }}
-        {% endif %}
-      </span>
-      <span>
-        {{ preview.columns|length }} أعمدة
-      </span>
-    </div>
-    
-    {% else %}
-    
-    <!-- Empty data -->
-    <div class="p-12 text-center">
-      <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-        <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-        </svg>
+    <!-- Initial state (when no preview data) -->
+    <template x-if="!isLoading && !previewError && !previewData">
+      <div class="p-12 text-center">
+        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
+          <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+        </div>
+        <p class="text-sm font-medium text-slate-700 dark:text-slate-300">اضغط على زر المعاينة</p>
+        <p class="text-xs text-slate-400 mt-1">لعرض محتوى الملف</p>
+        <button @click="loadPreview({{ file.id }})"
+                class="mt-4 btn-primary text-xs py-1.5 px-4">
+          👁️ معاينة الملف
+        </button>
       </div>
-      <p class="text-sm font-medium text-slate-700 dark:text-slate-300">لا توجد بيانات جدولية</p>
-      <p class="text-xs text-slate-400 mt-1">استخدم زر تحليل لاستخراج المحتوى من الملف</p>
-    </div>
-    
-    {% endif %}
+    </template>
     
     </div>
     
@@ -805,6 +934,8 @@ function fileViewer(fileId) {
   return {
     // State
     isFavorite: {{ 'true' if file.is_favorite else 'false' }},
+    fileExists: true,
+    isPreviewing: false,
     isAnalyzing: false,
     isConverting: false,
     isCleaning: false,
@@ -817,6 +948,84 @@ function fileViewer(fileId) {
           this.isFavorite = e.detail.isFavorite;
         }
       });
+      
+      // التحقق من وجود الملف
+      this.checkFileExists();
+      
+      // تحديث حالة التحليل عند اكتماله
+      window.addEventListener('analysis-completed', (e) => {
+        if (e.detail && e.detail.analysisId) {
+          this.isAnalyzing = false;
+          // تحديث حالة التحليل في المكون
+          if (window.analysisComponent) {
+            window.analysisComponent.status = e.detail.status;
+          }
+        }
+      });
+    },
+    
+    // ===== CHECK FILE EXISTS =====
+    async checkFileExists() {
+      try {
+        const response = await fetch(`/api/files/${fileId}/exists`);
+        const data = await response.json();
+        this.fileExists = data.exists;
+        
+        if (!this.fileExists) {
+          window.showWarning('⚠️ ملف مفقود', 'الملف غير موجود فعلياً على الخادم. قد يكون قد تم حذفه.');
+        }
+      } catch (error) {
+        // افتراض أن الملف موجود في حالة خطأ في الاتصال
+        this.fileExists = true;
+      }
+    },
+    
+    // ===== PREVIEW FILE =====
+    async previewFile(id) {
+      if (this.isPreviewing) return;
+      
+      this.isPreviewing = true;
+      
+      try {
+        // إرسال حدث لتحديث المعاينة
+        window.dispatchEvent(new CustomEvent('preview-update', {
+          detail: { fileId: id }
+        }));
+        
+        // إظهار رسالة جاري التحميل
+        const loadingId = window.showLoading(
+          '⏳ جاري تحميل المعاينة',
+          'جاري تحميل محتوى الملف...'
+        );
+        
+        // تحميل المعاينة عبر API
+        const response = await fetch(`/api/files/${id}/preview`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'فشل تحميل المعاينة');
+        }
+        
+        // تحديث رسالة التحميل إلى نجاح
+        window.updateToast(loadingId, 'success',
+          '✅ تم تحميل المعاينة',
+          `تم عرض ${data.rows ? data.rows.length : 0} صف من الملف`
+        );
+        
+        // تحديث حالة وجود الملف
+        this.fileExists = true;
+        
+      } catch (error) {
+        window.showError('❌ فشل المعاينة', error.message);
+        
+        // التحقق مما إذا كان الخطأ بسبب فقدان الملف
+        if (error.message.includes('No such file') || error.message.includes('not found')) {
+          this.fileExists = false;
+        }
+        
+      } finally {
+        this.isPreviewing = false;
+      }
     },
     
     // ===== TOGGLE FAVORITE =====
@@ -862,6 +1071,11 @@ function fileViewer(fileId) {
     // ===== START ANALYSIS =====
     startAnalysis() {
       if (this.isAnalyzing) return;
+      if (!this.fileExists) {
+        window.showError('❌ لا يمكن التحليل', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        return;
+      }
+      
       this.isAnalyzing = true;
       
       const loadingId = window.showLoading(
@@ -890,14 +1104,7 @@ function fileViewer(fileId) {
           window.analysisComponent.pollStatus();
         }
         
-        this.isAnalyzing = false;
-        
-        // تحديث الحالة في واجهة التحليل
-        setTimeout(() => {
-          if (window.analysisComponent) {
-            window.analysisComponent.status = 'running';
-          }
-        }, 500);
+        // لا نقوم بتحديث حالة isAnalyzing هنا، ينتظر اكتمال التحليل
       })
       .catch((err) => {
         window.updateToast(loadingId, 'error',
@@ -914,6 +1121,11 @@ function fileViewer(fileId) {
     // ===== CONVERT FILE =====
     convertFile(id, format) {
       if (this.isConverting) return;
+      if (!this.fileExists) {
+        window.showError('❌ لا يمكن التحويل', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        return;
+      }
+      
       this.isConverting = true;
       
       const formatNames = {
@@ -967,6 +1179,11 @@ function fileViewer(fileId) {
     // ===== CLEAN FILE =====
     cleanFile(id) {
       if (this.isCleaning) return;
+      if (!this.fileExists) {
+        window.showError('❌ لا يمكن التنظيف', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        return;
+      }
+      
       this.isCleaning = true;
       
       const loadingId = window.showLoading(
@@ -988,9 +1205,10 @@ function fileViewer(fileId) {
             '✅ تم التنظيف بنجاح',
             `تم تنظيف الملف. ${data.rows_cleaned || ''} صف تمت معالجته.`
           );
+          // تحديث المعاينة بعد التنظيف
           setTimeout(() => {
-            window.location.reload();
-          }, 1500);
+            this.previewFile(id);
+          }, 500);
         } else {
           throw new Error(data.message || 'فشل تنظيف الملف');
         }
