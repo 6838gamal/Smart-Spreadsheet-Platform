@@ -8,6 +8,8 @@ Supabase Storage. PostgreSQL keeps the file metadata and object keys.
 """
 
 import uuid
+import logging
+import shutil
 from pathlib import Path
 import aiofiles
 import httpx
@@ -16,15 +18,19 @@ from fastapi import UploadFile
 from app.core.config import settings
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
 
+logger = logging.getLogger(__name__)
+
 
 class LocalStorageService:
-    """Temporary filesystem helper used only while processing files."""
+    """Local filesystem storage for development/testing."""
 
-    backend_name = "temporary"
+    backend_name = "local"
 
     def __init__(self):
         self.output_dir = Path(settings.OUTPUT_DIR)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_dir = Path(getattr(settings, 'STORAGE_DIR', './storage'))
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
 
     def _safe_extension(self, filename: str) -> str:
         """Extract and validate file extension."""
@@ -42,17 +48,47 @@ class LocalStorageService:
         return unique, ext
 
     async def save_upload(self, file: UploadFile, user_id: int) -> dict:
-        """Uploading to local storage is intentionally disabled."""
-        raise RuntimeError("Local upload storage is disabled. Configure Supabase Storage.")
+        """Save uploaded file to local storage."""
+        unique_name, ext = self._unique_filename(file.filename or "upload")
+        user_dir = self.storage_dir / str(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        file_path = user_dir / unique_name
+
+        size = 0
+        async with aiofiles.open(file_path, "wb") as f:
+            while chunk := await file.read(1024 * 256):
+                size += len(chunk)
+                if size > settings.MAX_FILE_SIZE_BYTES:
+                    await f.close()
+                    file_path.unlink(missing_ok=True)
+                    raise FileTooLargeError(size / (1024 * 1024), settings.MAX_FILE_SIZE_MB)
+                await f.write(chunk)
+
+        return self._metadata(
+            path=str(file_path),
+            name=unique_name,
+            original_name=file.filename or unique_name,
+            size_bytes=size,
+            format=ext,
+            mime_type=file.content_type or "application/octet-stream",
+        )
 
     async def save_output(self, path: str | Path, user_id: int, mime_type: str = "application/octet-stream") -> dict:
-        """Return metadata for a temporary output file before remote upload."""
+        """Save output file to local storage."""
         p = Path(path)
+        user_dir = self.storage_dir / str(user_id) / "outputs"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = user_dir / p.name
+        
+        # Copy file to storage directory
+        if p.exists():
+            shutil.copy2(p, dest_path)
+        
         return self._metadata(
-            path=str(p),
+            path=str(dest_path),
             name=p.name,
             original_name=p.name,
-            size_bytes=p.stat().st_size if p.exists() else 0,
+            size_bytes=dest_path.stat().st_size if dest_path.exists() else 0,
             format=p.suffix.lstrip(".").lower(),
             mime_type=mime_type,
         )
@@ -93,21 +129,32 @@ class SupabaseStorageService(LocalStorageService):
 
     def __init__(self):
         super().__init__()
+        
+        # التحقق من وجود المتغيرات، وإذا لم تكن موجودة استخدم التخزين المحلي
         if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
-            raise RuntimeError(
+            logger.warning(
                 "Supabase storage is enabled but SUPABASE_URL or "
-                "SUPABASE_SERVICE_ROLE_KEY is missing."
+                "SUPABASE_SERVICE_ROLE_KEY is missing. Falling back to local storage."
             )
+            # تحويل الكائن إلى LocalStorageService بدلاً من Supabase
+            self.__class__ = LocalStorageService
+            self.__init__()
+            return
+            
         self.base_url = settings.SUPABASE_URL.rstrip("/")
-        self.bucket = settings.SUPABASE_STORAGE_BUCKET
+        self.bucket = getattr(settings, 'SUPABASE_STORAGE_BUCKET', 'files')
         self.headers = {
             "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
             "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
         }
-        self.cache_dir = Path(settings.SUPABASE_STORAGE_CACHE_DIR)
+        self.cache_dir = Path(getattr(settings, 'SUPABASE_STORAGE_CACHE_DIR', './cache'))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     async def save_upload(self, file: UploadFile, user_id: int) -> dict:
+        # إذا كان الكائن تحول إلى LocalStorageService، استخدم دالة الأب
+        if self.backend_name == "local":
+            return await super().save_upload(file, user_id)
+            
         unique_name, ext = self._unique_filename(file.filename or "upload")
         object_key = f"uploads/{user_id}/{unique_name}"
         cache_path = self.cache_dir / object_key
@@ -140,6 +187,10 @@ class SupabaseStorageService(LocalStorageService):
         )
 
     async def save_output(self, path: str | Path, user_id: int, mime_type: str = "application/octet-stream") -> dict:
+        # إذا كان الكائن تحول إلى LocalStorageService، استخدم دالة الأب
+        if self.backend_name == "local":
+            return await super().save_output(path, user_id, mime_type)
+            
         p = Path(path)
         object_key = f"outputs/{user_id}/{p.name}"
         await self._upload_file(p, object_key, mime_type)
@@ -157,6 +208,10 @@ class SupabaseStorageService(LocalStorageService):
         )
 
     async def get_read_path(self, path: str, user_id: int | None = None) -> str:
+        # إذا كان الكائن تحول إلى LocalStorageService، استخدم دالة الأب
+        if self.backend_name == "local":
+            return await super().get_read_path(path, user_id)
+            
         object_key = self._object_key(path)
         if not object_key:
             return path
@@ -165,32 +220,39 @@ class SupabaseStorageService(LocalStorageService):
             return str(cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         url = f"{self.base_url}/storage/v1/object/{self.bucket}/{object_key}"
-        async with httpx.AsyncClient(timeout=settings.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60)) as client:
             response = await client.get(url, headers=self.headers)
             response.raise_for_status()
         cache_path.write_bytes(response.content)
         return str(cache_path)
 
     def delete_file(self, path: str) -> bool:
+        # إذا كان الكائن تحول إلى LocalStorageService، استخدم دالة الأب
+        if self.backend_name == "local":
+            return super().delete_file(path)
+            
         object_key = self._object_key(path)
         if not object_key:
             return super().delete_file(path)
         url = f"{self.base_url}/storage/v1/object/{self.bucket}"
         try:
-            response = httpx.request(
+            import httpx as sync_httpx
+            response = sync_httpx.request(
                 "DELETE",
                 url,
                 headers={**self.headers, "Content-Type": "application/json"},
                 json={"prefixes": [object_key]},
-                timeout=settings.SUPABASE_STORAGE_TIMEOUT_SECONDS,
+                timeout=getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60),
             )
             response.raise_for_status()
             (self.cache_dir / object_key).unlink(missing_ok=True)
             return True
-        except httpx.HTTPError:
+        except Exception:
             return False
 
     def file_exists(self, path: str) -> bool:
+        if self.backend_name == "local":
+            return super().file_exists(path)
         return bool(path and (path.startswith("supabase://") or super().file_exists(path)))
 
     def public_url(self, object_key: str) -> str:
@@ -199,7 +261,7 @@ class SupabaseStorageService(LocalStorageService):
     async def _upload_file(self, path: Path, object_key: str, mime_type: str) -> None:
         url = f"{self.base_url}/storage/v1/object/{self.bucket}/{object_key}"
         headers = {**self.headers, "Content-Type": mime_type, "x-upsert": "true"}
-        async with httpx.AsyncClient(timeout=settings.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60)) as client:
             with path.open("rb") as f:
                 response = await client.post(url, headers=headers, content=f.read())
             response.raise_for_status()
@@ -212,10 +274,26 @@ class SupabaseStorageService(LocalStorageService):
         return path[len(prefix):] if path.startswith(prefix) else None
 
 
-def _build_storage_service() -> SupabaseStorageService:
-    if settings.FILE_STORAGE_BACKEND.lower() != "supabase":
-        raise RuntimeError("Local persistent storage is disabled. Use FILE_STORAGE_BACKEND=supabase.")
-    return SupabaseStorageService()
+def _build_storage_service():
+    """Build storage service based on configuration."""
+    backend = getattr(settings, 'FILE_STORAGE_BACKEND', 'local').lower()
+    
+    if backend == "supabase":
+        # حاول استخدام Supabase، وإذا فشل استخدم Local
+        try:
+            service = SupabaseStorageService()
+            # إذا تحول الكائن إلى Local، فهذا يعني أن Supabase غير متوفر
+            if service.backend_name == "local":
+                return service
+            return service
+        except Exception as e:
+            logger.warning(f"Failed to initialize Supabase storage: {e}, falling back to local")
+            return LocalStorageService()
+    else:
+        # استخدام التخزين المحلي بشكل افتراضي
+        logger.info("Using local storage backend")
+        return LocalStorageService()
 
 
+# Create global storage instance
 storage = _build_storage_service()
