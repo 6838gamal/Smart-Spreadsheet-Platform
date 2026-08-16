@@ -2,6 +2,8 @@
 
 from fastapi.templating import Jinja2Templates
 from app.core.i18n import get_texts
+from app.core.config import settings
 
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["get_texts"] = get_texts
+templates.env.globals["settings"] = settings
