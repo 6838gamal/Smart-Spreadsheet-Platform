@@ -1,14 +1,46 @@
 """File repository — data access for File model."""
 
-from sqlalchemy import select, func, desc, asc, or_
+import logging
+from typing import Optional, List, Tuple
+from datetime import datetime, timedelta
+
+from sqlalchemy import select, func, desc, asc, or_, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.infrastructure.repositories.base import BaseRepository
 from app.infrastructure.database.models import File, FileStatus
 
+logger = logging.getLogger(__name__)
+
 
 class FileRepository(BaseRepository[File]):
-    """Repository for File model with advanced query capabilities."""
+    """Repository for File model with safe column access."""
     
     model = File
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(db)
+        self._has_storage_columns = None
+
+    async def _check_storage_columns(self) -> bool:
+        """Check if storage columns exist in the database."""
+        if self._has_storage_columns is not None:
+            return self._has_storage_columns
+        
+        try:
+            # Try to select a single row with the new columns
+            stmt = select(
+                File.storage_key,
+                File.is_locally_stored,
+                File.last_synced_at
+            ).limit(1)
+            await self.db.execute(stmt)
+            self._has_storage_columns = True
+        except Exception:
+            self._has_storage_columns = False
+            logger.warning("Storage columns not found in files table")
+        
+        return self._has_storage_columns
 
     async def get_by_owner(
         self,
@@ -20,22 +52,9 @@ class FileRepository(BaseRepository[File]):
         only_local: bool = False,
         sort_by: str = "created_at",
         sort_order: str = "desc",
-    ) -> tuple[list[File], int]:
+    ) -> Tuple[List[File], int]:
         """
         Get files by owner with filters, sorting, and pagination.
-        
-        Args:
-            owner_id: Owner user ID
-            limit: Number of records to return
-            offset: Number of records to skip
-            search: Search query in file name or tags
-            format_filter: Filter by file format
-            only_local: Only show files stored locally
-            sort_by: Sort field (created_at, name, size, updated_at)
-            sort_order: Sort order (asc, desc)
-        
-        Returns:
-            Tuple of (list of files, total count)
         """
         # Build base query
         q = select(File).where(File.owner_id == owner_id)
@@ -53,11 +72,13 @@ class FileRepository(BaseRepository[File]):
         if format_filter:
             q = q.where(File.format == format_filter)
         
-        # Apply local storage filter
+        # Apply local storage filter (if column exists)
         if only_local:
-            q = q.where(File.is_locally_stored == True)
+            has_columns = await self._check_storage_columns()
+            if has_columns and hasattr(File, 'is_locally_stored'):
+                q = q.where(File.is_locally_stored == True)
         
-        # Get total count first (before pagination)
+        # Get total count
         count_query = select(func.count()).select_from(q.subquery())
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
@@ -69,7 +90,7 @@ class FileRepository(BaseRepository[File]):
             sort_column = File.size_bytes
         elif sort_by == "updated_at":
             sort_column = File.updated_at
-        else:  # created_at (default)
+        else:
             sort_column = File.created_at
         
         if sort_order == "asc":
@@ -96,11 +117,12 @@ class FileRepository(BaseRepository[File]):
     async def total_size_by_owner(self, owner_id: int) -> int:
         """Get total file size for owner."""
         result = await self.db.execute(
-            select(func.coalesce(func.sum(File.size_bytes), 0)).where(File.owner_id == owner_id)
+            select(func.coalesce(func.sum(File.size_bytes), 0))
+            .where(File.owner_id == owner_id)
         )
         return result.scalar_one()
 
-    async def get_favorites(self, owner_id: int, limit: int = 10) -> list[File]:
+    async def get_favorites(self, owner_id: int, limit: int = 10) -> List[File]:
         """Get favorite files for owner."""
         result = await self.db.execute(
             select(File)
@@ -110,15 +132,37 @@ class FileRepository(BaseRepository[File]):
         )
         return list(result.scalars().all())
 
-    async def get_recent(self, owner_id: int, limit: int = 8) -> list[File]:
+    async def get_recent(self, owner_id: int, limit: int = 8) -> List[File]:
         """Get most recent files for owner."""
-        result = await self.db.execute(
-            select(File)
-            .where(File.owner_id == owner_id)
-            .order_by(desc(File.created_at))
-            .limit(limit)
-        )
-        return list(result.scalars().all())
+        # Build select with all columns
+        columns = [
+            File.id, File.name, File.original_name, File.path,
+            File.size_bytes, File.format, File.mime_type, File.status,
+            File.is_favorite, File.tags, File.meta, File.owner_id,
+            File.created_at, File.updated_at
+        ]
+        
+        # Add storage columns only if they exist
+        if await self._check_storage_columns():
+            columns.extend([File.storage_key, File.is_locally_stored, File.last_synced_at])
+        
+        stmt = select(*columns).where(File.owner_id == owner_id)
+        stmt = stmt.order_by(desc(File.created_at)).limit(limit)
+        
+        result = await self.db.execute(stmt)
+        
+        # If we selected specific columns, we need to map them to File objects
+        rows = result.all()
+        files = []
+        for row in rows:
+            file_data = {}
+            for i, col in enumerate(columns):
+                file_data[col.key] = row[i]
+            # Create File instance from data
+            file = File(**file_data)
+            files.append(file)
+        
+        return files
 
     async def get_by_format_counts(self, owner_id: int) -> dict[str, int]:
         """Get file format statistics for owner."""
@@ -134,7 +178,9 @@ class FileRepository(BaseRepository[File]):
     # ============================================================
 
     async def get_by_storage_key(self, storage_key: str) -> File | None:
-        """Get file by storage key."""
+        """Get file by storage key if column exists."""
+        if not await self._check_storage_columns():
+            return None
         result = await self.db.execute(
             select(File).where(File.storage_key == storage_key)
         )
@@ -142,18 +188,17 @@ class FileRepository(BaseRepository[File]):
 
     async def get_old_files(
         self,
-        owner_id: int,
+        owner_id: int | None = None,
         days: int = 30,
         exclude_favorites: bool = True
-    ) -> list[File]:
+    ) -> List[File]:
         """Get old files not accessed for X days."""
-        from datetime import datetime, timedelta
         cutoff = datetime.utcnow() - timedelta(days=days)
         
-        q = select(File).where(
-            File.owner_id == owner_id,
-            File.created_at < cutoff
-        )
+        q = select(File).where(File.created_at < cutoff)
+        
+        if owner_id is not None:
+            q = q.where(File.owner_id == owner_id)
         
         if exclude_favorites:
             q = q.where(File.is_favorite == False)
@@ -168,7 +213,7 @@ class FileRepository(BaseRepository[File]):
         owner_id: int,
         query: str,
         limit: int = 20
-    ) -> list[File]:
+    ) -> List[File]:
         """Search files by name or tags."""
         result = await self.db.execute(
             select(File)
@@ -186,9 +231,9 @@ class FileRepository(BaseRepository[File]):
 
     async def get_files_by_ids(
         self,
-        file_ids: list[int],
+        file_ids: List[int],
         owner_id: int
-    ) -> list[File]:
+    ) -> List[File]:
         """Get multiple files by IDs."""
         result = await self.db.execute(
             select(File)
@@ -199,7 +244,7 @@ class FileRepository(BaseRepository[File]):
 
     async def delete_bulk(
         self,
-        file_ids: list[int],
+        file_ids: List[int],
         owner_id: int
     ) -> int:
         """Delete multiple files."""
@@ -218,6 +263,9 @@ class FileRepository(BaseRepository[File]):
         is_locally_stored: bool
     ) -> File | None:
         """Update local storage status of a file."""
+        if not await self._check_storage_columns():
+            return None
+            
         file = await self.get_by_id(file_id)
         if file:
             file.is_locally_stored = is_locally_stored
@@ -231,13 +279,15 @@ class FileRepository(BaseRepository[File]):
         total_files = await self.count_by_owner(owner_id)
         total_size = await self.total_size_by_owner(owner_id)
         
-        # Local vs cloud
-        local_count_result = await self.db.execute(
-            select(func.count())
-            .select_from(File)
-            .where(File.owner_id == owner_id, File.is_locally_stored == True)
-        )
-        local_count = local_count_result.scalar_one()
+        # Local vs cloud (if column exists)
+        local_count = 0
+        if await self._check_storage_columns():
+            local_count_result = await self.db.execute(
+                select(func.count())
+                .select_from(File)
+                .where(File.owner_id == owner_id, File.is_locally_stored == True)
+            )
+            local_count = local_count_result.scalar_one()
         
         # Favorites count
         favorites_result = await self.db.execute(
