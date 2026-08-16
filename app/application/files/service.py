@@ -1,4 +1,4 @@
-"""File management application service with hybrid storage (local + server)."""
+"""File management application service with PostgreSQL metadata and object storage."""
 
 import logging
 import time
@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 
 class FileService:
     """
-    Hybrid file service - stores metadata in DB, actual files in local storage (browser).
+    File service - stores metadata in PostgreSQL and file bytes in the configured storage backend.
     
     This service provides:
-    - File upload with local storage support
-    - File metadata management
-    - File content retrieval from local storage or server
-    - File deletion with local cleanup
-    - File synchronization between local and server
+    - File upload to Supabase Storage
+    - File metadata management in PostgreSQL
+    - File content retrieval through temporary processing paths
+    - File deletion from Supabase Storage
+    - File synchronization metadata for clients
     - Storage statistics and cleanup
     """
 
@@ -49,13 +49,10 @@ class FileService:
         self.storage = storage
         self.engine = DataEngine()
         
-        # Maximum file size for local storage (100MB)
-        self.MAX_LOCAL_SIZE = 100 * 1024 * 1024  # 100MB
-        
         # Maximum file size for upload (500MB)
         self.MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500MB
         
-        # Supported formats for local storage
+        # Supported import formats
         self.SUPPORTED_FORMATS = {
             'xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv', 'txt',
             'json', 'xml', 'yaml', 'yml', 'parquet', 'feather', 'arrow',
@@ -68,14 +65,14 @@ class FileService:
     # FILE UPLOAD
     # ============================================================
 
-    async def upload(self, file: UploadFile, user_id: int, store_locally: bool = True) -> File:
+    async def upload(self, file: UploadFile, user_id: int, store_locally: bool = False) -> File:
         """
-        Upload file - stores metadata in DB and file content in local storage.
+        Upload file - stores metadata in PostgreSQL and bytes in Supabase Storage.
         
         Args:
             file: The uploaded file
             user_id: Owner user ID
-            store_locally: Whether to store file content locally (browser)
+            store_locally: Deprecated; server-side local persistence is disabled
         
         Returns:
             File: The created file record
@@ -88,13 +85,13 @@ class FileService:
         # Validate file
         await self._validate_file(file)
         
-        # Generate unique storage key for local storage
+        # Generate stable client/storage key for metadata
         storage_key = self._generate_storage_key(file.filename, user_id)
         
         # Get file size
         file_size = file.size or 0
         
-        # Save file to server (temporary/backup)
+        # Save file bytes to configured object storage
         try:
             meta = await self.storage.save_upload(file, user_id)
         except Exception as e:
@@ -108,11 +105,14 @@ class FileService:
                 name=meta.get("name"),
                 original_name=meta.get("original_name"),
                 path=meta.get("path"),
-                size_bytes=file_size,
+                size_bytes=meta.get("size_bytes") or file_size,
                 format=meta.get("format"),
                 mime_type=meta.get("mime_type"),
                 storage_key=storage_key,
-                is_locally_stored=store_locally,
+                is_locally_stored=False,
+                storage_backend=meta.get("storage_backend") or "supabase",
+                storage_bucket=meta.get("bucket"),
+                storage_object_key=meta.get("object_key"),
                 status="READY"
             )
         except Exception as e:
@@ -136,7 +136,9 @@ class FileService:
             result={
                 "file_id": db_file.id,
                 "storage_key": storage_key,
-                "store_locally": store_locally
+                "storage_backend": meta.get("storage_backend"),
+                "object_key": meta.get("object_key"),
+                "store_locally": False
             },
             duration_ms=duration_ms,
             status=OperationStatus.SUCCESS
@@ -144,7 +146,7 @@ class FileService:
         
         logger.info(
             f"Uploaded file: {meta.get('original_name', 'unknown')} "
-            f"({db_file.size_human}) - Storage Key: {storage_key}"
+            f"({db_file.size_human}) - Backend: {meta.get('storage_backend')} - Storage Key: {storage_key}"
         )
         return db_file
 
@@ -176,7 +178,7 @@ class FileService:
 
     async def get_file_content(self, file_id: int, user_id: int) -> Optional[bytes]:
         """
-        Get file content - tries cache first, then local storage, then server.
+        Get file content - tries cache first, then the configured storage backend.
         
         Args:
             file_id: File ID
@@ -194,7 +196,7 @@ class FileService:
             logger.info(f"File {file_id} served from cache")
             return cached_content
         
-        # Try to get from server
+        # Try to get from Supabase/object storage
         content = await self._get_from_server(f)
         if content:
             # Cache for future requests
@@ -223,10 +225,11 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         if not self.storage.file_exists(f.path):
-            raise NotFoundError("File content not found on server. Please sync your local copy.")
+            raise NotFoundError("File content not found in storage")
         
+        read_path = await self.storage.get_read_path(f.path, user_id)
         chunk_size = 8192
-        with open(f.path, 'rb') as fp:
+        with open(read_path, 'rb') as fp:
             fp.seek(start)
             bytes_remaining = (end or f.size_bytes) - start
             
@@ -275,7 +278,7 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with local storage status
+        # Enrich with storage availability without marking files as locally persisted
         for f in files:
             f.is_cached_locally = False
             f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
@@ -312,6 +315,7 @@ class FileService:
             "download_token": download_token,
             "meta": f.meta,
             "server_available": server_available,
+            "storage_backend": getattr(self.storage, "backend_name", "supabase"),
             "is_favorite": f.is_favorite,
             "is_locally_stored": getattr(f, 'is_locally_stored', False),
             "created_at": f.created_at.isoformat() if f.created_at else None,
@@ -343,19 +347,19 @@ class FileService:
 
     async def delete_file(self, file_id: int, user_id: int, delete_local: bool = True) -> None:
         """
-        Delete file - removes from server and optionally local storage.
+        Delete file - removes bytes from Supabase Storage and metadata from PostgreSQL.
         
         Args:
             file_id: File ID
             user_id: User ID for authorization
-            delete_local: Whether to delete from local storage
+            delete_local: Deprecated; local persistent storage is disabled
         """
         f = await self.get_file(file_id, user_id)
         
-        # Delete from server
+        # Delete from object storage
         if self.storage.file_exists(f.path):
             self.storage.delete_file(f.path)
-            logger.info(f"Deleted file from server: {f.path}")
+            logger.info(f"Deleted file from storage: {f.path}")
         
         # Delete from cache
         await self._delete_from_cache(file_id)
@@ -378,7 +382,7 @@ class FileService:
             status=OperationStatus.SUCCESS
         )
         
-        logger.info(f"Deleted file: {f.original_name} (Local: {delete_local})")
+        logger.info(f"Deleted file: {f.original_name} from object storage")
 
     # ============================================================
     # FILE SYNC AND CLEANUP
@@ -386,7 +390,7 @@ class FileService:
 
     async def sync_local_files(self, user_id: int, local_files: List[Dict[str, Any]]) -> dict:
         """
-        Sync local file status - updates metadata for files stored in browser.
+        Sync client-side file status metadata only; server local persistence is disabled.
         
         Args:
             user_id: User ID
@@ -411,7 +415,7 @@ class FileService:
                 f = await self.file_repo.get_by_id(file_id)
                 if f and f.owner_id == user_id:
                     update_data = {
-                        'is_locally_stored': True,
+                        'is_locally_stored': False,
                         'last_synced_at': datetime.utcnow()
                     }
                     
@@ -472,9 +476,10 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         if not self.storage.file_exists(f.path):
-            raise NotFoundError("File content not available on server")
+            raise NotFoundError("File content not available in storage")
         
-        return self.engine.preview(f.path, f.format, rows=rows)
+        read_path = await self.storage.get_read_path(f.path, user_id)
+        return self.engine.preview(read_path, f.format, rows=rows)
 
     async def get_storage_stats(self, user_id: int) -> dict:
         """Get storage statistics for user."""
@@ -512,7 +517,7 @@ class FileService:
     # ============================================================
 
     def _generate_storage_key(self, filename: str, user_id: int) -> str:
-        """Generate unique storage key for local storage."""
+        """Generate unique storage key for file metadata."""
         timestamp = int(time.time() * 1000)
         file_hash = hashlib.md5(f"{filename}_{user_id}_{timestamp}".encode()).hexdigest()[:16]
         return f"file_{user_id}_{file_hash}_{timestamp}"
@@ -525,7 +530,8 @@ class FileService:
     async def _extract_file_metadata(self, db_file: File, meta: dict) -> None:
         """Extract metadata from file (non-blocking)."""
         try:
-            file_meta = self.engine.get_metadata(meta.get("path"), meta.get("format"))
+            read_path = await self.storage.get_read_path(meta.get("path"), db_file.owner_id)
+            file_meta = self.engine.get_metadata(read_path, meta.get("format"))
             if file_meta:
                 await self.file_repo.update(db_file, meta={**db_file.meta, **file_meta})
                 logger.info(f"Extracted metadata for file {db_file.id}: {file_meta}")
@@ -587,12 +593,13 @@ class FileService:
             logger.warning(f"Cache delete failed: {e}")
 
     async def _get_from_server(self, file: File) -> Optional[bytes]:
-        """Get file content from server."""
+        """Get file content from configured object storage."""
         if not self.storage.file_exists(file.path):
             return None
         try:
-            with open(file.path, 'rb') as fp:
+            read_path = await self.storage.get_read_path(file.path, file.owner_id)
+            with open(read_path, 'rb') as fp:
                 return fp.read()
         except Exception as e:
-            logger.error(f"Failed to read file from server {file.path}: {e}")
+            logger.error(f"Failed to read file from storage {file.path}: {e}")
             return None

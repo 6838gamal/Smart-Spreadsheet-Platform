@@ -67,6 +67,7 @@ class ConverterService:
         t0 = time.time()
         try:
             # Determine output filename/extension
+            source_path = await storage.get_read_path(f.path, user_id)
             stem = Path(f.original_name).stem
             out_name = f"{stem}_{uuid.uuid4().hex[:6]}.{target_fmt}"
             out_path = storage.get_output_path(user_id, out_name)
@@ -76,30 +77,32 @@ class ConverterService:
             if is_direct:
                 # Non-tabular direct conversion (image↔PDF, SVG↔PDF)
                 actual_path = self.engine.convert_direct(
-                    f.path, src_fmt, str(out_path), target_fmt
+                    source_path, src_fmt, str(out_path), target_fmt
                 )
                 # actual_path may differ (e.g. multi-page PDF→images becomes a .zip)
                 actual_name = Path(actual_path).name
                 rows, cols = 0, 0
             else:
                 # Tabular path: read → DataFrame → write
-                df = self.engine.read(f.path, src_fmt, sheet=dto.sheet)
+                df = self.engine.read(source_path, src_fmt, sheet=dto.sheet)
                 rows, cols = df.shape
                 self.engine.write(df, str(out_path), target_fmt)
                 actual_path = str(out_path)
                 actual_name = out_name
 
+            output_meta = await storage.save_output(actual_path, user_id)
+            stored_output_path = output_meta.get("path", actual_path)
             duration_ms = int((time.time() - t0) * 1000)
             await self.op_repo.mark_complete(
                 op, OperationStatus.SUCCESS,
-                result={"rows": rows, "columns": cols, "output": actual_path},
-                output_path=actual_path,
+                result={"rows": rows, "columns": cols, "output": stored_output_path, "storage_backend": output_meta.get("storage_backend")},
+                output_path=stored_output_path,
                 duration_ms=duration_ms,
             )
 
             logger.info(f"Converted {f.original_name} → {target_fmt} ({rows} rows, {duration_ms}ms)")
             return ConvertResultDTO(
-                output_path=actual_path,
+                output_path=stored_output_path,
                 output_filename=actual_name,
                 rows=rows,
                 columns=cols,
