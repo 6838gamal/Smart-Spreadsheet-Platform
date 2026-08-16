@@ -15,7 +15,7 @@ from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.infrastructure.database.models import User, OperationType, OperationStatus, File, Operation
+from app.infrastructure.database.models import User, OperationType, OperationStatus, File, OperationLog
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.storage.local_storage import storage
@@ -145,8 +145,8 @@ async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
         else:
             total_size_human = f"{total_bytes / (1024 * 1024 * 1024):.2f} GB"
         
-        # Get total operations
-        ops_query = select(func.count()).select_from(Operation).where(Operation.user_id == user_id)
+        # Get total operations - using OperationLog instead of Operation
+        ops_query = select(func.count()).select_from(OperationLog).where(OperationLog.user_id == user_id)
         total_operations = await db.scalar(ops_query) or 0
         
         # Get favorites
