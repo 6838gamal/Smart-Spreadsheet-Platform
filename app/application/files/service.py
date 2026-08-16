@@ -2,11 +2,10 @@
 
 import logging
 import time
-import json
 import hashlib
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any, List, BinaryIO
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,22 +57,11 @@ class FileService:
         
         # Supported formats for local storage
         self.SUPPORTED_FORMATS = {
-            # Spreadsheets
-            'xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 
-            'csv', 'tsv', 'txt',
-            # Data formats
-            'json', 'xml', 'yaml', 'yml', 
-            'parquet', 'feather', 'arrow',
-            # Databases
-            'sqlite', 'db', 'sql',
-            # Documents
-            'docx', 'doc', 'pdf', 'pptx', 'odt',
-            # Web
-            'html', 'htm', 'md', 'rst',
-            # Images
-            'jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp', 'svg', 'ico',
-            # Other
-            'zip', 'gz', 'tar', '7z', 'rar'
+            'xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv', 'txt',
+            'json', 'xml', 'yaml', 'yml', 'parquet', 'feather', 'arrow',
+            'sqlite', 'db', 'sql', 'docx', 'doc', 'pdf', 'pptx', 'odt',
+            'html', 'htm', 'md', 'rst', 'jpg', 'jpeg', 'png', 'bmp',
+            'gif', 'webp', 'svg', 'ico', 'zip', 'gz', 'tar', '7z', 'rar'
         }
 
     # ============================================================
@@ -113,14 +101,14 @@ class FileService:
             logger.error(f"Failed to save file to server: {e}")
             raise ValidationError(f"Failed to save file: {str(e)}")
         
-        # Create DB record with explicit parameters (avoid duplicate size_bytes)
+        # Create DB record with explicit parameters
         try:
             db_file = await self.file_repo.create(
                 owner_id=user_id,
                 name=meta.get("name"),
                 original_name=meta.get("original_name"),
                 path=meta.get("path"),
-                size_bytes=file_size,  # Use file_size from UploadFile
+                size_bytes=file_size,
                 format=meta.get("format"),
                 mime_type=meta.get("mime_type"),
                 storage_key=storage_key,
@@ -196,10 +184,6 @@ class FileService:
         
         Returns:
             Optional[bytes]: File content if found
-        
-        Raises:
-            NotFoundError: If file not found
-            AuthorizationError: If user is not authorized
         """
         # Get file metadata
         f = await self.get_file(file_id, user_id)
@@ -217,7 +201,6 @@ class FileService:
             await self._set_cache(file_id, content)
             return content
         
-        # File not found
         logger.warning(f"File {file_id} content not found (path: {f.path})")
         return None
 
@@ -292,14 +275,9 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with local storage status - using getattr safely
+        # Enrich with local storage status
         for f in files:
-            # Using getattr to safely access new fields
-            storage_key = getattr(f, 'storage_key', None)
-            is_locally_stored = getattr(f, 'is_locally_stored', False)
-            
-            # Set computed properties
-            f.is_cached_locally = storage_key is not None and is_locally_stored
+            f.is_cached_locally = False
             f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
         
         return files, total
@@ -318,17 +296,9 @@ class FileService:
         
         Returns:
             Dict: File info for download
-        
-        Raises:
-            NotFoundError: If file not found
-            AuthorizationError: If user is not authorized
         """
         f = await self.get_file(file_id, user_id)
-        
-        # Generate download token (for secure access)
         download_token = self._generate_download_token(file_id, user_id)
-        
-        # Check if file exists on server
         server_available = self.storage.file_exists(f.path)
         
         return {
@@ -353,46 +323,17 @@ class FileService:
     # ============================================================
 
     async def rename_file(self, file_id: int, user_id: int, dto: RenameFileDTO) -> File:
-        """
-        Rename file metadata.
-        
-        Args:
-            file_id: File ID
-            user_id: User ID for authorization
-            dto: Rename data
-        
-        Returns:
-            File: Updated file record
-        """
+        """Rename file metadata."""
         f = await self.get_file(file_id, user_id)
         return await self.file_repo.update(f, original_name=dto.new_name)
 
     async def toggle_favorite(self, file_id: int, user_id: int) -> File:
-        """
-        Toggle favorite status.
-        
-        Args:
-            file_id: File ID
-            user_id: User ID for authorization
-        
-        Returns:
-            File: Updated file record
-        """
+        """Toggle favorite status."""
         f = await self.get_file(file_id, user_id)
         return await self.file_repo.update(f, is_favorite=not f.is_favorite)
 
     async def update_metadata(self, file_id: int, user_id: int, metadata: Dict[str, Any]) -> File:
-        """
-        Update file metadata.
-        
-        Args:
-            file_id: File ID
-            user_id: User ID for authorization
-            metadata: New metadata
-        
-        Returns:
-            File: Updated file record
-        """
+        """Update file metadata."""
         f = await self.get_file(file_id, user_id)
         return await self.file_repo.update(f, meta=metadata)
 
@@ -407,11 +348,7 @@ class FileService:
         Args:
             file_id: File ID
             user_id: User ID for authorization
-            delete_local: Whether to delete from local storage (client should handle)
-        
-        Raises:
-            NotFoundError: If file not found
-            AuthorizationError: If user is not authorized
+            delete_local: Whether to delete from local storage
         """
         f = await self.get_file(file_id, user_id)
         
@@ -465,17 +402,14 @@ class FileService:
             try:
                 file_id = local_file.get('file_id')
                 storage_key = local_file.get('storage_key')
-                file_size = local_file.get('size', 0)
                 modified_at = local_file.get('modified_at')
                 
                 if not file_id or not storage_key:
                     errors += 1
                     continue
                 
-                # Check if file exists and belongs to user
                 f = await self.file_repo.get_by_id(file_id)
                 if f and f.owner_id == user_id:
-                    # Update local storage status
                     update_data = {
                         'is_locally_stored': True,
                         'last_synced_at': datetime.utcnow()
@@ -504,18 +438,8 @@ class FileService:
         }
 
     async def cleanup_unused_files(self, days: int = 30) -> dict:
-        """
-        Clean up old files not accessed for X days.
-        
-        Args:
-            days: Number of days to keep files
-        
-        Returns:
-            dict: Cleanup results
-        """
+        """Clean up old files not accessed for X days."""
         cutoff = datetime.utcnow() - timedelta(days=days)
-        
-        # Get old files (all users)
         old_files = await self.file_repo.get_old_files(None, days)
         
         deleted = 0
@@ -523,15 +447,12 @@ class FileService:
         
         for f in old_files:
             try:
-                # Delete from storage
                 if self.storage.file_exists(f.path):
                     self.storage.delete_file(f.path)
                 
-                # Delete from database
                 await self.file_repo.delete(f)
                 deleted += 1
                 deleted_files.append(f.original_name)
-                
                 logger.info(f"Cleaned up old file: {f.original_name} (ID: {f.id})")
             except Exception as e:
                 logger.error(f"Failed to clean up file {f.id}: {e}")
@@ -547,38 +468,16 @@ class FileService:
     # ============================================================
 
     async def get_preview(self, file_id: int, user_id: int, rows: int = 100) -> dict:
-        """
-        Get file preview (for supported formats).
-        
-        Args:
-            file_id: File ID
-            user_id: User ID for authorization
-            rows: Number of rows to preview
-        
-        Returns:
-            dict: File preview data
-        
-        Raises:
-            NotFoundError: If file not found on server
-        """
+        """Get file preview (for supported formats)."""
         f = await self.get_file(file_id, user_id)
         
-        # Check if file exists on server
         if not self.storage.file_exists(f.path):
             raise NotFoundError("File content not available on server")
         
         return self.engine.preview(f.path, f.format, rows=rows)
 
     async def get_storage_stats(self, user_id: int) -> dict:
-        """
-        Get storage statistics for user.
-        
-        Args:
-            user_id: User ID
-        
-        Returns:
-            dict: Storage usage statistics
-        """
+        """Get storage statistics for user."""
         return await self.file_repo.get_storage_stats(user_id)
 
     # ============================================================
@@ -595,19 +494,16 @@ class FileService:
         Raises:
             ValidationError: If validation fails
         """
-        # Check file size
         if file.size and file.size > self.MAX_UPLOAD_SIZE:
             raise ValidationError(
                 f"File too large. Maximum size is {self.MAX_UPLOAD_SIZE // (1024*1024)}MB"
             )
         
-        # Check file format
         if file.filename:
             ext = file.filename.split('.')[-1].lower()
             if ext not in self.SUPPORTED_FORMATS:
                 logger.warning(f"Unsupported file format: {ext}")
         
-        # Validate file name (security)
         if file.filename and ('..' in file.filename or '/' in file.filename or '\\' in file.filename):
             raise ValidationError("Invalid file name")
 
@@ -616,54 +512,18 @@ class FileService:
     # ============================================================
 
     def _generate_storage_key(self, filename: str, user_id: int) -> str:
-        """
-        Generate unique storage key for local storage.
-        
-        Args:
-            filename: Original filename
-            user_id: User ID
-        
-        Returns:
-            str: Unique storage key
-        """
+        """Generate unique storage key for local storage."""
         timestamp = int(time.time() * 1000)
         file_hash = hashlib.md5(f"{filename}_{user_id}_{timestamp}".encode()).hexdigest()[:16]
         return f"file_{user_id}_{file_hash}_{timestamp}"
 
     def _generate_download_token(self, file_id: int, user_id: int) -> str:
-        """
-        Generate secure download token.
-        
-        Args:
-            file_id: File ID
-            user_id: User ID
-        
-        Returns:
-            str: Download token
-        """
+        """Generate secure download token."""
         token_data = f"{file_id}_{user_id}_{int(time.time())}_{os.urandom(8).hex()}"
         return hashlib.sha256(token_data.encode()).hexdigest()[:32]
 
-    async def _is_file_cached_locally(self, storage_key: str) -> bool:
-        """
-        Check if file is stored in local storage (IndexedDB).
-        
-        Args:
-            storage_key: Storage key
-        
-        Returns:
-            bool: True if file is cached locally
-        """
-        return False
-
     async def _extract_file_metadata(self, db_file: File, meta: dict) -> None:
-        """
-        Extract metadata from file (non-blocking).
-        
-        Args:
-            db_file: File record
-            meta: File metadata from upload
-        """
+        """Extract metadata from file (non-blocking)."""
         try:
             file_meta = self.engine.get_metadata(meta.get("path"), meta.get("format"))
             if file_meta:
@@ -682,18 +542,7 @@ class FileService:
         duration_ms: int = 0,
         status: OperationStatus = OperationStatus.SUCCESS
     ) -> None:
-        """
-        Log an operation.
-        
-        Args:
-            user_id: User ID
-            file_id: File ID
-            operation_type: Operation type
-            input_path: Input file path
-            result: Operation result
-            duration_ms: Duration in milliseconds
-            status: Operation status
-        """
+        """Log an operation."""
         try:
             op = await self.op_repo.create(
                 type=operation_type,
@@ -710,18 +559,9 @@ class FileService:
             logger.error(f"Failed to log operation: {e}")
 
     async def _get_from_cache(self, file_id: int) -> Optional[bytes]:
-        """
-        Get file content from cache.
-        
-        Args:
-            file_id: File ID
-        
-        Returns:
-            Optional[bytes]: Cached content
-        """
+        """Get file content from cache."""
         if not self.cache:
             return None
-        
         try:
             return await self.cache.get_file_content(file_id)
         except Exception as e:
@@ -729,50 +569,27 @@ class FileService:
             return None
 
     async def _set_cache(self, file_id: int, content: bytes, ttl: int = 300) -> None:
-        """
-        Set file content in cache.
-        
-        Args:
-            file_id: File ID
-            content: File content
-            ttl: Time to live in seconds
-        """
+        """Set file content in cache."""
         if not self.cache:
             return
-        
         try:
             await self.cache.cache_file_content(file_id, content, ttl=ttl)
         except Exception as e:
             logger.warning(f"Cache set failed: {e}")
 
     async def _delete_from_cache(self, file_id: int) -> None:
-        """
-        Delete file content from cache.
-        
-        Args:
-            file_id: File ID
-        """
+        """Delete file content from cache."""
         if not self.cache:
             return
-        
         try:
             await self.cache.delete_file_content(file_id)
         except Exception as e:
             logger.warning(f"Cache delete failed: {e}")
 
     async def _get_from_server(self, file: File) -> Optional[bytes]:
-        """
-        Get file content from server.
-        
-        Args:
-            file: File record
-        
-        Returns:
-            Optional[bytes]: File content
-        """
+        """Get file content from server."""
         if not self.storage.file_exists(file.path):
             return None
-        
         try:
             with open(file.path, 'rb') as fp:
                 return fp.read()
