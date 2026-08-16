@@ -8,7 +8,7 @@ import logging
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -19,7 +19,7 @@ from app.infrastructure.database.models import User, File
 from app.infrastructure.database.models_intelligence import DocumentAnalysis
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.application.dashboard.service import DashboardService
-from app.application.converter.service import EXPORT_FORMATS
+from app.application.converter.service import EXPORT_FORMATS, ConverterService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workspace", tags=["workspace"])
@@ -340,7 +340,10 @@ async def panel_convert(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Convert panel."""
+    """
+    Convert panel - shows file conversion interface.
+    Accessible via /workspace/panel/convert
+    """
     files = await _get_files(db, current_user.id)
     
     return templates.TemplateResponse(
@@ -352,8 +355,79 @@ async def panel_convert(
             "files": files,
             "selected_file_id": file_id,
             "export_formats": EXPORT_FORMATS,
+            "active_panel": "convert",
         },
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API: Convert file
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.post("/panel/convert/{file_id}")
+async def convert_file(
+    file_id: int,
+    request: Request,
+    format: str = Query(..., description="Target format to convert to"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    API endpoint to convert a file.
+    This handles the actual conversion logic.
+    """
+    # التحقق من وجود الملف
+    repo = FileRepository(db)
+    file = await repo.get_by_id(file_id)
+    
+    if not file:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": "File not found"}
+        )
+    
+    if file.owner_id != current_user.id:
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "error": "Access denied"}
+        )
+    
+    # التحقق من صيغة التحويل
+    if format not in EXPORT_FORMATS:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": f"Invalid format: {format}"}
+        )
+    
+    try:
+        # تنفيذ عملية التحويل
+        converter = ConverterService(db)
+        result = await converter.convert_file(
+            file_id=file_id,
+            target_format=format,
+            user_id=current_user.id
+        )
+        
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "تم تحويل الملف بنجاح",
+                "result": result,
+                "download_url": f"/api/download/{result.get('output_file_id', '')}" if result else None
+            }
+        )
+    except ValueError as e:
+        logger.error(f"Conversion validation error: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"Conversion failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"حدث خطأ أثناء التحويل: {str(e)}"}
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -367,7 +441,7 @@ async def panel_clean(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Clean panel."""
+    """Clean panel - data cleaning interface."""
     files = await _get_files(db, current_user.id)
     
     return templates.TemplateResponse(
@@ -378,6 +452,7 @@ async def panel_clean(
             "lang": current_user.default_lang,
             "files": files,
             "selected_file_id": file_id,
+            "active_panel": "clean",
         },
     )
 
@@ -392,7 +467,7 @@ async def panel_merge(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Merge panel."""
+    """Merge panel - merge multiple files."""
     files = await _get_files(db, current_user.id)
     
     return templates.TemplateResponse(
@@ -402,6 +477,7 @@ async def panel_merge(
             "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
+            "active_panel": "merge",
         },
     )
 
@@ -416,12 +492,116 @@ async def panel_analytics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Analytics panel."""
+    """Analytics panel - data visualization and insights."""
     return templates.TemplateResponse(
         request,
         "workspace/_panel_analytics.html",
         {
             "user": current_user,
             "lang": current_user.default_lang,
+            "active_panel": "analytics",
         },
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Panel: settings
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/panel/settings", response_class=HTMLResponse)
+async def panel_settings(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Settings panel - user preferences."""
+    return templates.TemplateResponse(
+        request,
+        "workspace/_panel_settings.html",
+        {
+            "user": current_user,
+            "lang": current_user.default_lang,
+            "active_panel": "settings",
+        },
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API: Get file formats for conversion
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/formats")
+async def get_export_formats(
+    current_user: User = Depends(get_current_user),
+):
+    """Get available export formats."""
+    return JSONResponse(
+        content={
+            "success": True,
+            "formats": EXPORT_FORMATS
+        }
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API: Get file preview
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/files/{file_id}/preview")
+async def get_file_preview(
+    file_id: int,
+    rows: int = Query(default=100, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get file preview data."""
+    from app.application.files.service import FileService
+    
+    try:
+        svc = FileService(db)
+        preview = await svc.get_preview(file_id, current_user.id, rows=rows)
+        return JSONResponse(content={"success": True, "data": preview})
+    except Exception as e:
+        logger.error(f"Preview failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API: Search files
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/search")
+async def search_files(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Search files by name or tags."""
+    repo = FileRepository(db)
+    try:
+        files = await repo.search_files(current_user.id, q, limit)
+        return JSONResponse(
+            content={
+                "success": True,
+                "files": [
+                    {
+                        "id": f.id,
+                        "name": f.original_name,
+                        "format": f.format,
+                        "size": f.size_bytes,
+                        "created_at": f.created_at.isoformat() if f.created_at else None
+                    }
+                    for f in files
+                ]
+            }
+        )
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
