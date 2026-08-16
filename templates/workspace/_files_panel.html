@@ -17,6 +17,9 @@
         {% elif f.format == 'json' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400
         {% elif f.format == 'pdf' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
         {% elif f.format == 'parquet' %}bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400
+        {% elif f.format == 'txt' %}bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-400
+        {% elif f.format == 'html' %}bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400
+        {% elif f.format == 'xml' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
         {% if f.format %}
           {{ f.format[:3]|upper }}
@@ -48,23 +51,46 @@
 
     <!-- Quick actions (shown on hover) -->
     <div class="hidden group-hover:flex items-center gap-1 mt-1.5 ps-10">
+      <!-- View button -->
       <button @click.stop="openPanel('view', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
-              class="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors">
+              class="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
+              title="عرض الملف">
         عرض
       </button>
+      
+      <!-- Analyze button -->
       <button @click.stop="openPanel('analyze', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
-              class="text-xs px-2 py-0.5 rounded-md bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 text-brand-600 dark:text-brand-400 transition-colors">
+              class="text-xs px-2 py-0.5 rounded-md bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 text-brand-600 dark:text-brand-400 transition-colors"
+              title="تحليل الملف بالذكاء الاصطناعي">
         تحليل
       </button>
+      
+      <!-- Convert button - NEW: uses the workspace panel route -->
       <button @click.stop="openPanel('convert', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
-              class="text-xs px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 text-violet-600 dark:text-violet-400 transition-colors">
+              class="text-xs px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 text-violet-600 dark:text-violet-400 transition-colors"
+              title="تحويل الملف إلى صيغة أخرى">
         تحويل
+      </button>
+      
+      <!-- Download button -->
+      <button @click.stop="downloadFile({{ f.id }})"
+              class="text-xs px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 transition-colors"
+              title="تحميل الملف">
+        تحميل
+      </button>
+      
+      <!-- Delete button -->
+      <button @click.stop="deleteFile({{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+              class="text-xs px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-900/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition-colors"
+              title="حذف الملف">
+        حذف
       </button>
     </div>
   </div>
   {% endfor %}
 </div>
 {% else %}
+<!-- Empty state -->
 <div class="py-8 text-center text-slate-400">
   <svg class="w-10 h-10 mx-auto mb-2 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
@@ -72,4 +98,125 @@
   <p class="text-xs">لا يوجد ملفات</p>
   <p class="text-xs mt-1 text-slate-300 dark:text-slate-600">ارفع ملفاً للبدء</p>
 </div>
+{% endif %}
+
+<script>
+// JavaScript functions for file actions
+// These work with Alpine.js or vanilla JS
+
+function openPanel(panelType, fileId, fileName) {
+    // This function is called from the Alpine.js @click handler
+    // It navigates to the appropriate panel
+    if (typeof Alpine !== 'undefined') {
+        // If using Alpine.js, the function is defined in the parent component
+        return;
+    }
+    
+    // Fallback for vanilla JS
+    const panelMap = {
+        'view': '/workspace/panel/view/' + fileId,
+        'analyze': '/workspace/panel/analyze/' + fileId,
+        'convert': '/workspace/panel/convert?file_id=' + fileId,
+        'clean': '/workspace/panel/clean?file_id=' + fileId,
+        'merge': '/workspace/panel/merge'
+    };
+    
+    const url = panelMap[panelType];
+    if (url) {
+        window.location.href = url;
+    }
+}
+
+function selectFile(fileId, fileName) {
+    // Handle file selection
+    console.log('Selected file:', fileName, 'ID:', fileId);
+    // You can add additional logic here
+}
+
+function downloadFile(fileId) {
+    // Download file
+    window.location.href = '/api/files/' + fileId + '/download';
+}
+
+function deleteFile(fileId, fileName) {
+    // Delete file with confirmation
+    if (confirm('هل أنت متأكد من حذف الملف "' + fileName + '"؟')) {
+        fetch('/api/files/' + fileId, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Refresh the file list
+                location.reload();
+            } else {
+                alert('حدث خطأ أثناء حذف الملف: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('حدث خطأ: ' + error.message);
+        });
+    }
+}
+
+// Additional utility functions
+function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex++;
+    }
+    return size.toFixed(1) + ' ' + units[unitIndex];
+}
+
+function getFileIcon(format) {
+    const icons = {
+        'xlsx': '📊',
+        'xls': '📊',
+        'csv': '📋',
+        'json': '📄',
+        'pdf': '📕',
+        'txt': '📝',
+        'html': '🌐',
+        'xml': '📰',
+        'parquet': '📦',
+        'jpg': '🖼️',
+        'jpeg': '🖼️',
+        'png': '🖼️',
+        'gif': '🖼️',
+        'svg': '🖼️',
+        'doc': '📄',
+        'docx': '📄',
+        'ppt': '📊',
+        'pptx': '📊'
+    };
+    return icons[format] || '📄';
+}
+</script>
+
+<!-- HTMX support for dynamic updates -->
+{% if request.headers.get('HX-Request') %}
+<style>
+  /* Styles specific to HTMX partial loads */
+  .file-item-enter {
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
 {% endif %}
