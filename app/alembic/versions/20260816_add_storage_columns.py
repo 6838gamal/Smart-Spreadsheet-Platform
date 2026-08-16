@@ -22,9 +22,9 @@ def upgrade() -> None:
     """Add storage columns to files table."""
     # إضافة الأعمدة
     op.add_column('files', sa.Column('storage_key', sa.String(100), nullable=True, unique=True))
-    op.add_column('files', sa.Column('is_locally_stored', sa.Boolean, server_default='true', nullable=False))
+    op.add_column('files', sa.Column('is_locally_stored', sa.Boolean, server_default='false', nullable=False))
     op.add_column('files', sa.Column('last_synced_at', sa.DateTime(timezone=True), nullable=True))
-    op.add_column('files', sa.Column('storage_backend', sa.String(50), server_default='local', nullable=False))
+    op.add_column('files', sa.Column('storage_backend', sa.String(50), server_default='supabase', nullable=False))
     op.add_column('files', sa.Column('storage_bucket', sa.String(255), nullable=True))
     op.add_column('files', sa.Column('storage_object_key', sa.String(1000), nullable=True))
     

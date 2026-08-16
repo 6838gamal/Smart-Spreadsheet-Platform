@@ -3,8 +3,8 @@ File storage services.
 
 PostgreSQL stores file metadata in the ``files`` table while the binary file
 content is delegated to a storage backend.  Local storage remains available for
-development, but production can use Supabase Storage by setting
-``FILE_STORAGE_BACKEND=supabase`` and the Supabase credentials in settings.
+processing, but uploaded and generated file bytes are persisted only in
+Supabase Storage. PostgreSQL keeps the file metadata and object keys.
 """
 
 import uuid
@@ -18,14 +18,12 @@ from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
 
 
 class LocalStorageService:
-    """Filesystem storage backend used for local development and temp files."""
+    """Temporary filesystem helper used only while processing files."""
 
-    backend_name = "local"
+    backend_name = "temporary"
 
     def __init__(self):
-        self.upload_dir = Path(settings.UPLOAD_DIR)
         self.output_dir = Path(settings.OUTPUT_DIR)
-        self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _safe_extension(self, filename: str) -> str:
@@ -44,33 +42,11 @@ class LocalStorageService:
         return unique, ext
 
     async def save_upload(self, file: UploadFile, user_id: int) -> dict:
-        """Save an uploaded file and return metadata dict."""
-        unique_name, ext = self._unique_filename(file.filename or "upload")
-        user_dir = self.upload_dir / str(user_id)
-        user_dir.mkdir(parents=True, exist_ok=True)
-        dest = user_dir / unique_name
-
-        size = 0
-        async with aiofiles.open(dest, "wb") as f:
-            while chunk := await file.read(1024 * 256):
-                size += len(chunk)
-                if size > settings.MAX_FILE_SIZE_BYTES:
-                    await f.close()
-                    dest.unlink(missing_ok=True)
-                    raise FileTooLargeError(size / (1024 * 1024), settings.MAX_FILE_SIZE_MB)
-                await f.write(chunk)
-
-        return self._metadata(
-            path=str(dest),
-            name=unique_name,
-            original_name=file.filename or unique_name,
-            size_bytes=size,
-            format=ext,
-            mime_type=file.content_type or "application/octet-stream",
-        )
+        """Uploading to local storage is intentionally disabled."""
+        raise RuntimeError("Local upload storage is disabled. Configure Supabase Storage.")
 
     async def save_output(self, path: str | Path, user_id: int, mime_type: str = "application/octet-stream") -> dict:
-        """Persist a generated output file and return storage metadata."""
+        """Return metadata for a temporary output file before remote upload."""
         p = Path(path)
         return self._metadata(
             path=str(p),
@@ -111,7 +87,7 @@ class LocalStorageService:
 
 
 class SupabaseStorageService(LocalStorageService):
-    """Supabase Storage backend with local temp files only for processing."""
+    """Supabase Storage backend with no persistent local file storage."""
 
     backend_name = "supabase"
 
@@ -150,6 +126,7 @@ class SupabaseStorageService(LocalStorageService):
         await self._upload_file(
             cache_path, object_key, file.content_type or "application/octet-stream"
         )
+        cache_path.unlink(missing_ok=True)
         return self._metadata(
             path=self._storage_uri(object_key),
             name=unique_name,
@@ -166,6 +143,7 @@ class SupabaseStorageService(LocalStorageService):
         p = Path(path)
         object_key = f"outputs/{user_id}/{p.name}"
         await self._upload_file(p, object_key, mime_type)
+        p.unlink(missing_ok=True)
         return self._metadata(
             path=self._storage_uri(object_key),
             name=p.name,
@@ -234,10 +212,10 @@ class SupabaseStorageService(LocalStorageService):
         return path[len(prefix):] if path.startswith(prefix) else None
 
 
-def _build_storage_service() -> LocalStorageService:
-    if settings.FILE_STORAGE_BACKEND.lower() == "supabase":
-        return SupabaseStorageService()
-    return LocalStorageService()
+def _build_storage_service() -> SupabaseStorageService:
+    if settings.FILE_STORAGE_BACKEND.lower() != "supabase":
+        raise RuntimeError("Local persistent storage is disabled. Use FILE_STORAGE_BACKEND=supabase.")
+    return SupabaseStorageService()
 
 
 storage = _build_storage_service()

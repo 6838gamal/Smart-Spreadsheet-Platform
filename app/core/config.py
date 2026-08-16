@@ -130,9 +130,9 @@ class Settings(BaseSettings):
             return False
         return True
 
-    # File metadata is stored in PostgreSQL. Binary objects can be stored
-    # locally for development or in Supabase Storage for production.
-    FILE_STORAGE_BACKEND: Literal["local", "supabase"] = "local"
+    # File metadata is stored in PostgreSQL. Binary objects are stored in
+    # Supabase Storage. Local files are only temporary processing artifacts.
+    FILE_STORAGE_BACKEND: Literal["supabase"] = "supabase"
     UPLOAD_DIR: str = "uploads"
     OUTPUT_DIR: str = "outputs"
     MAX_FILE_SIZE_MB: int = 500
@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_STORAGE_BUCKET: str = "files"
-    SUPABASE_STORAGE_CACHE_DIR: str = ".storage-cache"
+    SUPABASE_STORAGE_CACHE_DIR: str = ".storage-tmp"
     SUPABASE_STORAGE_TIMEOUT_SECONDS: int = 120
 
     # Allowed file extensions
