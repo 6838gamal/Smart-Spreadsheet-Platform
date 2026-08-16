@@ -3,7 +3,7 @@
 import json
 import logging
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
@@ -19,38 +19,40 @@ router = APIRouter()
 
 
 async def _auto_analyze(file_id: int, file_path: str, file_format: str, db: AsyncSession) -> int | None:
-    """Create a DocumentAnalysis record and enqueue the analysis job.
-    Returns the analysis_id, or None if analysis already queued."""
-    from app.infrastructure.database.models_intelligence import DocumentAnalysis, AnalysisStatus
-    from app.jobs.job_queue import job_queue
+    """Create a DocumentAnalysis record and enqueue the analysis job."""
+    try:
+        from app.infrastructure.database.models_intelligence import DocumentAnalysis, AnalysisStatus
+        from app.jobs.job_queue import job_queue
 
-    # Don't create duplicate pending/running analyses
-    existing = await db.execute(
-        select(DocumentAnalysis).where(
-            DocumentAnalysis.file_id == file_id,
-            DocumentAnalysis.status.in_([AnalysisStatus.PENDING, AnalysisStatus.RUNNING]),
+        existing = await db.execute(
+            select(DocumentAnalysis).where(
+                DocumentAnalysis.file_id == file_id,
+                DocumentAnalysis.status.in_([AnalysisStatus.PENDING, AnalysisStatus.RUNNING]),
+            )
         )
-    )
-    if existing.scalar_one_or_none():
+        if existing.scalar_one_or_none():
+            return None
+
+        analysis = DocumentAnalysis(file_id=file_id, status=AnalysisStatus.PENDING)
+        db.add(analysis)
+        await db.flush()
+
+        await job_queue.enqueue(
+            job_type="analysis",
+            payload={
+                "file_id": file_id,
+                "file_path": file_path,
+                "file_format": file_format,
+                "analysis_id": analysis.id,
+            },
+            priority=3,
+        )
+        await db.commit()
+        logger.info(f"Auto-triggered analysis for file_id={file_id} (analysis_id={analysis.id})")
+        return analysis.id
+    except Exception as e:
+        logger.error(f"Auto-analysis failed for file_id={file_id}: {e}")
         return None
-
-    analysis = DocumentAnalysis(file_id=file_id, status=AnalysisStatus.PENDING)
-    db.add(analysis)
-    await db.flush()
-
-    await job_queue.enqueue(
-        job_type="analysis",
-        payload={
-            "file_id": file_id,
-            "file_path": file_path,
-            "file_format": file_format,
-            "analysis_id": analysis.id,
-        },
-        priority=3,
-    )
-    await db.commit()
-    logger.info(f"Auto-triggered analysis for file_id={file_id} (analysis_id={analysis.id})")
-    return analysis.id
 
 
 @router.get("/files", response_class=HTMLResponse)
@@ -67,26 +69,11 @@ async def files_page(
 ):
     """
     Display files page with filtering, sorting, and pagination.
-    
-    Args:
-        request: FastAPI request
-        search: Search query in file name or tags
-        fmt: Filter by file format
-        only_local: Only show files stored locally
-        sort_by: Sort field (created_at, name, size, updated_at)
-        sort_order: Sort order (asc, desc)
-        page: Page number
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        HTMLResponse: Rendered files page
     """
     svc = FileService(db)
     limit = 20
     offset = (page - 1) * limit
     
-    # Get files with all filters
     files, total = await svc.list_files(
         user_id=current_user.id,
         search=search or None,
@@ -99,6 +86,12 @@ async def files_page(
     )
     
     total_pages = max(1, (total + limit - 1) // limit)
+    
+    # Add safe attributes for template
+    for f in files:
+        f.storage_key = getattr(f, 'storage_key', None)
+        f.is_locally_stored = getattr(f, 'is_locally_stored', False)
+        f.is_cached_locally = getattr(f, 'is_cached_locally', False)
     
     return templates.TemplateResponse(
         request,
@@ -130,41 +123,27 @@ async def upload_files(
 ):
     """
     Upload files to the server.
-    
-    Args:
-        request: FastAPI request
-        files: List of uploaded files
-        store_locally: Whether to store files locally in browser
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        HTMLResponse or RedirectResponse: Upload result
     """
     svc = FileService(db)
-    uploaded = []   # list of File ORM objects
+    uploaded = []
     errors = []
     
     for file in files:
         try:
-            # Upload with local storage option
             f = await svc.upload(file, current_user.id, store_locally=store_locally)
-            
-            # Auto-trigger analysis immediately after upload
             await _auto_analyze(f.id, f.path, f.format, db)
             uploaded.append(f)
         except Exception as e:
             logger.error(f"Upload error for {file.filename}: {e}")
             errors.append(f"{file.filename}: {e}")
 
-    # HTMX response (for AJAX uploads)
+    # HTMX response
     if request.headers.get("HX-Request"):
         if not uploaded:
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
         if len(uploaded) == 1 and not errors:
-            # Single file: redirect straight to the analysis page
             redirect_url = f"/intelligence/analyze/{uploaded[0].id}"
             return HTMLResponse(
                 f'<div class="text-emerald-400 text-sm text-center">'
@@ -173,22 +152,17 @@ async def upload_files(
                 f'<script>setTimeout(()=>window.location.href="{redirect_url}",600)</script>'
             )
 
-        # Multiple files: stay on page and show count
         msg = f"✓ تم رفع {len(uploaded)} ملف وبدأ التحليل تلقائياً"
         if errors:
             msg += f" ({len(errors)} أخطاء)"
         
-        # Include storage info in response
-        storage_info = ""
-        if store_locally:
-            storage_info = " (مخزن محلياً)"
+        storage_info = " (مخزن محلياً)" if store_locally else ""
         
         return HTMLResponse(
             f'<div class="text-emerald-400 text-sm text-center">{msg}{storage_info}</div>'
             f'<script>setTimeout(()=>location.reload(),1500)</script>'
         )
 
-    # Non-HTMX fallback
     if len(uploaded) == 1:
         return RedirectResponse(url=f"/intelligence/analyze/{uploaded[0].id}", status_code=302)
     return RedirectResponse(url="/files", status_code=302)
@@ -203,20 +177,14 @@ async def file_detail(
 ):
     """
     Display file detail page.
-    
-    Args:
-        request: FastAPI request
-        file_id: File ID
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        HTMLResponse: Rendered file detail page
     """
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    # Get preview (if supported)
+    # Safe attribute access
+    f.storage_key = getattr(f, 'storage_key', None)
+    f.is_locally_stored = getattr(f, 'is_locally_stored', False)
+    
     preview = None
     try:
         preview = await svc.get_preview(file_id, current_user.id, rows=200)
@@ -224,17 +192,19 @@ async def file_detail(
         logger.warning(f"Preview not available for file {file_id}: {e}")
         preview = {"error": str(e), "available": False}
 
-    # Load latest analysis record (if any)
-    from app.infrastructure.database.models_intelligence import DocumentAnalysis
-    analysis_res = await db.execute(
-        select(DocumentAnalysis)
-        .where(DocumentAnalysis.file_id == file_id)
-        .order_by(DocumentAnalysis.created_at.desc())
-        .limit(1)
-    )
-    analysis = analysis_res.scalar_one_or_none()
+    # Load latest analysis
+    try:
+        from app.infrastructure.database.models_intelligence import DocumentAnalysis
+        analysis_res = await db.execute(
+            select(DocumentAnalysis)
+            .where(DocumentAnalysis.file_id == file_id)
+            .order_by(DocumentAnalysis.created_at.desc())
+            .limit(1)
+        )
+        analysis = analysis_res.scalar_one_or_none()
+    except Exception:
+        analysis = None
 
-    # Check if file exists on server
     file_exists_on_server = Path(f.path).exists() if f.path else False
 
     return templates.TemplateResponse(
@@ -260,24 +230,13 @@ async def download_file(
 ):
     """
     Download file from server.
-    
-    Args:
-        file_id: File ID
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        FileResponse or RedirectResponse: File download
     """
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    # Check if file exists on server
     if not f.path or not Path(f.path).exists():
-        # Try to get file content from cache or local storage
         content = await svc.get_file_content(file_id, current_user.id)
         if content:
-            from fastapi.responses import Response
             return Response(
                 content=content,
                 media_type=f.mime_type or "application/octet-stream",
@@ -286,8 +245,6 @@ async def download_file(
                     "Content-Length": str(len(content))
                 }
             )
-        
-        # File not found
         return RedirectResponse(url="/files", status_code=302)
     
     return FileResponse(f.path, filename=f.original_name)
@@ -302,15 +259,6 @@ async def delete_file(
 ):
     """
     Delete file from server and optionally local storage.
-    
-    Args:
-        file_id: File ID
-        delete_local: Whether to delete from local storage
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        RedirectResponse: Redirect to files page
     """
     svc = FileService(db)
     await svc.delete_file(file_id, current_user.id, delete_local=delete_local)
@@ -326,20 +274,10 @@ async def toggle_favorite(
 ):
     """
     Toggle favorite status of a file.
-    
-    Args:
-        request: FastAPI request
-        file_id: File ID
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        HTMLResponse or RedirectResponse: Updated favorite icon
     """
     svc = FileService(db)
     f = await svc.toggle_favorite(file_id, current_user.id)
     
-    # HTMX response (for AJAX)
     if request.headers.get("HX-Request"):
         icon = "★" if f.is_favorite else "☆"
         cls = "text-yellow-400" if f.is_favorite else "text-slate-200 dark:text-slate-600 hover:text-yellow-300"
@@ -356,33 +294,24 @@ async def sync_local_files(
 ):
     """
     Sync local files status with server.
-    
-    Args:
-        request: FastAPI request
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        JSONResponse: Sync result
     """
     try:
-        # Get local files from request body
         body = await request.json()
         local_files = body.get("files", [])
         
         svc = FileService(db)
         result = await svc.sync_local_files(current_user.id, local_files)
         
-        return {
+        return JSONResponse({
             "success": True,
             "result": result
-        }
+        })
     except Exception as e:
         logger.error(f"Sync error: {e}")
-        return {
+        return JSONResponse({
             "success": False,
             "error": str(e)
-        }
+        }, status_code=500)
 
 
 @router.get("/files/storage-stats")
@@ -392,17 +321,10 @@ async def get_storage_stats(
 ):
     """
     Get storage statistics for current user.
-    
-    Args:
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: Storage statistics
     """
     svc = FileService(db)
     stats = await svc.get_storage_stats(current_user.id)
-    return stats
+    return JSONResponse(stats)
 
 
 @router.get("/files/{file_id}/preview")
@@ -414,19 +336,10 @@ async def preview_file(
 ):
     """
     Get file preview as JSON.
-    
-    Args:
-        file_id: File ID
-        rows: Number of rows to preview
-        db: Database session
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: Preview data
     """
     svc = FileService(db)
     preview = await svc.get_preview(file_id, current_user.id, rows=rows)
-    return {
+    return JSONResponse({
         "success": True,
         "data": preview
-    }
+    })
