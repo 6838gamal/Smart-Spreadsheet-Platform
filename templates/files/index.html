@@ -1,3 +1,5 @@
+<!-- files/index.html -->
+
 {% extends "base.html" %}
 
 {% block title %}
@@ -19,30 +21,37 @@
 >
 
   <!-- =========================================================
-       STORAGE STATUS
+       STORAGE STATUS (محدث)
   ========================================================== -->
 
   <div class="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
     <div class="flex items-center gap-3">
-      <span>💾</span>
-      <span x-text="`${t.get('local_storage_used')}: ${storageUsed} / ${storageLimit}`"></span>
-      <span class="w-32 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-        <div 
-          class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500"
-          :style="`width: ${storagePercentage}%`"
-        ></div>
+      <span>☁️</span>
+      <span>
+        <span class="font-medium">{{ t.get('storage_provider') }}:</span>
+        <span class="text-indigo-500" x-text="storageProvider"></span>
+      </span>
+      <span class="w-px h-4 bg-slate-300 dark:bg-slate-600"></span>
+      <span>
+        <span class="font-medium">{{ t.get('total_files') }}:</span>
+        <span x-text="totalFiles"></span>
+      </span>
+      <span class="w-px h-4 bg-slate-300 dark:bg-slate-600"></span>
+      <span>
+        <span class="font-medium">{{ t.get('total_size') }}:</span>
+        <span x-text="totalSize"></span>
       </span>
     </div>
     <button 
-      @click="cleanLocalStorage()"
-      class="text-xs px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+      @click="refreshFiles()"
+      class="text-xs px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors"
     >
-      {{ t.get('clean_cache') }}
+      ↻ {{ t.get('refresh') }}
     </button>
   </div>
 
   <!-- =========================================================
-       UPLOAD ZONE
+       UPLOAD ZONE (نفسه)
   ========================================================== -->
 
   <div
@@ -52,12 +61,10 @@
     x-on:drop.prevent="handleDrop($event)"
     :class="dragging ? 'border-indigo-500 bg-indigo-50/5 shadow-md' : ''"
   >
-
     <div
       class="border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-2xl p-8 text-center transition-all duration-200"
       :class="dragging ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10 scale-[1.01]' : 'hover:border-slate-300 dark:hover:border-slate-500'"
     >
-
       <!-- Upload icon -->
       <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center">
         <svg class="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -65,14 +72,13 @@
         </svg>
       </div>
 
-      <!-- Main text -->
       <p class="text-slate-700 dark:text-slate-300 font-semibold mb-1">
         {{ t.get('drag_drop') }}
       </p>
 
       <p class="text-xs text-slate-500 dark:text-slate-400 mb-5">
         {{ t.get('file_limit') }}
-        <span class="block mt-1 text-indigo-500" x-text="`${t.get('stored_locally')} 🔒`"></span>
+        <span class="block mt-1 text-emerald-500">☁️ {{ t.get('stored_in_cloud') }}</span>
       </p>
 
       <!-- Choose files -->
@@ -86,16 +92,14 @@
           multiple
           class="hidden"
           x-ref="fileInput"
-          @change="handleFileSelect($event)"
+          @change="uploadFiles($event)"
           accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.doc,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
         />
       </label>
 
-      <!-- Drop hint -->
       <p x-show="dragging" x-cloak class="mt-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
         {{ t.get('drop_to_upload') }}
       </p>
-
     </div>
 
     <!-- Upload Result -->
@@ -112,7 +116,7 @@
         </div>
         <div class="flex-1">
           <p class="text-sm font-medium text-slate-600 dark:text-slate-300">
-            {{ t.get('uploading_to_local') }}
+            {{ t.get('uploading_to_cloud') }}
           </p>
           <p class="text-xs text-slate-400 mt-0.5" x-text="uploadCount > 1 ? uploadCount + ' ' + t.get('files_unit') : t.get('one_file')"></p>
         </div>
@@ -121,11 +125,10 @@
         <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300" :style="'width:' + uploadProgress + '%'"></div>
       </div>
     </div>
-
   </div>
 
   <!-- =========================================================
-       FILTERS & SEARCH
+       FILTERS & SEARCH (نفسه)
   ========================================================== -->
 
   <div class="flex flex-wrap gap-3">
@@ -149,29 +152,18 @@
       {% endif %}
     </form>
     <span class="text-sm text-slate-500 dark:text-slate-400 self-center">
-      {{ total }} ({{ t.get('locally_cached') }}: <span x-text="cachedFilesCount"></span>)
+      {{ total }}
     </span>
   </div>
 
   <!-- =========================================================
-       FILES GRID
+       FILES GRID (محدث)
   ========================================================== -->
 
   {% if files %}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" id="files-grid">
     {% for f in files %}
-    <!-- التحقق من وجود الملف محلياً قبل العرض -->
-    <div 
-      x-data="{ 
-        fileId: {{ f.id }}, 
-        storageKey: '{{ f.storage_key }}',
-        isCached: false,
-        async checkCache() {
-          this.isCached = await window.fileStorage?.isFileCached(this.storageKey) || false;
-        }
-      }"
-      x-init="checkCache()"
-      x-show="isCached || {{ 1 if f.is_available else 0 }}"
+    <div
       class="card p-4 flex flex-col gap-3 hover:shadow-md dark:hover:shadow-slate-900 transition-all duration-200 group"
       data-file-id="{{ f.id }}"
     >
@@ -190,14 +182,12 @@
         </span>
         
         <div class="flex items-center gap-1">
-          <!-- Local cache status -->
+          <!-- Cloud storage indicator -->
           <span 
-            class="text-xs"
-            :class="isCached ? 'text-emerald-500' : 'text-slate-300'"
-            :title="isCached ? '{{ t.get('cached_locally') }}' : '{{ t.get('not_cached') }}'"
+            class="text-xs text-emerald-500"
+            title="{{ t.get('stored_in_cloud') }}"
           >
-            <span x-show="isCached">💾</span>
-            <span x-show="!isCached">☁️</span>
+            ☁️
           </span>
           
           <!-- Favorite button -->
@@ -240,18 +230,18 @@
       <!-- Actions -->
       <div class="flex gap-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50">
         <button
-          @click="viewFile('{{ f.id }}', '{{ f.storage_key }}')"
+          @click="viewFile('{{ f.id }}', '{{ f.file_url }}')"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
         >
           {{ t.get('view') }}
         </button>
 
-        <button
-          @click="downloadFile('{{ f.id }}', '{{ f.storage_key }}', '{{ f.original_name }}')"
+        <a
+          href="/files/{{ f.id }}/download"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
         >
           {{ t.get('download') }}
-        </button>
+        </a>
 
         <a
           href="/converter?file_id={{ f.id }}"
@@ -260,14 +250,11 @@
           {{ t.get('convert') }}
         </a>
 
-        <!-- زر الحذف المعدل -->
         <button
-          @click="deleteFile({{ f.id }}, '{{ f.storage_key }}', '{{ f.original_name }}')"
+          @click="deleteFile({{ f.id }})"
           class="text-xs py-1.5 px-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 transition-colors font-medium"
-          x-data="{ deleting: false }"
-          :disabled="deleting"
-          x-text="deleting ? '...' : '{{ t.get('delete') }}'"
         >
+          {{ t.get('delete') }}
         </button>
       </div>
 
@@ -275,7 +262,7 @@
     {% endfor %}
   </div>
 
-  <!-- Pagination -->
+  <!-- Pagination (نفسه) -->
   {% if total_pages > 1 %}
   <div class="flex items-center justify-center gap-2">
     {% for p in range(1, total_pages + 1) %}
@@ -291,7 +278,7 @@
   {% endif %}
 
   {% else %}
-  <!-- Empty state -->
+  <!-- Empty state (نفسه) -->
   <div class="card p-16 text-center">
     <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
       <svg class="w-8 h-8 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -314,620 +301,227 @@
 {% block scripts %}
 
 <script>
-// ============================================================
-// LOCAL STORAGE MANAGER (IndexedDB)
-// ============================================================
-
-class LocalFileStorage {
-    constructor() {
-        this.dbName = 'SmartSpreadsheetFiles';
-        this.storeName = 'fileBlobs';
-        this.db = null;
-        this.cache = new Map();
-        this.initialized = false;
-    }
+function filesPage() {
+  return {
+    // State
+    dragging: false,
+    uploading: false,
+    uploadProgress: 0,
+    uploadCount: 0,
+    storageProvider: '{{ settings.STORAGE_PROVIDER }}',
+    totalFiles: {{ total }},
+    totalSize: '{{ total_size_human }}',
+    t: {},
 
     async init() {
-        if (this.initialized && this.db) return this.db;
-        
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, 1);
-            
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(this.storeName)) {
-                    const store = db.createObjectStore(this.storeName, {
-                        keyPath: 'id'
-                    });
-                    store.createIndex('fileId', 'fileId', { unique: false });
-                    store.createIndex('uploadedAt', 'uploadedAt', { unique: false });
-                }
-            };
-            
-            request.onsuccess = (event) => {
-                this.db = event.target.result;
-                this.initialized = true;
-                resolve(this.db);
-            };
-            
-            request.onerror = (event) => {
-                reject(event.target.error);
-            };
-        });
-    }
-
-    async saveFile(fileId, blob, metadata = {}) {
-        await this.init();
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-            
-            const record = {
-                id: `file_${fileId}_${Date.now()}`,
-                fileId: fileId,
-                blob: blob,
-                metadata: metadata,
-                uploadedAt: new Date().toISOString(),
-                size: blob.size,
-                type: blob.type
-            };
-            
-            const request = store.add(record);
-            request.onsuccess = () => {
-                this.cache.set(record.id, record);
-                resolve(record.id);
-            };
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async getFile(storageKey) {
-        await this.init();
-        
-        // Check memory cache first
-        if (this.cache.has(storageKey)) {
-            return this.cache.get(storageKey);
+      this.t = window._translations || {};
+      
+      // Listen for storage events
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'smart-spreadsheet-files-updated') {
+          this.updateStats();
         }
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readonly');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.get(storageKey);
-            
-            request.onsuccess = () => {
-                const result = request.result;
-                if (result) {
-                    this.cache.set(storageKey, result);
-                }
-                resolve(result);
-            };
-            request.onerror = () => reject(request.error);
-        });
-    }
+      });
 
-    async isFileCached(storageKey) {
-        try {
-            await this.init();
-            
-            // Check memory cache
-            if (this.cache.has(storageKey)) {
-                return true;
-            }
-            
-            // Check IndexedDB
-            const record = await this.getFile(storageKey);
-            return !!record;
-        } catch (error) {
-            console.error('Error checking cache:', error);
-            return false;
+      // Listen for upload events
+      window.addEventListener('files-uploaded', () => {
+        this.updateStats();
+      });
+
+      // Reset upload state on page restore
+      window.addEventListener('pageshow', () => {
+        this.dragging = false;
+        this.uploading = false;
+        this.uploadProgress = 0;
+      });
+    },
+
+    async updateStats() {
+      try {
+        const response = await fetch('/files/storage-stats');
+        const stats = await response.json();
+        this.totalFiles = stats.total_files || 0;
+        this.totalSize = stats.total_size_human || '0 B';
+      } catch (error) {
+        console.error('Failed to update stats:', error);
+      }
+    },
+
+    async refreshFiles() {
+      window.location.reload();
+    },
+
+    // ============================================================
+    // UPLOAD HANDLING
+    // ============================================================
+
+    handleDrop(event) {
+      this.dragging = false;
+      const files = event.dataTransfer.files;
+      if (files && files.length) {
+        this.uploadFileList(files);
+      }
+    },
+
+    uploadFiles(event) {
+      const files = event.target.files;
+      if (files && files.length) {
+        this.uploadFileList(files);
+      }
+    },
+
+    async uploadFileList(fileList) {
+      if (!fileList || !fileList.length) return;
+
+      // Validate files
+      const maxSize = 100 * 1024 * 1024; // 100MB
+      const invalidFiles = [];
+      
+      for (const file of fileList) {
+        if (file.size > maxSize) {
+          invalidFiles.push(file.name);
         }
-    }
+      }
+      
+      if (invalidFiles.length) {
+        const msg = `❌ ${this.t?.get('files_too_large') || 'Files too large:'} ${invalidFiles.join(', ')}`;
+        this.showResult(msg, 'error');
+        this.$refs.fileInput.value = '';
+        return;
+      }
 
-    async getFileByFileId(fileId) {
-        await this.init();
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readonly');
-            const store = transaction.objectStore(this.storeName);
-            const index = store.index('fileId');
-            const request = index.getAll(fileId);
-            
-            request.onsuccess = () => {
-                const results = request.result;
-                results.forEach(r => this.cache.set(r.id, r));
-                resolve(results);
-            };
-            request.onerror = () => reject(request.error);
-        });
-    }
+      this.uploading = true;
+      this.uploadProgress = 5;
+      this.uploadCount = fileList.length;
 
-    async deleteFile(storageKey) {
-        await this.init();
-        this.cache.delete(storageKey);
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.delete(storageKey);
-            
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    }
+      const formData = new FormData();
+      for (const file of fileList) {
+        formData.append('files', file);
+      }
 
-    async deleteFilesByFileId(fileId) {
-        await this.init();
-        const files = await this.getFileByFileId(fileId);
-        let deleted = 0;
+      try {
+        const result = await this.uploadWithProgress(formData);
         
-        for (const file of files) {
-            await this.deleteFile(file.id);
-            deleted++;
+        this.uploadProgress = 100;
+        
+        const msg = `✅ ${this.t?.get('upload_success') || 'Upload successful!'} (${fileList.length} ${this.t?.get('files_unit') || 'files'}) ☁️`;
+        this.showResult(msg, 'success');
+        
+        await this.updateStats();
+        
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+
+      } catch (error) {
+        console.error('Upload failed:', error);
+        const msg = `❌ ${this.t?.get('upload_failed') || 'Upload failed — please try again.'}`;
+        this.showResult(msg, 'error');
+      } finally {
+        this.uploading = false;
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = '';
         }
-        
-        return deleted;
-    }
+      }
+    },
 
-    async getAllFiles() {
-        await this.init();
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readonly');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.getAll();
-            
-            request.onsuccess = () => {
-                const results = request.result;
-                results.forEach(r => this.cache.set(r.id, r));
-                resolve(results);
-            };
-            request.onerror = () => reject(request.error);
+    uploadWithProgress(formData) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/files/upload', true);
+        xhr.setRequestHeader('HX-Request', 'true');
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (!event.lengthComputable) {
+            this.uploadProgress = Math.min(90, Math.max(10, this.uploadProgress));
+            return;
+          }
+          const percent = Math.round((event.loaded / event.total) * 100);
+          this.uploadProgress = Math.max(5, Math.min(95, percent));
         });
-    }
 
-    async getTotalSize() {
-        const files = await this.getAllFiles();
-        return files.reduce((sum, record) => sum + record.size, 0);
-    }
-
-    async getFileCount() {
-        const files = await this.getAllFiles();
-        return files.length;
-    }
-
-    async cleanOldFiles(maxAgeDays = 30) {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - maxAgeDays);
-        const files = await this.getAllFiles();
-        let deleted = 0;
-        
-        for (const record of files) {
-            if (new Date(record.uploadedAt) < cutoff) {
-                await this.deleteFile(record.id);
-                deleted++;
-            }
-        }
-        
-        return deleted;
-    }
-
-    async clearAll() {
-        await this.init();
-        this.cache.clear();
-        
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-            const request = store.clear();
-            
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            let html = '';
+            try {
+              html = xhr.responseText || '';
+            } catch (_) {}
+            resolve({ html, redirect: null });
+          } else {
+            reject(new Error(`Upload failed with HTTP ${xhr.status}`));
+          }
         });
-    }
-}
 
-// ============================================================
-// FILES PAGE CONTROLLER
-// ============================================================
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error during upload'));
+        });
 
-function filesPage() {
-    return {
-        // State
-        dragging: false,
-        uploading: false,
-        uploadProgress: 0,
-        uploadCount: 0,
-        storageUsed: '0 MB',
-        storageLimit: '1 GB',
-        storagePercentage: 0,
-        cachedFilesCount: 0,
-        storage: null,
-        t: {},
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload aborted'));
+        });
 
-        async init() {
-            // Get translations from page
-            this.t = window._translations || {};
-            
-            // Initialize local storage
-            this.storage = new LocalFileStorage();
-            await this.storage.init();
-            
-            // Make storage available globally for x-data checks
-            window.fileStorage = this.storage;
-            
-            // Update storage info
-            await this.updateStorageInfo();
-            
-            // Listen for storage events from other tabs
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'smart-spreadsheet-files-updated') {
-                    this.updateStorageInfo();
-                }
-            });
+        xhr.send(formData);
+      });
+    },
 
-            // Listen for same-tab upload events
-            window.addEventListener('files-uploaded', () => {
-                this.updateStorageInfo();
-            });
+    showResult(message, type = 'info') {
+      const resultBox = document.getElementById('upload-result');
+      if (!resultBox) return;
 
-            // Reset upload state on page restore
-            window.addEventListener('pageshow', () => {
-                this.dragging = false;
-                this.uploading = false;
-                this.uploadProgress = 0;
-            });
-        },
+      const colors = {
+        success: 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
+        error: 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
+        info: 'border-blue-200 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+      };
 
-        async updateStorageInfo() {
-            if (!this.storage) return;
-            
-            try {
-                const totalSize = await this.storage.getTotalSize();
-                const fileCount = await this.storage.getFileCount();
-                
-                this.cachedFilesCount = fileCount;
-                this.storageUsed = this.formatBytes(totalSize);
-                this.storagePercentage = Math.min((totalSize / (1024 * 1024 * 1024)) * 100, 100);
-            } catch (error) {
-                console.error('Failed to get storage info:', error);
-            }
-        },
+      resultBox.innerHTML = `
+        <div class="p-3 rounded-xl border ${colors[type] || colors.info} text-sm">
+          ${message}
+        </div>
+      `;
 
-        formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        },
-
-        isFileCached(storageKey) {
-            return this.storage?.cache?.has(storageKey) || false;
-        },
-
-        // ============================================================
-        // FILE HANDLING
-        // ============================================================
-
-        handleDrop(event) {
-            this.dragging = false;
-            const files = event.dataTransfer.files;
-            if (files && files.length) {
-                this.uploadFileList(files);
-            }
-        },
-
-        handleFileSelect(event) {
-            const files = event.target.files;
-            if (files && files.length) {
-                this.uploadFileList(files);
-            }
-        },
-
-        async uploadFileList(fileList) {
-            if (!fileList || !fileList.length) return;
-
-            // Validate files
-            const maxSize = 100 * 1024 * 1024; // 100MB
-            const invalidFiles = [];
-            
-            for (const file of fileList) {
-                if (file.size > maxSize) {
-                    invalidFiles.push(file.name);
-                }
-            }
-            
-            if (invalidFiles.length) {
-                const msg = `❌ ${this.t?.get('files_too_large') || 'Files too large:'} ${invalidFiles.join(', ')}`;
-                this.showResult(msg, 'error');
-                this.$refs.fileInput.value = '';
-                return;
-            }
-
-            this.uploading = true;
-            this.uploadProgress = 5;
-            this.uploadCount = fileList.length;
-
-            const formData = new FormData();
-            for (const file of fileList) {
-                formData.append('files', file);
-            }
-
-            try {
-                // Upload metadata to server and save blob locally
-                const result = await this.uploadWithProgress(formData);
-                
-                this.uploadProgress = 100;
-                
-                // Show success message
-                const msg = `✅ ${this.t?.get('upload_success') || 'Upload successful!'} (${fileList.length} ${this.t?.get('files_unit') || 'files'})`;
-                this.showResult(msg, 'success');
-                
-                // Update storage info
-                await this.updateStorageInfo();
-                
-                // Notify other tabs
-                try {
-                    localStorage.setItem('smart-spreadsheet-files-updated', String(Date.now()));
-                } catch (_) {}
-
-                // Reload to show new files
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-
-            } catch (error) {
-                console.error('Upload failed:', error);
-                const msg = `❌ ${this.t?.get('upload_failed') || 'Upload failed — please try again.'}`;
-                this.showResult(msg, 'error');
-            } finally {
-                this.uploading = false;
-                if (this.$refs.fileInput) {
-                    this.$refs.fileInput.value = '';
-                }
-            }
-        },
-
-        uploadWithProgress(formData) {
-            return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/files/upload', true);
-                xhr.setRequestHeader('HX-Request', 'true');
-
-                xhr.upload.addEventListener('progress', (event) => {
-                    if (!event.lengthComputable) {
-                        this.uploadProgress = Math.min(90, Math.max(10, this.uploadProgress));
-                        return;
-                    }
-                    const percent = Math.round((event.loaded / event.total) * 100);
-                    this.uploadProgress = Math.max(5, Math.min(95, percent));
-                });
-
-                xhr.addEventListener('load', () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        let html = '';
-                        try {
-                            html = xhr.responseText || '';
-                        } catch (_) {}
-                        resolve({ html, redirect: null });
-                    } else {
-                        reject(new Error(`Upload failed with HTTP ${xhr.status}`));
-                    }
-                });
-
-                xhr.addEventListener('error', () => {
-                    reject(new Error('Network error during upload'));
-                });
-
-                xhr.addEventListener('abort', () => {
-                    reject(new Error('Upload aborted'));
-                });
-
-                xhr.send(formData);
-            });
-        },
-
-        showResult(message, type = 'info') {
-            const resultBox = document.getElementById('upload-result');
-            if (!resultBox) return;
-
-            const colors = {
-                success: 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
-                error: 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
-                info: 'border-blue-200 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-            };
-
-            resultBox.innerHTML = `
-                <div class="p-3 rounded-xl border ${colors[type] || colors.info} text-sm">
-                    ${message}
-                </div>
-            `;
-
-            // Auto-clear after 5 seconds
-            setTimeout(() => {
-                if (resultBox.querySelector('.p-3')) {
-                    resultBox.innerHTML = '';
-                }
-            }, 5000);
-        },
-
-        // ============================================================
-        // FILE ACTIONS
-        // ============================================================
-
-        async viewFile(fileId, storageKey) {
-            try {
-                const record = await this.storage.getFile(storageKey);
-                if (!record) {
-                    alert(this.t?.get('file_not_cached') || 'File not cached locally. Please download it first.');
-                    return;
-                }
-
-                // Open file in new window or viewer
-                const url = URL.createObjectURL(record.blob);
-                window.open(url, '_blank');
-                
-                // Revoke URL after a delay
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
-            } catch (error) {
-                console.error('Error viewing file:', error);
-                alert(this.t?.get('view_error') || 'Error viewing file');
-            }
-        },
-
-        async downloadFile(fileId, storageKey, fileName) {
-            try {
-                let record = await this.storage.getFile(storageKey);
-                
-                // If not cached, download from server
-                if (!record) {
-                    const response = await fetch(`/files/${fileId}/download`);
-                    if (!response.ok) throw new Error('Download failed');
-                    
-                    const blob = await response.blob();
-                    
-                    // Cache for future use
-                    storageKey = await this.storage.saveFile(fileId, blob, {
-                        fileName: fileName,
-                        downloadedAt: new Date().toISOString()
-                    });
-                    
-                    record = await this.storage.getFile(storageKey);
-                    await this.updateStorageInfo();
-                }
-
-                // Download from local cache
-                const url = URL.createObjectURL(record.blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
-
-            } catch (error) {
-                console.error('Download error:', error);
-                alert(this.t?.get('download_error') || 'Error downloading file');
-            }
-        },
-
-        // ============================================================
-        // DELETE FILE - الإصلاح الكامل
-        // ============================================================
-        
-        async deleteFile(fileId, storageKey, fileName) {
-            const confirmMsg = this.t?.get('confirm_delete') || `Are you sure you want to delete "${fileName}"?`;
-            if (!confirm(confirmMsg)) return;
-
-            // Find the button element and show loading state
-            const button = document.querySelector(`[data-file-id="${fileId}"] button:last-child`);
-            if (button) {
-                button.textContent = '...';
-                button.disabled = true;
-            }
-
-            try {
-                // 1. حذف الملف من التخزين المحلي (IndexedDB)
-                if (storageKey) {
-                    // حذف الملف المحدد
-                    await this.storage.deleteFile(storageKey);
-                    
-                    // حذف أي نسخ أخرى لنفس الملف (للتأكد)
-                    await this.storage.deleteFilesByFileId(fileId);
-                    
-                    console.log(`✅ File deleted from local storage: ${storageKey}`);
-                }
-
-                // 2. حذف التفاصيل من قاعدة البيانات (الخادم)
-                const response = await fetch(`/files/${fileId}/delete`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                    },
-                    body: JSON.stringify({ 
-                        storage_key: storageKey,
-                        file_id: fileId 
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error: ${response.status} - ${errorText}`);
-                }
-
-                // 3. تحديث معلومات التخزين
-                await this.updateStorageInfo();
-
-                // 4. إظهار رسالة نجاح
-                const successMsg = `✅ ${this.t?.get('file_deleted') || 'File deleted successfully'}: ${fileName}`;
-                this.showResult(successMsg, 'success');
-
-                // 5. إزالة العنصر من الواجهة مباشرة (بدون إعادة تحميل الصفحة)
-                const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
-                if (fileElement) {
-                    fileElement.style.transition = 'all 0.3s ease';
-                    fileElement.style.opacity = '0';
-                    fileElement.style.transform = 'scale(0.95)';
-                    
-                    setTimeout(() => {
-                        fileElement.remove();
-                        
-                        // تحديث العداد
-                        const counter = document.querySelector('.text-sm.text-slate-500.self-center');
-                        if (counter) {
-                            const currentText = counter.textContent;
-                            const match = currentText.match(/(\d+)/);
-                            if (match) {
-                                const newCount = parseInt(match[1]) - 1;
-                                counter.innerHTML = currentText.replace(/\d+/, newCount);
-                            }
-                        }
-                    }, 300);
-                }
-
-                // 6. إشعار التحديث في علامات التبويب الأخرى
-                try {
-                    localStorage.setItem('smart-spreadsheet-files-updated', String(Date.now()));
-                } catch (_) {}
-
-                // 7. إعادة تحميل الصفحة بعد 2 ثانية للتأكد من التحديث الكامل
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-
-            } catch (error) {
-                console.error('Delete error:', error);
-                
-                // إظهار رسالة خطأ
-                const errorMsg = `❌ ${this.t?.get('delete_error') || 'Error deleting file'}: ${error.message}`;
-                this.showResult(errorMsg, 'error');
-                
-                // إعادة زر الحذف إلى حالته الطبيعية
-                if (button) {
-                    button.textContent = this.t?.get('delete') || 'Delete';
-                    button.disabled = false;
-                }
-            }
-        },
-
-        async cleanLocalStorage() {
-            const confirmMsg = this.t?.get('confirm_clean_cache') || 'Delete all cached files? This will free up space.';
-            if (!confirm(confirmMsg)) return;
-
-            try {
-                const count = await this.storage.cleanOldFiles(0);
-                await this.updateStorageInfo();
-                alert(`✅ ${this.t?.get('cache_cleaned') || 'Cache cleaned:'} ${count} ${this.t?.get('files_unit') || 'files'} removed`);
-                window.location.reload();
-            } catch (error) {
-                console.error('Clean cache error:', error);
-                alert(this.t?.get('clean_error') || 'Error cleaning cache');
-            }
+      setTimeout(() => {
+        if (resultBox.querySelector('.p-3')) {
+          resultBox.innerHTML = '';
         }
-    };
+      }, 5000);
+    },
+
+    // ============================================================
+    // FILE ACTIONS
+    // ============================================================
+
+    viewFile(fileId, fileUrl) {
+      if (fileUrl) {
+        window.open(fileUrl, '_blank');
+      } else {
+        window.open(`/files/${fileId}/download`, '_blank');
+      }
+    },
+
+    async deleteFile(fileId) {
+      const confirmMsg = this.t?.get('confirm_delete') || 'Are you sure you want to delete this file?';
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const response = await fetch(`/files/${fileId}/delete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          window.location.reload();
+        } else {
+          throw new Error('Delete failed');
+        }
+      } catch (error) {
+        console.error('Delete error:', error);
+        alert(this.t?.get('delete_error') || 'Error deleting file');
+      }
+    }
+  };
 }
 </script>
 
