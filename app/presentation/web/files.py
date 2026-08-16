@@ -11,7 +11,7 @@ from pathlib import Path
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.templates import templates
-from app.core.config import settings  # ✅ إضافة للاستخدام المستقبلي
+from app.core.config import settings
 from app.infrastructure.database.models import User
 from app.application.files.service import FileService
 
@@ -110,7 +110,6 @@ async def files_page(
             "sort_order": sort_order,
             "current_page": "files",
             "lang": current_user.default_lang,
-            # settings متاح الآن عبر Jinja2 globals
         },
     )
 
