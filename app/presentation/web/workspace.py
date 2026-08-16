@@ -5,7 +5,7 @@ Serves the single-page workspace shell and HTMX panel partials.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.templates import templates
-from app.infrastructure.database.models import User
+from app.infrastructure.database.models import User, File
 from app.infrastructure.database.models_intelligence import DocumentAnalysis
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.application.dashboard.service import DashboardService
@@ -29,12 +29,60 @@ router = APIRouter(prefix="/workspace", tags=["workspace"])
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def _get_files(db: AsyncSession, user_id: int):
+async def _get_files(db: AsyncSession, user_id: int, limit: int = 50) -> List[File]:
+    """
+    Get files for a user.
+    
+    Returns a list of File objects, handling the tuple return from the repository.
+    """
     repo = FileRepository(db)
-    return await repo.get_by_owner(user_id)
+    result = await repo.get_by_owner(user_id, limit=limit)
+    
+    # Handle the case where get_by_owner returns a tuple (files, total)
+    if isinstance(result, tuple) and len(result) == 2:
+        files = result[0]  # Extract the list of files
+    else:
+        files = result  # Already a list
+    
+    # Ensure we return a list
+    if files is None:
+        return []
+    if not isinstance(files, list):
+        return list(files) if files else []
+    
+    return files
+
+
+async def _get_recent_files(db: AsyncSession, user_id: int, limit: int = 6) -> List[File]:
+    """Get recent files for a user."""
+    repo = FileRepository(db)
+    files = await repo.get_recent(user_id, limit=limit)
+    
+    # Ensure we return a list
+    if files is None:
+        return []
+    if not isinstance(files, list):
+        return list(files) if files else []
+    
+    return files
+
+
+async def _get_favorite_files(db: AsyncSession, user_id: int, limit: int = 4) -> List[File]:
+    """Get favorite files for a user."""
+    repo = FileRepository(db)
+    files = await repo.get_favorites(user_id, limit=limit)
+    
+    # Ensure we return a list
+    if files is None:
+        return []
+    if not isinstance(files, list):
+        return list(files) if files else []
+    
+    return files
 
 
 async def _get_latest_analysis(db: AsyncSession, file_id: int) -> Optional[DocumentAnalysis]:
+    """Get the latest analysis for a file."""
     result = await db.execute(
         select(DocumentAnalysis)
         .where(DocumentAnalysis.file_id == file_id)
@@ -57,7 +105,11 @@ async def workspace_shell(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Main workspace shell page."""
     files = await _get_files(db, current_user.id)
+    recent_files = await _get_recent_files(db, current_user.id, limit=6)
+    favorite_files = await _get_favorite_files(db, current_user.id, limit=4)
+    
     svc = DashboardService(db)
     stats = await svc.get_stats(current_user.id)
 
@@ -68,6 +120,8 @@ async def workspace_shell(
             "user": current_user,
             "lang": current_user.default_lang,
             "files": files,
+            "recent_files": recent_files,
+            "favorite_files": favorite_files,
             "stats": stats,
             "open_panel": open_panel,
             "open_file_id": file_id,
@@ -86,7 +140,9 @@ async def panel_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """File list panel - refreshed after upload."""
     files = await _get_files(db, current_user.id)
+    
     return templates.TemplateResponse(
         request,
         "workspace/_files_panel.html",
@@ -108,8 +164,13 @@ async def panel_home(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Home panel with statistics."""
     svc = DashboardService(db)
     stats = await svc.get_stats(current_user.id)
+    
+    recent_files = await _get_recent_files(db, current_user.id, limit=6)
+    favorite_files = await _get_favorite_files(db, current_user.id, limit=4)
+    
     return templates.TemplateResponse(
         request,
         "workspace/_panel_home.html",
@@ -117,6 +178,8 @@ async def panel_home(
             "user": current_user,
             "lang": current_user.default_lang,
             "stats": stats,
+            "recent_files": recent_files,
+            "favorite_files": favorite_files,
         },
     )
 
@@ -132,6 +195,7 @@ async def panel_view(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """View panel - file detail and preview."""
     from app.application.files.service import FileService
 
     repo = FileRepository(db)
@@ -174,6 +238,7 @@ async def panel_analyze(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Analyze panel - AI intelligence results."""
     from sqlalchemy import select
     
     # محاولة استيراد النماذج بشكل آمن
@@ -275,7 +340,9 @@ async def panel_convert(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Convert panel."""
     files = await _get_files(db, current_user.id)
+    
     return templates.TemplateResponse(
         request,
         "workspace/_panel_convert.html",
@@ -300,7 +367,9 @@ async def panel_clean(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Clean panel."""
     files = await _get_files(db, current_user.id)
+    
     return templates.TemplateResponse(
         request,
         "workspace/_panel_clean.html",
@@ -323,7 +392,9 @@ async def panel_merge(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Merge panel."""
     files = await _get_files(db, current_user.id)
+    
     return templates.TemplateResponse(
         request,
         "workspace/_panel_merge.html",
@@ -345,6 +416,7 @@ async def panel_analytics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Analytics panel."""
     return templates.TemplateResponse(
         request,
         "workspace/_panel_analytics.html",
