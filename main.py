@@ -277,16 +277,8 @@ async def seed_admin() -> None:
             logger.info("Default admin user created: admin@spreadsheet.com")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: setup on startup, teardown on shutdown."""
-    # Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # ── Column migrations: add new columns to existing tables ─────────────────
-    # SQLAlchemy's create_all only creates missing tables, not missing columns.
-    # We add them manually here (PostgreSQL only — no SQLite support).
+async def apply_column_migrations() -> None:
+    """Apply column migrations to existing tables."""
     try:
         async with engine.begin() as conn:
             # 1. تعديلات ai_model_registry
@@ -303,7 +295,35 @@ async def lifespan(app: FastAPI):
                 "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
             ))
             
-            # 2. ✅ إصلاح extracted_tables - إضافة table_index
+            # 2. ✅ إضافة أعمدة التخزين إلى جدول files (الإصلاح الرئيسي)
+            try:
+                storage_columns = [
+                    ("storage_key", "VARCHAR"),
+                    ("is_locally_stored", "BOOLEAN DEFAULT TRUE"),
+                    ("last_synced_at", "TIMESTAMP"),
+                    ("storage_backend", "VARCHAR"),
+                    ("storage_bucket", "VARCHAR"),
+                    ("storage_object_key", "VARCHAR"),
+                ]
+                
+                for col_name, col_type in storage_columns:
+                    await conn.execute(__import__("sqlalchemy").text(
+                        f"ALTER TABLE files "
+                        f"ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
+                    ))
+                    logger.info(f"✅ Column '{col_name}' added to files")
+                    
+                # إنشاء فهرس على storage_key لتحسين الأداء
+                await conn.execute(__import__("sqlalchemy").text(
+                    "CREATE INDEX IF NOT EXISTS ix_files_storage_key "
+                    "ON files (storage_key);"
+                ))
+                logger.info("✅ Index created on files.storage_key")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Could not add storage columns to files: {e}")
+            
+            # 3. ✅ إصلاح extracted_tables - إضافة table_index
             try:
                 await conn.execute(__import__("sqlalchemy").text(
                     "ALTER TABLE extracted_tables "
@@ -313,7 +333,7 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"⚠️ Could not add table_index column: {e}")
             
-            # 3. إنشاء فهرس للعمود الجديد
+            # 4. إنشاء فهرس للعمود الجديد
             try:
                 await conn.execute(__import__("sqlalchemy").text(
                     "CREATE INDEX IF NOT EXISTS ix_extracted_tables_table_index "
@@ -325,7 +345,18 @@ async def lifespan(app: FastAPI):
                 
         logger.info("✅ Column migrations applied successfully")
     except Exception as exc:
-        logger.warning("⚠️ Column migration skipped: %s", exc)
+        logger.warning(f"⚠️ Column migration skipped: {exc}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: setup on startup, teardown on shutdown."""
+    # Create database tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # Apply column migrations
+    await apply_column_migrations()
 
     # Ensure upload/output directories exist
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -333,7 +364,6 @@ async def lifespan(app: FastAPI):
     
     # إنشاء مجلدات المستخدمين (للمستخدمين الموجودين)
     try:
-        # إنشاء مجلد للمستخدم 2 (admin)
         user_dir = os.path.join(settings.UPLOAD_DIR, "2")
         os.makedirs(user_dir, exist_ok=True)
         logger.info("✅ Upload directories created")
