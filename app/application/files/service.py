@@ -16,7 +16,7 @@ from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.database.models import File, OperationType, OperationStatus
 from app.infrastructure.storage.local_storage import storage
-from app.application.files.dto import RenameFileDTO, FileMetaDTO
+from app.application.files.dto import RenameFileDTO
 from app.application.converter.engine import DataEngine
 
 logger = logging.getLogger(__name__)
@@ -113,14 +113,18 @@ class FileService:
             logger.error(f"Failed to save file to server: {e}")
             raise ValidationError(f"Failed to save file: {str(e)}")
         
-        # Create DB record with storage key
+        # Create DB record with explicit parameters (avoid duplicate size_bytes)
         try:
             db_file = await self.file_repo.create(
                 owner_id=user_id,
-                **meta,
+                name=meta.get("name"),
+                original_name=meta.get("original_name"),
+                path=meta.get("path"),
+                size_bytes=file_size,  # Use file_size from UploadFile
+                format=meta.get("format"),
+                mime_type=meta.get("mime_type"),
                 storage_key=storage_key,
                 is_locally_stored=store_locally,
-                size_bytes=file_size,
                 status="READY"
             )
         except Exception as e:
@@ -288,13 +292,13 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with local storage status - استخدام getattr بأمان
+        # Enrich with local storage status - using getattr safely
         for f in files:
-            # استخدام getattr للحصول على الحقول الجديدة بأمان
+            # Using getattr to safely access new fields
             storage_key = getattr(f, 'storage_key', None)
             is_locally_stored = getattr(f, 'is_locally_stored', False)
             
-            # تعيين الخصائص المحسوبة
+            # Set computed properties
             f.is_cached_locally = storage_key is not None and is_locally_stored
             f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
         
