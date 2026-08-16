@@ -99,16 +99,19 @@ class File(Base):
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # Storage fields for local storage support
+    # Storage metadata: PostgreSQL stores details, Supabase stores file bytes
     storage_key: Mapped[str | None] = mapped_column(
         String(100), unique=True, nullable=True, index=True
     )
     is_locally_stored: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False, index=True
+        Boolean, default=False, nullable=False, index=True
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    storage_backend: Mapped[str] = mapped_column(String(50), default="supabase", nullable=False)
+    storage_bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    storage_object_key: Mapped[str | None] = mapped_column(String(1000), nullable=True, index=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

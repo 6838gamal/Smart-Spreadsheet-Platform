@@ -22,13 +22,17 @@ def upgrade() -> None:
     """Add storage columns to files table."""
     # إضافة الأعمدة
     op.add_column('files', sa.Column('storage_key', sa.String(100), nullable=True, unique=True))
-    op.add_column('files', sa.Column('is_locally_stored', sa.Boolean, server_default='true', nullable=False))
+    op.add_column('files', sa.Column('is_locally_stored', sa.Boolean, server_default='false', nullable=False))
     op.add_column('files', sa.Column('last_synced_at', sa.DateTime(timezone=True), nullable=True))
+    op.add_column('files', sa.Column('storage_backend', sa.String(50), server_default='supabase', nullable=False))
+    op.add_column('files', sa.Column('storage_bucket', sa.String(255), nullable=True))
+    op.add_column('files', sa.Column('storage_object_key', sa.String(1000), nullable=True))
     
     # إضافة الفهارس
     op.create_index('ix_files_storage_key', 'files', ['storage_key'], unique=True)
     op.create_index('ix_files_is_locally_stored', 'files', ['is_locally_stored'])
     op.create_index('ix_files_last_synced_at', 'files', ['last_synced_at'])
+    op.create_index('ix_files_storage_object_key', 'files', ['storage_object_key'])
 
 
 def downgrade() -> None:
@@ -36,9 +40,13 @@ def downgrade() -> None:
     # حذف الفهارس
     op.drop_index('ix_files_last_synced_at', table_name='files')
     op.drop_index('ix_files_is_locally_stored', table_name='files')
+    op.drop_index('ix_files_storage_object_key', table_name='files')
     op.drop_index('ix_files_storage_key', table_name='files')
     
     # حذف الأعمدة
     op.drop_column('files', 'last_synced_at')
     op.drop_column('files', 'is_locally_stored')
+    op.drop_column('files', 'storage_object_key')
+    op.drop_column('files', 'storage_bucket')
+    op.drop_column('files', 'storage_backend')
     op.drop_column('files', 'storage_key')
