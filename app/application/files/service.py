@@ -277,7 +277,6 @@ class FileService:
         Returns:
             tuple: List of files and total count
         """
-        # Now the repository returns tuple (files, total)
         files, total = await self.file_repo.get_by_owner(
             owner_id=user_id,
             limit=limit,
@@ -289,10 +288,15 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with local storage status
+        # Enrich with local storage status - استخدام getattr بأمان
         for f in files:
-            f.is_cached_locally = await self._is_file_cached_locally(f.storage_key)
-            f.is_available_on_server = self.storage.file_exists(f.path)
+            # استخدام getattr للحصول على الحقول الجديدة بأمان
+            storage_key = getattr(f, 'storage_key', None)
+            is_locally_stored = getattr(f, 'is_locally_stored', False)
+            
+            # تعيين الخصائص المحسوبة
+            f.is_cached_locally = storage_key is not None and is_locally_stored
+            f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
         
         return files, total
 
@@ -330,11 +334,12 @@ class FileService:
             "size_human": f.size_human,
             "format": f.format,
             "mime_type": f.mime_type,
-            "storage_key": f.storage_key,
+            "storage_key": getattr(f, 'storage_key', None),
             "download_token": download_token,
             "meta": f.meta,
             "server_available": server_available,
             "is_favorite": f.is_favorite,
+            "is_locally_stored": getattr(f, 'is_locally_stored', False),
             "created_at": f.created_at.isoformat() if f.created_at else None,
             "updated_at": f.updated_at.isoformat() if f.updated_at else None
         }
@@ -425,7 +430,7 @@ class FileService:
             input_path=f.path,
             result={
                 "file_id": file_id,
-                "storage_key": f.storage_key,
+                "storage_key": getattr(f, 'storage_key', None),
                 "delete_local": delete_local
             },
             duration_ms=0,
@@ -504,11 +509,10 @@ class FileService:
         Returns:
             dict: Cleanup results
         """
-        from datetime import datetime, timedelta
         cutoff = datetime.utcnow() - timedelta(days=days)
         
         # Get old files (all users)
-        old_files = await self.file_repo.get_old_files(None, days)  # None = all users
+        old_files = await self.file_repo.get_old_files(None, days)
         
         deleted = 0
         deleted_files = []
@@ -530,7 +534,7 @@ class FileService:
         
         return {
             "deleted": deleted,
-            "deleted_files": deleted_files[:10],  # First 10
+            "deleted_files": deleted_files[:10],
             "cutoff_date": cutoff.isoformat()
         }
 
@@ -598,8 +602,6 @@ class FileService:
             ext = file.filename.split('.')[-1].lower()
             if ext not in self.SUPPORTED_FORMATS:
                 logger.warning(f"Unsupported file format: {ext}")
-                # Allow anyway but warn
-                # raise ValidationError(f"Unsupported file format: {ext}")
         
         # Validate file name (security)
         if file.filename and ('..' in file.filename or '/' in file.filename or '\\' in file.filename):
@@ -648,8 +650,6 @@ class FileService:
         Returns:
             bool: True if file is cached locally
         """
-        # This is client-side check - server can only guess
-        # We return False by default, client will handle actual check
         return False
 
     async def _extract_file_metadata(self, db_file: File, meta: dict) -> None:
