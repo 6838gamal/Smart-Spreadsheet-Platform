@@ -237,6 +237,7 @@ async def download_file(
     if not f.path or not Path(f.path).exists():
         content = await svc.get_file_content(file_id, current_user.id)
         if content:
+            from fastapi.responses import Response
             return Response(
                 content=content,
                 media_type=f.mime_type or "application/octet-stream",
