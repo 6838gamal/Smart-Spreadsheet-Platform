@@ -25,6 +25,78 @@ from app.application.converter.dto import ConvertRequestDTO
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+# ── Helper function to safely extract files ─────────────────────────────────
+
+def _extract_files(file_list) -> list:
+    """
+    Extract File objects from a list that may contain objects or lists.
+    Handles SQLAlchemy result rows safely.
+    """
+    result = []
+    
+    for item in file_list:
+        # If item is a File object
+        if hasattr(item, 'path') and hasattr(item, 'id'):
+            result.append(item)
+        # If item is a list (e.g., from SQLAlchemy row)
+        elif isinstance(item, list):
+            for f in item:
+                if hasattr(f, 'path') and hasattr(f, 'id'):
+                    result.append(f)
+        # If item is a tuple (from SQLAlchemy row with selected columns)
+        elif isinstance(item, tuple):
+            # Try to extract File attributes from tuple
+            try:
+                # If tuple has 14+ elements, it's likely a File row
+                if len(item) >= 14:
+                    from app.infrastructure.database.models import File
+                    file_obj = File(
+                        id=item[0] if item[0] is not None else None,
+                        name=item[1] if len(item) > 1 else None,
+                        original_name=item[2] if len(item) > 2 else None,
+                        path=item[3] if len(item) > 3 else None,
+                        size_bytes=item[4] if len(item) > 4 else 0,
+                        format=item[5] if len(item) > 5 else None,
+                        mime_type=item[6] if len(item) > 6 else None,
+                        status=item[7] if len(item) > 7 else None,
+                        is_favorite=item[8] if len(item) > 8 else False,
+                        tags=item[9] if len(item) > 9 else [],
+                        meta=item[10] if len(item) > 10 else {},
+                        owner_id=item[11] if len(item) > 11 else None,
+                        created_at=item[12] if len(item) > 12 else None,
+                        updated_at=item[13] if len(item) > 13 else None
+                    )
+                    result.append(file_obj)
+            except Exception as e:
+                logger.warning(f"Error extracting file from tuple: {e}")
+        # If item is a dict
+        elif isinstance(item, dict) and 'path' in item:
+            try:
+                from app.infrastructure.database.models import File
+                file_obj = File(
+                    id=item.get('id'),
+                    name=item.get('name'),
+                    original_name=item.get('original_name'),
+                    path=item.get('path'),
+                    size_bytes=item.get('size_bytes', 0),
+                    format=item.get('format'),
+                    mime_type=item.get('mime_type'),
+                    status=item.get('status'),
+                    is_favorite=item.get('is_favorite', False),
+                    tags=item.get('tags', []),
+                    meta=item.get('meta', {}),
+                    owner_id=item.get('owner_id'),
+                    created_at=item.get('created_at'),
+                    updated_at=item.get('updated_at')
+                )
+                result.append(file_obj)
+            except Exception as e:
+                logger.warning(f"Error converting dict to File: {e}")
+    
+    return result
+
+
 # ── Friendly error classifier ────────────────────────────────────────────────
 
 def _friendly_error(raw: str) -> tuple[str, str]:
@@ -59,8 +131,20 @@ async def converter_page(
 ):
     file_repo = FileRepository(db)
     all_files = await file_repo.get_by_owner(current_user.id, limit=100)
-    # Only show files that still exist on disk; silently skip orphaned DB records.
-    files = [f for f in all_files if Path(f.path).exists()]
+    
+    # Safely extract File objects from the result
+    extracted_files = _extract_files(all_files)
+    
+    # Only show files that still exist on disk; silently skip orphaned DB records
+    files = []
+    for f in extracted_files:
+        if hasattr(f, 'path') and f.path:
+            try:
+                if Path(f.path).exists():
+                    files.append(f)
+            except Exception as e:
+                logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
+    
     return templates.TemplateResponse(
         request,
         "converter/index.html",
