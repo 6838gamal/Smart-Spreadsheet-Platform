@@ -1,4 +1,4 @@
-"""File management application service with hybrid storage (local + server)."""
+"""File management application service with PostgreSQL metadata and object storage."""
 
 import logging
 import time
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class FileService:
     """
-    Hybrid file service - stores metadata in DB, actual files in local storage (browser).
+    File service - stores metadata in PostgreSQL and file bytes in the configured storage backend.
     
     This service provides:
     - File upload with local storage support
@@ -94,7 +94,7 @@ class FileService:
         # Get file size
         file_size = file.size or 0
         
-        # Save file to server (temporary/backup)
+        # Save file bytes to configured object storage
         try:
             meta = await self.storage.save_upload(file, user_id)
         except Exception as e:
@@ -108,11 +108,14 @@ class FileService:
                 name=meta.get("name"),
                 original_name=meta.get("original_name"),
                 path=meta.get("path"),
-                size_bytes=file_size,
+                size_bytes=meta.get("size_bytes") or file_size,
                 format=meta.get("format"),
                 mime_type=meta.get("mime_type"),
                 storage_key=storage_key,
                 is_locally_stored=store_locally,
+                storage_backend=meta.get("storage_backend") or "local",
+                storage_bucket=meta.get("bucket"),
+                storage_object_key=meta.get("object_key"),
                 status="READY"
             )
         except Exception as e:
@@ -136,6 +139,8 @@ class FileService:
             result={
                 "file_id": db_file.id,
                 "storage_key": storage_key,
+                "storage_backend": meta.get("storage_backend"),
+                "object_key": meta.get("object_key"),
                 "store_locally": store_locally
             },
             duration_ms=duration_ms,
@@ -223,10 +228,11 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         if not self.storage.file_exists(f.path):
-            raise NotFoundError("File content not found on server. Please sync your local copy.")
+            raise NotFoundError("File content not found in storage")
         
+        read_path = await self.storage.get_read_path(f.path, user_id)
         chunk_size = 8192
-        with open(f.path, 'rb') as fp:
+        with open(read_path, 'rb') as fp:
             fp.seek(start)
             bytes_remaining = (end or f.size_bytes) - start
             
@@ -312,6 +318,7 @@ class FileService:
             "download_token": download_token,
             "meta": f.meta,
             "server_available": server_available,
+            "storage_backend": getattr(self.storage, "backend_name", "local"),
             "is_favorite": f.is_favorite,
             "is_locally_stored": getattr(f, 'is_locally_stored', False),
             "created_at": f.created_at.isoformat() if f.created_at else None,
@@ -472,9 +479,10 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         if not self.storage.file_exists(f.path):
-            raise NotFoundError("File content not available on server")
+            raise NotFoundError("File content not available in storage")
         
-        return self.engine.preview(f.path, f.format, rows=rows)
+        read_path = await self.storage.get_read_path(f.path, user_id)
+        return self.engine.preview(read_path, f.format, rows=rows)
 
     async def get_storage_stats(self, user_id: int) -> dict:
         """Get storage statistics for user."""
@@ -525,7 +533,8 @@ class FileService:
     async def _extract_file_metadata(self, db_file: File, meta: dict) -> None:
         """Extract metadata from file (non-blocking)."""
         try:
-            file_meta = self.engine.get_metadata(meta.get("path"), meta.get("format"))
+            read_path = await self.storage.get_read_path(meta.get("path"), db_file.owner_id)
+            file_meta = self.engine.get_metadata(read_path, meta.get("format"))
             if file_meta:
                 await self.file_repo.update(db_file, meta={**db_file.meta, **file_meta})
                 logger.info(f"Extracted metadata for file {db_file.id}: {file_meta}")
@@ -591,7 +600,8 @@ class FileService:
         if not self.storage.file_exists(file.path):
             return None
         try:
-            with open(file.path, 'rb') as fp:
+            read_path = await self.storage.get_read_path(file.path, file.owner_id)
+            with open(read_path, 'rb') as fp:
                 return fp.read()
         except Exception as e:
             logger.error(f"Failed to read file from server {file.path}: {e}")

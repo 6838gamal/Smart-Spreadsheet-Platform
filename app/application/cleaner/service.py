@@ -42,7 +42,8 @@ class CleanerService:
 
         t0 = time.time()
         try:
-            df = self.engine.read(f.path, f.format)
+            source_path = await storage.get_read_path(f.path, user_id)
+            df = self.engine.read(source_path, f.format)
             original_rows, original_cols = df.shape
             changes = []
 
@@ -89,6 +90,8 @@ class CleanerService:
             out_path = storage.get_output_path(user_id, out_name)
             self.engine.write(df, str(out_path), dto.target_format)
 
+            output_meta = await storage.save_output(out_path, user_id)
+            stored_output_path = output_meta.get("path", str(out_path))
             duration_ms = int((time.time() - t0) * 1000)
             result = {
                 "original_rows": original_rows,
@@ -96,12 +99,13 @@ class CleanerService:
                 "original_cols": original_cols,
                 "result_cols": len(df.columns),
                 "changes": changes,
-                "output": str(out_path),
+                "output": stored_output_path,
                 "output_filename": out_name,
+                "storage_backend": output_meta.get("storage_backend"),
             }
             await self.op_repo.mark_complete(
                 op, OperationStatus.SUCCESS,
-                result=result, output_path=str(out_path), duration_ms=duration_ms,
+                result=result, output_path=stored_output_path, duration_ms=duration_ms,
             )
             return result
 

@@ -109,6 +109,9 @@ class File(Base):
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    storage_backend: Mapped[str] = mapped_column(String(50), default="local", nullable=False)
+    storage_bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    storage_object_key: Mapped[str | None] = mapped_column(String(1000), nullable=True, index=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
