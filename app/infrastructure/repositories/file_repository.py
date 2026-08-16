@@ -31,7 +31,6 @@ class FileRepository(BaseRepository[File]):
             return self._has_storage_columns
         
         try:
-            # استخدام information_schema للتحقق من وجود الأعمدة
             result = await self.db.execute(
                 text("""
                     SELECT EXISTS (
@@ -56,6 +55,20 @@ class FileRepository(BaseRepository[File]):
             logger.error(f"Error checking storage columns: {e}")
             self._has_storage_columns = False
             return False
+
+    async def _build_file_query(self, base_query, has_storage: bool):
+        """Helper to build query with proper columns."""
+        columns = [
+            File.id, File.name, File.original_name, File.path,
+            File.size_bytes, File.format, File.mime_type, File.status,
+            File.is_favorite, File.tags, File.meta, File.owner_id,
+            File.created_at, File.updated_at
+        ]
+        
+        if has_storage:
+            columns.extend([File.storage_key, File.is_locally_stored, File.last_synced_at])
+        
+        return select(*columns).select_from(base_query.subquery())
 
     async def get_by_owner(
         self,
@@ -121,11 +134,40 @@ class FileRepository(BaseRepository[File]):
         q = q.limit(limit).offset(offset)
         
         try:
-            result = await self.db.execute(q)
-            files = list(result.scalars().all())
+            # Build final query with proper columns
+            final_query = await self._build_file_query(q, has_storage)
+            result = await self.db.execute(final_query)
+            rows = result.all()
+            
+            # Convert rows to File objects
+            columns = [
+                File.id, File.name, File.original_name, File.path,
+                File.size_bytes, File.format, File.mime_type, File.status,
+                File.is_favorite, File.tags, File.meta, File.owner_id,
+                File.created_at, File.updated_at
+            ]
+            if has_storage:
+                columns.extend([File.storage_key, File.is_locally_stored, File.last_synced_at])
+            
+            files = []
+            for row in rows:
+                file_data = {}
+                for i, col in enumerate(columns):
+                    file_data[col.key] = row[i]
+                file = File(**file_data)
+                files.append(file)
+            
             return files, total
+            
         except Exception as e:
             logger.error(f"Error executing query: {e}")
+            # إذا فشل، حاول بدون الأعمدة الجديدة
+            if has_storage:
+                self._has_storage_columns = False
+                return await self.get_by_owner(
+                    owner_id, limit, offset, search, 
+                    format_filter, only_local, sort_by, sort_order
+                )
             raise
 
     async def count_by_owner(self, owner_id: int) -> int:
@@ -145,13 +187,44 @@ class FileRepository(BaseRepository[File]):
 
     async def get_favorites(self, owner_id: int, limit: int = 10) -> List[File]:
         """Get favorite files for owner."""
-        result = await self.db.execute(
-            select(File)
-            .where(File.owner_id == owner_id, File.is_favorite == True)
-            .order_by(desc(File.updated_at))
-            .limit(limit)
-        )
-        return list(result.scalars().all())
+        has_storage = await self._check_storage_columns()
+        
+        # Build columns list
+        columns = [
+            File.id, File.name, File.original_name, File.path,
+            File.size_bytes, File.format, File.mime_type, File.status,
+            File.is_favorite, File.tags, File.meta, File.owner_id,
+            File.created_at, File.updated_at
+        ]
+        
+        if has_storage:
+            columns.extend([File.storage_key, File.is_locally_stored, File.last_synced_at])
+        
+        stmt = select(*columns).where(
+            File.owner_id == owner_id, 
+            File.is_favorite == True
+        ).order_by(desc(File.updated_at)).limit(limit)
+        
+        try:
+            result = await self.db.execute(stmt)
+            rows = result.all()
+            
+            files = []
+            for row in rows:
+                file_data = {}
+                for i, col in enumerate(columns):
+                    file_data[col.key] = row[i]
+                file = File(**file_data)
+                files.append(file)
+            
+            return files
+            
+        except Exception as e:
+            logger.error(f"Error in get_favorites: {e}")
+            if has_storage:
+                self._has_storage_columns = False
+                return await self.get_favorites(owner_id, limit)
+            raise
 
     async def get_recent(self, owner_id: int, limit: int = 8) -> List[File]:
         """Get most recent files for owner."""
@@ -187,6 +260,9 @@ class FileRepository(BaseRepository[File]):
             
         except Exception as e:
             logger.error(f"Error in get_recent: {e}")
+            if has_storage:
+                self._has_storage_columns = False
+                return await self.get_recent(owner_id, limit)
             raise
 
     async def get_by_format_counts(self, owner_id: int) -> dict[str, int]:
