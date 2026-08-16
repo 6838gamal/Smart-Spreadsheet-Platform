@@ -147,7 +147,7 @@ async def converter_page(
     
     return templates.TemplateResponse(
         request,
-        "converter/index.html",
+        "workspace/_panel_convert.html",
         {
             "user": current_user,
             "files": files,
