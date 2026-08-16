@@ -1,5 +1,5 @@
 {# File list partial — loaded into the left file browser #}
-{% if files %}
+{% if files and files|length > 0 %}
 <div class="space-y-1">
   {% for f in files %}
   <div class="group rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700
@@ -18,13 +18,31 @@
         {% elif f.format == 'pdf' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
         {% elif f.format == 'parquet' %}bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
-        {{ f.format[:3]|upper }}
+        {% if f.format %}
+          {{ f.format[:3]|upper }}
+        {% else %}
+          ???
+        {% endif %}
       </div>
 
       <!-- Name & size -->
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight">{{ f.original_name }}</p>
-        <p class="text-xs text-slate-400 dark:text-slate-500">{{ f.size_human }}</p>
+        <p class="text-xs text-slate-400 dark:text-slate-500">
+          {% if f.size_bytes %}
+            {% if f.size_bytes < 1024 %}
+              {{ f.size_bytes }} B
+            {% elif f.size_bytes < 1024 * 1024 %}
+              {{ (f.size_bytes / 1024)|round(1) }} KB
+            {% elif f.size_bytes < 1024 * 1024 * 1024 %}
+              {{ (f.size_bytes / (1024 * 1024))|round(1) }} MB
+            {% else %}
+              {{ (f.size_bytes / (1024 * 1024 * 1024))|round(2) }} GB
+            {% endif %}
+          {% else %}
+            0 B
+          {% endif %}
+        </p>
       </div>
     </div>
 
