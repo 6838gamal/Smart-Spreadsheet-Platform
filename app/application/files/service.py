@@ -126,8 +126,8 @@ class FileService:
         except Exception as e:
             logger.error(f"Failed to create file record: {e}")
             # Clean up uploaded file
-            if meta.get("path") and storage.file_exists(meta["path"]):
-                storage.delete_file(meta["path"])
+            if meta.get("path") and self.storage.file_exists(meta["path"]):
+                self.storage.delete_file(meta["path"])
             raise ValidationError(f"Failed to save file metadata: {str(e)}")
         
         # Try to extract metadata (non-blocking failure)
@@ -235,7 +235,7 @@ class FileService:
         """
         f = await self.get_file(file_id, user_id)
         
-        if not storage.file_exists(f.path):
+        if not self.storage.file_exists(f.path):
             raise NotFoundError("File content not found on server. Please sync your local copy.")
         
         chunk_size = 8192
@@ -271,14 +271,15 @@ class FileService:
             only_local: Only show files stored locally
             limit: Pagination limit
             offset: Pagination offset
-            sort_by: Sort field (created_at, name, size)
+            sort_by: Sort field (created_at, name, size, updated_at)
             sort_order: Sort order (asc, desc)
         
         Returns:
             tuple: List of files and total count
         """
+        # Now the repository returns tuple (files, total)
         files, total = await self.file_repo.get_by_owner(
-            user_id,
+            owner_id=user_id,
             limit=limit,
             offset=offset,
             search=search,
@@ -288,10 +289,10 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with local storage status (client-side check)
+        # Enrich with local storage status
         for f in files:
             f.is_cached_locally = await self._is_file_cached_locally(f.storage_key)
-            f.is_available_on_server = storage.file_exists(f.path)
+            f.is_available_on_server = self.storage.file_exists(f.path)
         
         return files, total
 
@@ -320,7 +321,7 @@ class FileService:
         download_token = self._generate_download_token(file_id, user_id)
         
         # Check if file exists on server
-        server_available = storage.file_exists(f.path)
+        server_available = self.storage.file_exists(f.path)
         
         return {
             "file_id": f.id,
@@ -406,8 +407,8 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         # Delete from server
-        if storage.file_exists(f.path):
-            storage.delete_file(f.path)
+        if self.storage.file_exists(f.path):
+            self.storage.delete_file(f.path)
             logger.info(f"Deleted file from server: {f.path}")
         
         # Delete from cache
@@ -503,10 +504,11 @@ class FileService:
         Returns:
             dict: Cleanup results
         """
+        from datetime import datetime, timedelta
         cutoff = datetime.utcnow() - timedelta(days=days)
         
-        # Get old files
-        old_files = await self.file_repo.get_old_files(cutoff)
+        # Get old files (all users)
+        old_files = await self.file_repo.get_old_files(None, days)  # None = all users
         
         deleted = 0
         deleted_files = []
@@ -514,8 +516,8 @@ class FileService:
         for f in old_files:
             try:
                 # Delete from storage
-                if storage.file_exists(f.path):
-                    storage.delete_file(f.path)
+                if self.storage.file_exists(f.path):
+                    self.storage.delete_file(f.path)
                 
                 # Delete from database
                 await self.file_repo.delete(f)
@@ -554,7 +556,7 @@ class FileService:
         f = await self.get_file(file_id, user_id)
         
         # Check if file exists on server
-        if not storage.file_exists(f.path):
+        if not self.storage.file_exists(f.path):
             raise NotFoundError("File content not available on server")
         
         return self.engine.preview(f.path, f.format, rows=rows)
@@ -569,28 +571,7 @@ class FileService:
         Returns:
             dict: Storage usage statistics
         """
-        files = await self.file_repo.get_by_owner(user_id, limit=10000)
-        
-        total_size = sum(f.size_bytes for f in files)
-        local_count = sum(1 for f in files if f.is_locally_stored)
-        favorite_count = sum(1 for f in files if f.is_favorite)
-        
-        # Group by format
-        formats = {}
-        for f in files:
-            fmt = f.format or 'unknown'
-            formats[fmt] = formats.get(fmt, 0) + 1
-        
-        return {
-            "user_id": user_id,
-            "total_files": len(files),
-            "total_size_bytes": total_size,
-            "total_size_human": self._human_size(total_size),
-            "locally_stored_files": local_count,
-            "favorite_files": favorite_count,
-            "cloud_files": len(files) - local_count,
-            "formats": formats
-        }
+        return await self.file_repo.get_storage_stats(user_id)
 
     # ============================================================
     # VALIDATION METHODS
@@ -785,7 +766,7 @@ class FileService:
         Returns:
             Optional[bytes]: File content
         """
-        if not storage.file_exists(file.path):
+        if not self.storage.file_exists(file.path):
             return None
         
         try:
@@ -794,19 +775,3 @@ class FileService:
         except Exception as e:
             logger.error(f"Failed to read file from server {file.path}: {e}")
             return None
-
-    def _human_size(self, bytes_size: int) -> str:
-        """
-        Convert bytes to human readable format.
-        
-        Args:
-            bytes_size: Size in bytes
-        
-        Returns:
-            str: Human readable size
-        """
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_size < 1024.0:
-                return f"{bytes_size:.1f} {unit}"
-            bytes_size /= 1024.0
-        return f"{bytes_size:.1f} PB"
