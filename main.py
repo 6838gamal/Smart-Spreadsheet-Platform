@@ -333,17 +333,106 @@ async def apply_column_migrations() -> None:
             except Exception as e:
                 logger.warning(f"⚠️ Could not add table_index column: {e}")
             
-            # 4. إنشاء فهرس للعمود الجديد
+            # 4. إضافة عمود لـ speech-to-text support
             try:
                 await conn.execute(__import__("sqlalchemy").text(
-                    "CREATE INDEX IF NOT EXISTS ix_extracted_tables_table_index "
-                    "ON extracted_tables (table_index);"
+                    "ALTER TABLE ai_model_registry "
+                    "ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]'::jsonb;"
                 ))
-                logger.info("✅ Index created on extracted_tables.table_index")
+                logger.info("✅ Column 'languages' added to ai_model_registry")
             except Exception as e:
-                logger.warning(f"⚠️ Could not create index on table_index: {e}")
+                logger.warning(f"⚠️ Could not add languages column: {e}")
+            
+            # 5. إنشاء فهارس للعمود الجديد
+            try:
+                await conn.execute(__import__("sqlalchemy").text(
+                    "CREATE INDEX IF NOT EXISTS ix_ai_model_registry_task_type "
+                    "ON ai_model_registry (task_type);"
+                ))
+                logger.info("✅ Index created on ai_model_registry.task_type")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not create index on task_type: {e}")
                 
-        logger.info("✅ Column migrations applied successfully")
+            # 6. إضافة بعض النماذج الافتراضية إذا لم تكن موجودة
+            try:
+                # Check if models exist
+                result = await conn.execute(
+                    __import__("sqlalchemy").text(
+                        "SELECT COUNT(*) FROM ai_model_registry WHERE source = 'huggingface'"
+                    )
+                )
+                count = result.scalar()
+                
+                if count == 0:
+                    # Insert default models
+                    default_models = [
+                        {
+                            "name": "🧠 Qwen 2.5 72B",
+                            "source": "huggingface",
+                            "task_type": "text2text-generation",
+                            "hf_model_id": "Qwen/Qwen2.5-72B-Instruct",
+                            "model_type": "chat",
+                            "is_active": True,
+                            "visible_to_users": True,
+                            "is_default": True,
+                            "languages": ["ar", "en", "fr"],
+                            "description": "نموذج متقدم للدردشة والأسئلة والأجوبة"
+                        },
+                        {
+                            "name": "🎤 Whisper Large v3",
+                            "source": "huggingface",
+                            "task_type": "speech-to-text",
+                            "hf_model_id": "openai/whisper-large-v3",
+                            "model_type": "asr",
+                            "is_active": True,
+                            "visible_to_users": True,
+                            "is_default": True,
+                            "languages": ["ar", "en", "fr", "es", "de"],
+                            "description": "نموذج تحويل الصوت إلى نص متقدم"
+                        },
+                        {
+                            "name": "📊 BM25 (بحث تقليدي)",
+                            "source": "system",
+                            "task_type": "search",
+                            "hf_model_id": "bm25",
+                            "model_type": "search",
+                            "is_active": True,
+                            "visible_to_users": True,
+                            "is_default": False,
+                            "languages": ["ar", "en"],
+                            "description": "بحث تقليدي باستخدام BM25"
+                        },
+                        {
+                            "name": "📝 Meta Llama 3 70B",
+                            "source": "huggingface",
+                            "task_type": "text2text-generation",
+                            "hf_model_id": "meta-llama/Llama-3-70B-Instruct",
+                            "model_type": "chat",
+                            "is_active": True,
+                            "visible_to_users": True,
+                            "is_default": False,
+                            "languages": ["ar", "en"],
+                            "description": "نموذج Llama 3 المتقدم"
+                        },
+                    ]
+                    
+                    for model in default_models:
+                        await conn.execute(
+                            __import__("sqlalchemy").text("""
+                                INSERT INTO ai_model_registry 
+                                (name, source, task_type, hf_model_id, model_type, 
+                                 is_active, visible_to_users, is_default, languages, description)
+                                VALUES 
+                                (:name, :source, :task_type, :hf_model_id, :model_type,
+                                 :is_active, :visible_to_users, :is_default, :languages, :description)
+                            """),
+                            model
+                        )
+                    logger.info("✅ Default Hugging Face models inserted")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not insert default models: {e}")
+                
+        logger.info("✅ All column migrations applied successfully")
     except Exception as exc:
         logger.warning(f"⚠️ Column migration skipped: {exc}")
 
@@ -411,7 +500,7 @@ def create_app() -> FastAPI:
     # Exception handlers
     setup_exception_handlers(app)
 
-    # Web routes (server-rendered pages)
+    # ── Web routes (server-rendered pages) ──────────────────────────────────────
     app.include_router(web_auth.router, tags=["web:auth"])
     app.include_router(web_workspace.router, tags=["web:workspace"])
     app.include_router(web_dashboard.router, tags=["web:dashboard"])
@@ -428,7 +517,7 @@ def create_app() -> FastAPI:
     app.include_router(web_datasets.router, tags=["web:datasets"])
     app.include_router(web_search.router, tags=["web:search"])
 
-    # API routes
+    # ── API routes ──────────────────────────────────────────────────────────────
     app.include_router(api_intelligence.router, prefix="/api/v1/intelligence", tags=["api:intelligence"])
     app.include_router(api_auth.router, prefix="/api/v1/auth", tags=["api:auth"])
     app.include_router(api_files.router, prefix="/api/v1/files", tags=["api:files"])
@@ -443,11 +532,45 @@ def create_app() -> FastAPI:
     app.include_router(api_hf.router, prefix="/api/v1/hf", tags=["api:hf"])
     app.include_router(api_websocket.router, tags=["api:websocket"])
 
+    # ── Additional convenience endpoints ──────────────────────────────────────
+    
+    @app.get("/api/v1/models/available")
+    async def models_available():
+        """
+        Alias for /api/v1/hf/models - returns available Hugging Face models.
+        This makes it easier for the frontend to discover models.
+        """
+        try:
+            # Call the HF models endpoint
+            from app.presentation.api.v1.hf_api import list_hf_models
+            from app.core.database import AsyncSessionLocal
+            from app.core.dependencies import get_current_user
+            from fastapi import Depends
+            
+            # We need to call it with dependencies
+            async with AsyncSessionLocal() as db:
+                # Get current user (or None for public access)
+                result = await list_hf_models(db=db, current_user=None)
+                return result
+        except Exception as e:
+            logger.error(f"Error in models_available: {e}")
+            # Fallback: return static list
+            return {
+                "models": [
+                    {"id": 1, "name": "🧠 Qwen 2.5 72B", "task_type": "text2text-generation", "hf_model_id": "Qwen/Qwen2.5-72B-Instruct"},
+                    {"id": 2, "name": "🎤 Whisper Large v3", "task_type": "speech-to-text", "hf_model_id": "openai/whisper-large-v3"},
+                    {"id": 3, "name": "📊 BM25 (بحث)", "task_type": "search", "hf_model_id": "bm25"},
+                ],
+                "default_model_id": 1
+            }
+
     return app
 
 
 app = create_app()
 
+
+# ── Health and status endpoints ───────────────────────────────────────────────
 
 @app.get("/health")
 async def health_check():
@@ -487,6 +610,21 @@ async def keepalive_status():
         "next_ping_in_sec": next_ping_in,
         "db_ok":           _keepalive_state["db_ok"],
         "history":         _keepalive_state["history"][-10:],
+    })
+
+
+@app.get("/api/v1/system/info")
+async def system_info():
+    """General system information."""
+    return JSONResponse({
+        "app_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "debug": settings.DEBUG,
+        "environment": os.environ.get("ENVIRONMENT", "development"),
+        "hf_configured": bool(settings.HUGGINGFACE_TOKEN),
+        "external_apis_enabled": settings.EXTERNAL_APIS_ENABLED,
+        "upload_dir": settings.UPLOAD_DIR,
+        "output_dir": settings.OUTPUT_DIR,
     })
 
 
