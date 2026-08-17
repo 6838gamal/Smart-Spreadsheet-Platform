@@ -11,30 +11,14 @@
         <svg class="w-5 h-5 sm:w-6 sm:h-6 text-brand-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
-        {# استخدام == بدلاً من === #}
-        <span x-text="mode === 'smart' ? 'البحث الذكي' : 'الدردشة الذكية'"></span>
+        البحث الذكي في المستندات
       </h1>
-      <p class="text-xs sm:text-sm text-zinc-400 mt-0.5 hidden sm:block" x-text="mode === 'smart' ? 'اسأل أي سؤال وسيجيبك النظام بناءً على محتوى مستنداتك المعالجة' : 'تحدث مع الذكاء الاصطناعي دون الحاجة إلى مستندات'"></p>
+      <p class="text-xs sm:text-sm text-zinc-400 mt-0.5 hidden sm:block">اسأل أي سؤال وسيجيبك النظام بناءً على محتوى مستنداتك المعالجة</p>
     </div>
     
     <div class="flex flex-wrap gap-1.5 sm:gap-2 text-xs">
-      <!-- وضع التشغيل -->
-      <div class="flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-lg p-0.5">
-        <button @click="mode = 'smart'" 
-                class="px-2 sm:px-3 py-1 rounded-md transition-all text-[10px] sm:text-xs"
-                :class="mode === 'smart' ? 'bg-brand-600 text-white' : 'text-zinc-400 hover:text-zinc-200'">
-          📄 مستندات
-        </button>
-        <button @click="mode = 'chat'" 
-                class="px-2 sm:px-3 py-1 rounded-md transition-all text-[10px] sm:text-xs"
-                :class="mode === 'chat' ? 'bg-brand-600 text-white' : 'text-zinc-400 hover:text-zinc-200'">
-          💬 دردشة
-        </button>
-      </div>
-
       <div class="flex items-center gap-1 sm:gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
-        <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full" 
-             :class="indexed_count > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'"></div>
+        <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full" :class="indexed_count > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'"></div>
         <span class="text-zinc-300 text-[10px] sm:text-xs" x-text="indexed_count + ' ملف مفهرس'"></span>
       </div>
       <div class="flex items-center gap-1 sm:gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
@@ -46,121 +30,111 @@
     </div>
   </header>
 
-  <!-- ── Mobile: Toggle Sidebar ────────────────────────────────── -->
-  <div class="sm:hidden mb-3" x-show="mode === 'smart'">
-    <button @click="showMobileSidebar = !showMobileSidebar" 
-            class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-zinc-300 text-sm flex items-center justify-between transition-colors hover:bg-zinc-700">
-      <span class="flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-        </svg>
-        <span x-text="showMobileSidebar ? '✕ إخفاء' : '📂 اختيار الملفات'"></span>
-      </span>
-      <span class="text-zinc-500 text-xs" x-text="selectedFiles.length ? selectedFiles.length + ' ملفات' : 'كل الملفات'"></span>
-    </button>
-  </div>
-
   <!-- ── Main layout ───────────────────────────────────────────── -->
   <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1 min-h-0">
 
-    <!-- Sidebar (تظهر فقط في وضع المستندات) -->
-    <aside x-show="mode === 'smart'" 
-           class="sm:w-56 lg:w-64 flex-shrink-0"
-           :class="showMobileSidebar ? 'block' : 'hidden sm:block'">
-      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">📁 نطاق البحث</p>
-          <button @click="showMobileSidebar = false" class="sm:hidden text-zinc-500 hover:text-zinc-300">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
+    <!-- ── Sidebar (يسار) ──────────────────────────────────────── -->
+    <aside class="sm:w-64 lg:w-72 flex-shrink-0">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4 space-y-4">
 
-        {% if files_info %}
-          <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer mb-2 hover:text-white transition-colors">
-            <input type="checkbox" x-model="allFiles" @change="toggleAll()"
-                   class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-3.5 h-3.5 sm:w-4 sm:h-4">
-            <span>📄 كل الملفات</span>
-            <span class="text-[10px] text-zinc-500 mr-auto" x-text="'(' + selectedFiles.length + '/' + {{ files_info|length }} + ')'"></span>
-          </label>
+        <!-- ── النماذج ── -->
+        <div>
+          <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <span>🧠</span> نموذج الذكاء الاصطناعي
+          </p>
+          <select x-model="selectedModel"
+                  class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-500">
+            <option value="gemini-2.0-flash">✨ Gemini 2.0 Flash (سريع)</option>
+            <option value="gemini-2.0-pro">⚡ Gemini 2.0 Pro (متقدم)</option>
+            <option value="gemini-1.5-pro">🔮 Gemini 1.5 Pro</option>
+            <option value="gemini-1.5-flash">💨 Gemini 1.5 Flash</option>
+            <option value="bm25">📊 BM25 (بحث تقليدي)</option>
+          </select>
           
-          <div class="space-y-1 max-h-48 sm:max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
-            {% for f in files_info %}
-            <label class="flex items-center gap-2 text-xs cursor-pointer rounded-lg px-1.5 sm:px-2 py-1.5 hover:bg-zinc-800 transition-colors group"
-                   :class="selectedFiles.includes({{ f.id }}) ? 'text-white bg-zinc-800/50' : 'text-zinc-400'">
-              <input type="checkbox" value="{{ f.id }}"
-                     x-model="selectedFiles"
-                     @change="allFiles = selectedFiles.length === 0"
-                     class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0">
-              <span class="truncate flex-1 text-[11px] sm:text-xs" :title="'{{ f.original_name }}'">{{ f.original_name }}</span>
-              {% if f.is_indexed %}
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse" title="مفهرس"></span>
-              {% else %}
-              <span class="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" title="غير مفهرس"></span>
-              {% endif %}
-            </label>
-            {% endfor %}
+          <div class="flex items-center gap-3 mt-2">
+            <span class="text-[10px] text-zinc-500">🌡️ الحرارة</span>
+            <input type="range" x-model="temperature" min="0" max="1" step="0.1"
+                   class="flex-1 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand-500">
+            <span class="text-[10px] text-zinc-400 w-8 text-center" x-text="temperature.toFixed(1)"></span>
           </div>
-        {% else %}
-          <div class="text-center py-6">
-            <p class="text-xs text-zinc-500">📭 لا توجد ملفات بعد</p>
-          </div>
-        {% endif %}
-      </div>
-
-      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4 mt-3 text-xs text-zinc-400 space-y-2">
-        <p class="font-semibold text-zinc-300 text-[11px] sm:text-xs flex items-center gap-1.5">
-          <span>⚡</span> فهرسة ملف جديد
-        </p>
-        <p class="text-[11px] sm:text-xs leading-relaxed">أدخل رقم الملف واضغط فهرسة</p>
-        <div class="flex gap-1.5 mt-2">
-          <input type="number" x-model="indexFileId" placeholder="ID"
-                 class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-white text-xs sm:text-sm focus:outline-none focus:border-brand-500">
-          <button @click="indexFile()"
-                  :disabled="indexing"
-                  class="bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-3 sm:px-4 py-1.5 sm:py-2 transition-colors text-xs sm:text-sm whitespace-nowrap">
-            <span x-show="!indexing">🔍 فهرسة</span>
-            <span x-show="indexing" class="flex items-center gap-1">
-              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-              </svg>
-              جاري
-            </span>
-          </button>
         </div>
-        <p x-show="indexMsg" x-text="indexMsg" 
-           class="text-emerald-400 mt-1 text-[11px] sm:text-xs animate-pulse"></p>
+
+        <div class="border-t border-zinc-800"></div>
+
+        <!-- ── إضافة مستندات جديدة ── -->
+        <div>
+          <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <span>📤</span> إضافة مستند جديد
+          </p>
+          <div class="space-y-2">
+            <div class="flex gap-1.5">
+              <input type="number" x-model="indexFileId" placeholder="رقم الملف"
+                     class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-500">
+              <button @click="indexFile()"
+                      :disabled="indexing"
+                      class="bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-4 py-2 transition-colors text-sm whitespace-nowrap">
+                <span x-show="!indexing">📥 فهرسة</span>
+                <span x-show="indexing" class="flex items-center gap-1">
+                  <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                  جاري
+                </span>
+              </button>
+            </div>
+            <p x-show="indexMsg" x-text="indexMsg" 
+               class="text-emerald-400 text-xs animate-pulse"></p>
+          </div>
+        </div>
+
+        <div class="border-t border-zinc-800"></div>
+
+        <!-- ── نطاق البحث ── -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <span>📁</span> نطاق البحث
+            </p>
+            <span class="text-[10px] text-zinc-500" x-text="selectedFiles.length ? selectedFiles.length + ' ملفات' : 'كل الملفات'"></span>
+          </div>
+
+          {% if files_info %}
+            <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer mb-2 hover:text-white transition-colors">
+              <input type="checkbox" x-model="allFiles" @change="toggleAll()"
+                     class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-4 h-4">
+              <span>📄 كل الملفات</span>
+            </label>
+            
+            <div class="space-y-1 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+              {% for f in files_info %}
+              <label class="flex items-center gap-2 text-xs cursor-pointer rounded-lg px-2 py-1.5 hover:bg-zinc-800 transition-colors group"
+                     :class="selectedFiles.includes({{ f.id }}) ? 'text-white bg-zinc-800/50' : 'text-zinc-400'">
+                <input type="checkbox" value="{{ f.id }}"
+                       x-model="selectedFiles"
+                       @change="allFiles = selectedFiles.length === 0"
+                       class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-1 w-4 h-4 flex-shrink-0">
+                <span class="truncate flex-1 text-xs" :title="'{{ f.original_name }}'">{{ f.original_name }}</span>
+                {% if f.is_indexed %}
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse" title="مفهرس"></span>
+                {% else %}
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" title="غير مفهرس"></span>
+                {% endif %}
+              </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-center py-4">
+              <p class="text-xs text-zinc-500">📭 لا توجد ملفات بعد</p>
+            </div>
+          {% endif %}
+        </div>
+
       </div>
     </aside>
 
-    <!-- ── Chat Panel ────────────────────────────────────────────── -->
+    <!-- ── Chat Panel (يمين) ────────────────────────────────────── -->
     <main class="flex-1 flex flex-col min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-
-      <!-- ── نموذج الذكاء الاصطناعي ────────────────────────────────── -->
-      <div class="flex-shrink-0 border-b border-zinc-800 px-3 sm:px-4 py-2 bg-zinc-900/50">
-        <div class="flex flex-wrap items-center gap-2 justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] sm:text-xs text-zinc-500">🧠 النموذج:</span>
-            <select x-model="selectedModel"
-                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs sm:text-sm text-white focus:outline-none focus:border-brand-500">
-              <option value="gemini-2.0-flash">✨ Gemini 2.0 Flash</option>
-              <option value="gemini-2.0-pro">⚡ Gemini 2.0 Pro</option>
-              <option value="gemini-1.5-pro">🔮 Gemini 1.5 Pro</option>
-              <option value="gemini-1.5-flash">💨 Gemini 1.5 Flash</option>
-              <option value="bm25">📊 BM25 (بحث تقليدي)</option>
-            </select>
-          </div>
-          
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] text-zinc-500 hidden sm:inline" x-text="'حرارة: ' + temperature.toFixed(1)"></span>
-            <input type="range" x-model="temperature" min="0" max="1" step="0.1"
-                   class="w-16 sm:w-24 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-brand-500">
-            <span class="text-[10px] text-zinc-500" x-text="temperature.toFixed(1)"></span>
-          </div>
-        </div>
-      </div>
 
       <!-- ──── منطقة المحادثة ──── -->
       <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
@@ -177,95 +151,50 @@
             </svg>
           </div>
 
-          <template x-if="mode === 'smart' && indexed_count > 0">
-            <div>
-              <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
-                🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
-              </h3>
-              <p class="text-zinc-400 text-sm mb-5 max-w-md">
-                اكتب سؤالك وسأبحث في محتوى مستنداتك لأجد لك الإجابة
-              </p>
-              
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md px-2">
-                <button @click="question = 'ما هو رقم الفاتورة؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
-                  <span class="block text-brand-400 text-lg mb-0.5">📄</span>
-                  ما هو رقم الفاتورة؟
-                </button>
-                <button @click="question = 'من هو المورد في هذا المستند؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
-                  <span class="block text-brand-400 text-lg mb-0.5">🏢</span>
-                  من هو المورد؟
-                </button>
-                <button @click="question = 'ما هي شروط العقد؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
-                  <span class="block text-brand-400 text-lg mb-0.5">📋</span>
-                  ما هي شروط العقد؟
-                </button>
-                <button @click="question = 'ما المبلغ الإجمالي؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
-                  <span class="block text-brand-400 text-lg mb-0.5">💰</span>
-                  ما المبلغ الإجمالي؟
-                </button>
-              </div>
+          {% if indexed_count > 0 %}
+            <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
+              🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
+            </h3>
+            <p class="text-zinc-400 text-sm mb-5 max-w-md">
+              اكتب سؤالك أو استخدم المايك للتحدث، وسأبحث في مستنداتك لأجد لك الإجابة
+            </p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md px-2">
+              <button @click="question = 'ما هو رقم الفاتورة؟'; sendQuestion()"
+                      class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
+                <span class="block text-brand-400 text-lg mb-0.5">📄</span>
+                ما هو رقم الفاتورة؟
+              </button>
+              <button @click="question = 'من هو المورد في هذا المستند؟'; sendQuestion()"
+                      class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
+                <span class="block text-brand-400 text-lg mb-0.5">🏢</span>
+                من هو المورد؟
+              </button>
+              <button @click="question = 'ما هي شروط العقد؟'; sendQuestion()"
+                      class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
+                <span class="block text-brand-400 text-lg mb-0.5">📋</span>
+                ما هي شروط العقد؟
+              </button>
+              <button @click="question = 'ما المبلغ الإجمالي؟'; sendQuestion()"
+                      class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50 group">
+                <span class="block text-brand-400 text-lg mb-0.5">💰</span>
+                ما المبلغ الإجمالي؟
+              </button>
             </div>
-          </template>
 
-          <template x-if="mode === 'chat'">
-            <div>
-              <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
-                💬 مرحباً! أنا مساعدك الذكي
-              </h3>
-              <p class="text-zinc-400 text-sm mb-5 max-w-md">
-                اسألني أي شيء، وسأجيبك باستخدام نموذج <span x-text="selectedModel"></span>
-              </p>
-              
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md px-2">
-                <button @click="question = 'كيف يمكنني تحسين إنتاجيتي اليومية؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
-                  <span class="block text-brand-400 text-lg mb-0.5">⏰</span>
-                  كيف أحسن إنتاجيتي؟
-                </button>
-                <button @click="question = 'ما هي أفضل ممارسات البرمجة في 2026؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
-                  <span class="block text-brand-400 text-lg mb-0.5">💻</span>
-                  أفضل ممارسات البرمجة؟
-                </button>
-                <button @click="question = 'اكتب لي قصة قصيرة عن المستقبل'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
-                  <span class="block text-brand-400 text-lg mb-0.5">📖</span>
-                  اكتب قصة عن المستقبل
-                </button>
-                <button @click="question = 'ما هو الذكاء الاصطناعي التوليدي؟'; sendQuestion()"
-                        class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
-                  <span class="block text-brand-400 text-lg mb-0.5">🤖</span>
-                  ما هو الذكاء الاصطناعي التوليدي؟
-                </button>
-              </div>
+            <div class="mt-5 flex flex-wrap gap-3 justify-center text-[10px] sm:text-xs text-zinc-500">
+              <span class="flex items-center gap-1">💡 اسأل عن أرقام، تواريخ، أسماء</span>
+              <span class="flex items-center gap-1">🔍 ابحث في ملفات محددة من القائمة</span>
+              <span class="flex items-center gap-1">🎤 استخدم المايك للتحدث</span>
             </div>
-          </template>
-
-          <template x-if="mode === 'smart' && indexed_count === 0">
-            <div>
-              <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
-                📭 لا توجد مستندات مفهرسة
-              </h3>
-              <p class="text-zinc-400 text-sm mb-5 max-w-md">
-                لفهرسة مستنداتك، اذهب إلى قسم "ذكاء المستندات" وحلل أي ملف
-              </p>
-              <a href="/intelligence" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-6 py-3 text-sm transition-all hover:scale-105 inline-flex items-center gap-2">
-                🚀 الذهاب إلى ذكاء المستندات
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                </svg>
-              </a>
-            </div>
-          </template>
-
-          <div class="mt-5 flex flex-wrap gap-3 justify-center text-[10px] sm:text-xs text-zinc-500" x-show="mode === 'smart' && indexed_count > 0">
-            <span class="flex items-center gap-1">💡 اسأل عن أرقام، تواريخ، أسماء</span>
-            <span class="flex items-center gap-1">🔍 ابحث في ملفات محددة من القائمة</span>
-          </div>
+          {% else %}
+            <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
+              📭 لا توجد مستندات مفهرسة
+            </h3>
+            <p class="text-zinc-400 text-sm mb-5 max-w-md">
+              لفهرسة مستنداتك، أدخل رقم الملف في الشريط الجانبي واضغط "فهرسة"
+            </p>
+          {% endif %}
         </div>
 
         <!-- الرسائل -->
@@ -275,8 +204,9 @@
             <div class="flex justify-end">
               <div class="max-w-[85%] sm:max-w-lg bg-brand-600/20 border border-brand-600/30 rounded-2xl rounded-tr-sm px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-white text-right break-words">
                 <span x-text="msg.question"></span>
-                <div class="flex justify-end mt-1" x-show="msg.audio_url">
-                  <audio controls class="h-6 w-full max-w-[150px]">
+                <!-- عرض مشغل الصوت إذا كان هناك تسجيل -->
+                <div x-show="msg.audio_url" class="flex justify-end mt-1">
+                  <audio controls class="h-8 w-full max-w-[180px]">
                     <source :src="msg.audio_url" type="audio/webm">
                   </audio>
                 </div>
@@ -289,8 +219,8 @@
 
                 <div x-show="!msg.has_results"
                      class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-sm text-zinc-300 text-right">
-                  <p x-text="mode === 'smart' ? '😕 لم أجد معلومات ذات صلة بسؤالك في المستندات المفهرسة.' : '😕 عذراً، لم أتمكن من الإجابة على سؤالك.'"></p>
-                  <span class="text-zinc-500 text-[10px] sm:text-xs block mt-1" x-text="mode === 'smart' ? '💡 تأكد من فهرسة الملفات المناسبة أو وسّع نطاق البحث' : '💡 حاول صياغة السؤال بشكل أوضح'"></span>
+                  <p>😕 لم أجد معلومات ذات صلة بسؤالك في المستندات المفهرسة.</p>
+                  <span class="text-zinc-500 text-[10px] sm:text-xs block mt-1">💡 تأكد من فهرسة الملفات المناسبة أو وسّع نطاق البحث</span>
                 </div>
 
                 <div x-show="msg.has_results" class="space-y-2">
@@ -301,7 +231,7 @@
                           <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                         </svg>
                       </div>
-                      <span class="text-[10px] sm:text-xs text-zinc-400">📌 الإجابة</span>
+                      <span class="text-[10px] sm:text-xs text-zinc-400">📌 الإجابة المستخرجة</span>
                       <span class="text-[10px] sm:text-xs text-zinc-500 mr-auto" x-text="'نموذج: ' + (msg.model || selectedModel)"></span>
                     </div>
                     <div class="text-sm sm:text-base text-white leading-relaxed break-words whitespace-pre-wrap" x-text="msg.answer"></div>
@@ -314,7 +244,8 @@
                     </div>
                   </div>
 
-                  <div x-show="msg.sources && msg.sources.length > 1 && mode === 'smart'">
+                  <!-- المصادر الإضافية -->
+                  <div x-show="msg.sources && msg.sources.length > 1">
                     <button @click="msg.showSources = !msg.showSources"
                             class="text-[10px] sm:text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1">
                       <svg class="w-3 h-3 sm:w-3.5 sm:h-3.5 transition-transform" :class="msg.showSources ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,7 +270,7 @@
                     </div>
                   </div>
 
-                  <div class="flex justify-end flex-wrap gap-2">
+                  <div class="flex justify-end">
                     <span class="text-[9px] sm:text-xs text-zinc-600 flex items-center gap-1">
                       <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
@@ -364,23 +295,26 @@
               <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
               <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
             </div>
-            <span class="text-[11px] sm:text-xs text-zinc-400" x-text="mode === 'smart' ? 'جاري البحث في المستندات...' : 'جاري التفكير...'"></span>
+            <span class="text-[11px] sm:text-xs text-zinc-400">جاري البحث في المستندات...</span>
           </div>
         </div>
 
       </div>
 
-      <!-- ── مدخل النص ────────────────────────────────────────────── -->
+      <!-- ── مدخل النص مع المايك ─────────────────────────────────── -->
       <div class="border-t border-zinc-800 p-2 sm:p-3 flex-shrink-0 bg-zinc-900/95 backdrop-blur-sm">
         <div class="flex gap-2 items-center">
-          <!-- زر تسجيل الصوت -->
+          <!-- زر المايك (تسجيل / إيقاف) -->
           <button @click="toggleRecording()"
-                  :disabled="loading || recording"
-                  class="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                  :disabled="loading"
+                  class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative"
                   :class="recording ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'">
-            <svg class="w-4 h-4 sm:w-5 sm:h-5" :class="recording ? 'text-white' : 'text-zinc-300'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" :class="recording ? 'text-white' : 'text-zinc-300'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
             </svg>
+            <!-- مؤشر التسجيل الصغير -->
+            <span x-show="recording" 
+                  class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
           </button>
 
           <!-- حقل الإدخال -->
@@ -388,31 +322,40 @@
             type="text"
             x-model="question"
             @keydown.enter.prevent="sendQuestion()"
-            :placeholder="recording ? '🎤 جاري التسجيل...' : (mode === 'smart' ? '✏️ اكتب سؤالك عن المستندات...' : '✏️ اكتب أي سؤال...')"
+            :placeholder="recording ? '🎤 جاري التسجيل... اضغط المايك للإيقاف' : '✏️ اكتب سؤالك عن المستندات...'"
             :disabled="recording"
-            class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all"
+            class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all"
             dir="auto"
           />
 
           <!-- زر الإرسال -->
           <button @click="sendQuestion()"
                   :disabled="loading || !question.trim() || recording"
-                  class="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95">
-            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
           </button>
         </div>
 
+        <!-- شريط الحالة السفلية -->
         <div class="flex flex-wrap items-center justify-between gap-1 mt-1.5">
           <p class="text-[9px] sm:text-xs text-zinc-600 flex items-center gap-1.5">
-            <span x-text="mode === 'smart' ? '🔍' : '💬'"></span>
-            <span x-text="mode === 'smart' ? 'BM25 + Gemini' : 'Gemini AI'"></span>
-            <span class="hidden sm:inline" x-text="mode === 'smart' ? '· البحث في ' + total_chunks + ' مقطع' : '· دردشة عامة'"></span>
+            <span>🔍</span>
+            <span>BM25 + Gemini</span>
+            <span class="hidden sm:inline">· البحث في <span x-text="total_chunks"></span> مقطع</span>
           </p>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-3">
+            <!-- حالة المايك -->
+            <span x-show="recording" class="text-[10px] sm:text-xs text-red-400 animate-pulse flex items-center gap-1">
+              <span class="w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
+              🔴 تسجيل...
+            </span>
+            <span x-show="!recording && audioTranscribed" class="text-[10px] sm:text-xs text-emerald-400">
+              ✅ تم التحويل
+            </span>
             <span class="text-[9px] sm:text-xs text-zinc-600" x-text="question.length ? question.length + ' حرف' : ''"></span>
-            <span x-show="recording" class="text-[9px] sm:text-xs text-red-400 animate-pulse">🔴 تسجيل...</span>
+            <span class="text-[9px] sm:text-xs text-zinc-600" x-text="selectedFiles.length ? selectedFiles.length + ' ملفات محددة' : ''"></span>
           </div>
         </div>
       </div>
@@ -477,15 +420,15 @@
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #0d9488;
   cursor: pointer;
 }
 input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #0d9488;
   cursor: pointer;
@@ -496,6 +439,11 @@ input[type="range"]::-moz-range-thumb {
   outline: 2px solid #0d9488;
   outline-offset: 2px;
 }
+
+/* زر المايك */
+button[class*="bg-red-600"] {
+  box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
+}
 </style>
 
 <script>
@@ -504,7 +452,6 @@ function searchApp() {
 
   return {
     // ── الحالة العامة ──
-    mode: 'smart', // 'smart' | 'chat'
     question: '',
     messages: [],
     loading: false,
@@ -515,7 +462,6 @@ function searchApp() {
     indexFileId: '',
     indexing: false,
     indexMsg: '',
-    showMobileSidebar: false,
     
     // ── النماذج ──
     selectedModel: 'gemini-2.0-flash',
@@ -523,17 +469,12 @@ function searchApp() {
     
     // ── الصوت ──
     recording: false,
+    audioTranscribed: false,
     mediaRecorder: null,
     audioChunks: [],
+    stream: null,
 
     initApp() {
-      // استجابة الشاشة
-      window.addEventListener('resize', () => {
-        if (window.innerWidth >= 640) {
-          this.showMobileSidebar = false;
-        }
-      });
-      
       // التحقق من دعم الصوت
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('تسجيل الصوت غير مدعوم في هذا المتصفح');
@@ -552,9 +493,17 @@ function searchApp() {
       }
       
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        this.mediaRecorder = new MediaRecorder(stream);
+        this.stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+        
+        this.mediaRecorder = new MediaRecorder(this.stream);
         this.audioChunks = [];
+        this.audioTranscribed = false;
         
         this.mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
@@ -563,18 +512,24 @@ function searchApp() {
         };
         
         this.mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-          await this.sendAudio(audioBlob);
+          if (this.audioChunks.length > 0) {
+            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            await this.sendAudio(audioBlob);
+          }
           // إيقاف جميع المسارات
-          stream.getTracks().forEach(track => track.stop());
+          if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+          }
         };
         
-        this.mediaRecorder.start();
+        this.mediaRecorder.start(100); // جمع البيانات كل 100ms
         this.recording = true;
         this.question = '🎤 جاري التسجيل...';
+        
       } catch (error) {
         console.error('خطأ في الوصول إلى الميكروفون:', error);
-        alert('لا يمكن الوصول إلى الميكروفون. تأكد من منح الإذن.');
+        alert('⚠️ لا يمكن الوصول إلى الميكروفون. تأكد من منح الإذن.');
       }
     },
 
@@ -582,7 +537,9 @@ function searchApp() {
       if (this.mediaRecorder && this.recording) {
         this.mediaRecorder.stop();
         this.recording = false;
-        this.question = '';
+        if (this.question === '🎤 جاري التسجيل...') {
+          this.question = '';
+        }
       }
     },
 
@@ -600,14 +557,32 @@ function searchApp() {
         if (!res.ok) throw new Error('فشل تحويل الصوت إلى نص');
         const data = await res.json();
         
-        if (data.text) {
+        if (data.text && data.text.trim()) {
+          this.audioTranscribed = true;
           this.question = data.text;
-          // إرسال السؤال تلقائياً بعد التحويل
-          await this.sendQuestion();
+          // إرسال السؤال تلقائياً بعد التحويل مع تأخير بسيط
+          setTimeout(() => {
+            this.sendQuestion();
+          }, 300);
+        } else {
+          this.question = '';
+          this.$nextTick(() => {
+            // إظهار رسالة مؤقتة
+            const msg = '⚠️ لم يتم التعرف على الصوت، حاول مرة أخرى';
+            this.question = msg;
+            setTimeout(() => {
+              if (this.question === msg) this.question = '';
+            }, 3000);
+          });
         }
       } catch (error) {
         console.error('خطأ في تحويل الصوت:', error);
         this.question = '⚠️ فشل تحويل الصوت، حاول كتابة السؤال';
+        setTimeout(() => {
+          if (this.question === '⚠️ فشل تحويل الصوت، حاول كتابة السؤال') {
+            this.question = '';
+          }
+        }, 3000);
       }
     },
 
@@ -616,7 +591,7 @@ function searchApp() {
       const q = this.question.trim();
       if (!q || this.loading || this.recording) return;
       
-      // إزالة نص التسجيل الوهمي
+      // إزالة النصوص المؤقتة
       if (q === '🎤 جاري التسجيل...') {
         this.question = '';
         return;
@@ -625,23 +600,20 @@ function searchApp() {
       const currentQuestion = q;
       this.loading = true;
       this.question = '';
-
-      const isSmartMode = this.mode === 'smart';
+      this.audioTranscribed = false;
       
       const body = {
         question: currentQuestion,
-        mode: this.mode,
         model: this.selectedModel,
         temperature: this.temperature,
         top_k: 5,
-        file_ids: isSmartMode && this.selectedFiles.length > 0 
+        file_ids: this.selectedFiles.length > 0 
           ? this.selectedFiles.map(Number) 
           : null,
       };
 
       try {
-        const endpoint = isSmartMode ? '/api/v1/search/query' : '/api/v1/chat/query';
-        const res = await fetch(endpoint, {
+        const res = await fetch('/api/v1/search/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -680,6 +652,7 @@ function searchApp() {
       const id = parseInt(this.indexFileId);
       if (!id || isNaN(id)) {
         this.indexMsg = '⚠️ الرجاء إدخال رقم ملف صحيح';
+        setTimeout(() => { this.indexMsg = ''; }, 3000);
         return;
       }
       
