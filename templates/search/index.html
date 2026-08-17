@@ -34,6 +34,8 @@
       <span class="hidden sm:inline" x-text="indexed_count + ' ملفات مفهرسة'"></span>
       <span class="hidden md:inline">·</span>
       <span class="hidden md:inline" x-text="total_chunks + ' مقطع'"></span>
+      <span x-show="hfConfigured" class="hidden lg:inline text-emerald-400 text-[10px]">✓ HF</span>
+      <span x-show="!hfConfigured" class="hidden lg:inline text-amber-400 text-[10px]">⚠️ HF</span>
     </div>
   </header>
 
@@ -42,7 +44,7 @@
 
     <!-- ──── منطقة الرسائل ──── -->
     <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
-         x-ref="messagesContainer">
+         x-ref="messagesContainer" @scroll="onScroll">
 
       <!-- مرحباً! -->
       <div x-show="messages.length === 0 && !loading" 
@@ -55,37 +57,47 @@
           </svg>
         </div>
 
-        {% if indexed_count > 0 %}
+        <div x-show="hasIndexedFiles">
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
           </h3>
           <p class="text-zinc-400 text-sm mb-5 max-w-md">
             اختر ملفاً من الأعلى، أو اترك الكل، ثم اكتب سؤالك أو استخدم المايك
+            <span x-show="hfConfigured" class="text-emerald-400 block text-xs mt-1">✅ نماذج الذكاء الاصطناعي مفعلة</span>
+            <span x-show="!hfConfigured" class="text-amber-400 block text-xs mt-1">⚠️ نماذج الذكاء الاصطناعي غير مفعلة (HUGGINGFACE_TOKEN)</span>
           </p>
           
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md px-2">
-            <button @click="question = 'ما هو رقم الفاتورة؟'; sendQuestion()"
+            <button @click="askExample('ما هو رقم الفاتورة؟')"
                     class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
               <span class="block text-brand-400 text-lg mb-0.5">📄</span>
               ما هو رقم الفاتورة؟
             </button>
-            <button @click="question = 'من هو المورد؟'; sendQuestion()"
+            <button @click="askExample('من هو المورد؟')"
                     class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
               <span class="block text-brand-400 text-lg mb-0.5">🏢</span>
               من هو المورد؟
             </button>
-            <button @click="question = 'ما هي شروط العقد؟'; sendQuestion()"
+            <button @click="askExample('ما هي شروط العقد؟')"
                     class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
               <span class="block text-brand-400 text-lg mb-0.5">📋</span>
               ما هي شروط العقد؟
             </button>
-            <button @click="question = 'ما المبلغ الإجمالي؟'; sendQuestion()"
+            <button @click="askExample('ما المبلغ الإجمالي؟')"
                     class="text-xs text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-3 text-right transition-all hover:scale-105 hover:border-brand-500/50">
               <span class="block text-brand-400 text-lg mb-0.5">💰</span>
               ما المبلغ الإجمالي؟
             </button>
           </div>
-        {% else %}
+
+          <div class="mt-5 flex flex-wrap gap-3 justify-center text-[10px] sm:text-xs text-zinc-500">
+            <span class="flex items-center gap-1">💡 اسأل عن أرقام، تواريخ، أسماء</span>
+            <span class="flex items-center gap-1">🔍 ابحث في ملفات محددة</span>
+            <span class="flex items-center gap-1">🎤 استخدم المايك للتحدث</span>
+          </div>
+        </div>
+
+        <div x-show="!hasIndexedFiles">
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             📭 لا توجد مستندات مفهرسة
           </h3>
@@ -95,7 +107,7 @@
           <a href="/intelligence" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-6 py-3 text-sm transition-all hover:scale-105 inline-flex items-center gap-2">
             🚀 الذهاب إلى ذكاء المستندات
           </a>
-        {% endif %}
+        </div>
       </div>
 
       <!-- الرسائل -->
@@ -116,12 +128,27 @@
           <!-- الإجابة -->
           <div class="flex justify-start">
             <div class="max-w-[95%] sm:max-w-2xl w-full">
-              <div x-show="!msg.has_results"
+              <!-- حالة عدم وجود نتائج -->
+              <div x-show="!msg.has_results && !msg.loading"
                    class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-sm text-zinc-300 text-right">
-                <p>😕 لم أجد معلومات ذات صلة بسؤالك في المستندات المفهرسة.</p>
+                <p x-text="msg.error || '😕 لم أجد معلومات ذات صلة بسؤالك.'"></p>
                 <span class="text-zinc-500 text-[10px] sm:text-xs block mt-1">💡 حاول تغيير نطاق البحث أو صياغة السؤال بشكل مختلف</span>
               </div>
 
+              <!-- حالة تحميل النموذج -->
+              <div x-show="msg.loading" class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5">
+                <div class="flex items-center gap-3 text-right">
+                  <div class="flex gap-1">
+                    <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+                    <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
+                    <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
+                  </div>
+                  <span class="text-sm text-zinc-400">⏳ جاري تحميل النموذج... <span x-text="'(' + msg.estimated_seconds + ' ثانية)'"></span></span>
+                </div>
+                <p class="text-xs text-zinc-500 mt-1 text-right">🔄 النماذج الكبيرة تحتاج وقتاً للتحميل لأول مرة</p>
+              </div>
+
+              <!-- عرض النتائج -->
               <div x-show="msg.has_results" class="space-y-2">
                 <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-right">
                   <div class="flex items-center gap-2 mb-2">
@@ -131,18 +158,19 @@
                       </svg>
                     </div>
                     <span class="text-[10px] sm:text-xs text-zinc-400">📌 الإجابة</span>
-                    <span class="text-[10px] sm:text-xs text-zinc-500 mr-auto" x-text="'نموذج: ' + (msg.model || selectedModel)"></span>
+                    <span class="text-[10px] sm:text-xs text-zinc-500 mr-auto" x-text="'نموذج: ' + (msg.model_name || selectedModelName)"></span>
                   </div>
                   <div class="text-sm sm:text-base text-white leading-relaxed break-words whitespace-pre-wrap" x-text="msg.answer"></div>
                   
-                  <div x-show="msg.answer_source" class="mt-2 flex justify-end">
+                  <div x-show="msg.file_name" class="mt-2 flex justify-end">
                     <span class="text-[10px] sm:text-xs text-zinc-500 bg-zinc-700/50 rounded px-2 py-0.5 flex items-center gap-1">
                       <span>📄</span>
-                      <span x-text="msg.answer_source?.file_name || ''"></span>
+                      <span x-text="msg.file_name"></span>
                     </span>
                   </div>
                 </div>
 
+                <!-- مصادر إضافية -->
                 <div x-show="msg.sources && msg.sources.length > 1">
                   <button @click="msg.showSources = !msg.showSources"
                           class="text-[10px] sm:text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1">
@@ -167,12 +195,12 @@
                   </div>
                 </div>
 
-                <div class="flex justify-end">
+                <div class="flex justify-end flex-wrap gap-2">
                   <span class="text-[9px] sm:text-xs text-zinc-600 flex items-center gap-1">
                     <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
-                    <span x-text="msg.model || selectedModel"></span>
+                    <span x-text="msg.model_name || selectedModelName"></span>
                     <span class="hidden xs:inline">·</span>
                     <span class="xs:inline hidden" x-text="msg.total_chunks_searched ? msg.total_chunks_searched + ' مقطع' : ''"></span>
                   </span>
@@ -183,8 +211,8 @@
         </div>
       </template>
 
-      <!-- مؤشر التحميل -->
-      <div x-show="loading" class="flex justify-start">
+      <!-- مؤشر التحميل العام -->
+      <div x-show="loading && messages.length > 0 && !messages[messages.length - 1]?.loading" class="flex justify-start">
         <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 flex items-center gap-2">
           <div class="flex gap-1">
             <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
@@ -217,6 +245,7 @@
           type="text"
           x-model="question"
           @keydown.enter.prevent="sendQuestion()"
+          @input="onQuestionInput"
           :placeholder="recording ? '🎤 جاري التسجيل... اضغط المايك للإيقاف' : '✏️ اكتب سؤالك هنا...'"
           :disabled="recording"
           class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all order-2"
@@ -237,7 +266,7 @@
       <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
         <!-- الجانب الأيمن: اختيار الملف والنموذج -->
         <div class="flex flex-wrap items-center gap-2">
-          <!-- اختيار ملف (بجانب زر الإرسال) -->
+          <!-- اختيار ملف -->
           <div class="flex items-center gap-1.5 bg-zinc-800/50 border border-zinc-700 rounded-lg px-2 py-1">
             <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -257,13 +286,23 @@
             <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
-            <select x-model="selectedModel"
-                    class="bg-transparent text-xs text-zinc-300 focus:outline-none max-w-[140px] sm:max-w-[200px]">
+            <select x-model="selectedModelId"
+                    @change="onModelChange"
+                    class="bg-transparent text-xs text-zinc-300 focus:outline-none max-w-[140px] sm:max-w-[220px]">
               <template x-for="model in availableModels" :key="model.id">
                 <option :value="model.id" x-text="model.name"></option>
               </template>
             </select>
           </div>
+
+          <!-- زر تحديث النماذج -->
+          <button @click="loadAvailableModels()"
+                  class="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+                  title="تحديث قائمة النماذج">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
         </div>
 
         <!-- الجانب الأيسر: حالة المايك وعدد الأحرف -->
@@ -277,6 +316,8 @@
           </span>
           <span class="text-zinc-600" x-text="question.length ? question.length + ' حرف' : ''"></span>
           <span class="text-zinc-600 hidden sm:inline" x-text="'| ' + (selectedFileId === 'all' ? 'جميع الملفات' : 'ملف محدد')"></span>
+          <span class="text-zinc-600 hidden lg:inline" x-text="'| ' + (selectedModelName || 'اختر نموذجاً')"></span>
+          <span x-show="hfConfigured" class="text-emerald-400 hidden xl:inline">✓</span>
         </div>
       </div>
     </div>
@@ -349,6 +390,11 @@ select option {
   background: #18181b;
   color: white;
 }
+
+/* تحسين التمرير */
+.scrollbar-thin {
+  scroll-behavior: smooth;
+}
 </style>
 
 <script>
@@ -360,14 +406,22 @@ function searchApp() {
     question: '',
     messages: [],
     loading: false,
+    error: null,
+    autoScroll: true,
     
     // ── الملفات ──
     selectedFileId: _urlFileId || 'all',
     quickFileSelect: _urlFileId || 'all',
+    indexed_count: {{ indexed_count|default(0)|tojson }},
+    total_chunks: {{ total_chunks|default(0)|tojson }},
+    hasIndexedFiles: {{ (indexed_count|default(0) > 0)|tojson }},
+    hasFiles: {{ (files_info|length > 0)|tojson }},
+    hfConfigured: {{ hf_configured|default(False)|tojson }},
     
-    // ── النماذج (تقرأ من إعدادات النظام) ──
-    availableModels: [],
-    selectedModel: '',
+    // ── النماذج ──
+    availableModels: {{ models|tojson }},
+    selectedModelId: {{ default_model_id|tojson }},
+    selectedModelName: '',
     
     // ── الصوت ──
     recording: false,
@@ -377,61 +431,83 @@ function searchApp() {
     stream: null,
 
     initApp() {
-      // تحميل النماذج المتاحة من النظام
+      // تعيين اسم النموذج الافتراضي
+      this.updateModelName();
+      
+      // تحميل النماذج من API
       this.loadAvailableModels();
       
       // التحقق من دعم الصوت
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('تسجيل الصوت غير مدعوم');
       }
+      
+      // الاستماع لحدث التمرير
+      this.$watch('messages', () => {
+        if (this.autoScroll) {
+          this.$nextTick(() => {
+            const container = this.$refs.messagesContainer;
+            if (container) {
+              container.scrollTop = container.scrollHeight;
+            }
+          });
+        }
+      });
+    },
+
+    // ── تحديث اسم النموذج ──
+    updateModelName() {
+      const model = this.availableModels.find(m => m.id === this.selectedModelId);
+      this.selectedModelName = model ? model.name : 'نموذج غير معروف';
+    },
+
+    onModelChange() {
+      this.updateModelName();
     },
 
     // ── تحميل النماذج من النظام ──
     async loadAvailableModels() {
       try {
-        const res = await fetch('/api/v1/models/available');
+        const res = await fetch('/api/v1/search/models');
         if (res.ok) {
           const data = await res.json();
-          this.availableModels = data.models || [];
-          // تعيين النموذج الافتراضي
-          if (this.availableModels.length > 0) {
-            this.selectedModel = this.availableModels[0].id;
+          if (data.models && data.models.length > 0) {
+            this.availableModels = data.models;
+            // تحديث النموذج المحدد إذا كان موجوداً
+            const stillExists = this.availableModels.some(m => m.id === this.selectedModelId);
+            if (!stillExists) {
+              this.selectedModelId = data.default_model_id || this.availableModels[0].id;
+            }
+            this.updateModelName();
           }
-        } else {
-          // نماذج احتياطية في حال فشل التحميل
-          this.availableModels = [
-            { id: 'gemini-2.0-flash', name: '✨ Gemini 2.0 Flash' },
-            { id: 'gemini-2.0-pro', name: '⚡ Gemini 2.0 Pro' },
-            { id: 'gemini-1.5-pro', name: '🔮 Gemini 1.5 Pro' },
-            { id: 'gemini-1.5-flash', name: '💨 Gemini 1.5 Flash' },
-            { id: 'bm25', name: '📊 BM25 (بحث)' },
-          ];
-          this.selectedModel = this.availableModels[0].id;
         }
       } catch (e) {
-        console.warn('فشل تحميل النماذج، استخدام القائمة الافتراضية');
-        this.availableModels = [
-          { id: 'gemini-2.0-flash', name: '✨ Gemini 2.0 Flash' },
-          { id: 'gemini-2.0-pro', name: '⚡ Gemini 2.0 Pro' },
-          { id: 'gemini-1.5-pro', name: '🔮 Gemini 1.5 Pro' },
-          { id: 'gemini-1.5-flash', name: '💨 Gemini 1.5 Flash' },
-          { id: 'bm25', name: '📊 BM25 (بحث)' },
-        ];
-        this.selectedModel = this.availableModels[0].id;
+        console.warn('فشل تحميل النماذج من API:', e);
+        // استخدام النماذج الممررة من القالب
       }
     },
 
     // ── اختيار ملف ──
     onFileSelect() {
       this.quickFileSelect = this.selectedFileId;
-      // إذا كان الملف محدداً، نضيفه إلى قائمة الملفات المحددة
-      if (this.selectedFileId !== 'all') {
-        this.selectedFiles = [parseInt(this.selectedFileId)];
-        this.allFiles = false;
-      } else {
-        this.selectedFiles = [];
-        this.allFiles = true;
-      }
+    },
+
+    // ── مثال سؤال ──
+    askExample(question) {
+      this.question = question;
+      this.sendQuestion();
+    },
+
+    // ── إدخال النص ──
+    onQuestionInput() {
+      // يمكن إضافة منطق إضافي هنا
+    },
+
+    // ── التمرير ──
+    onScroll(event) {
+      const container = event.target;
+      const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+      this.autoScroll = isAtBottom;
     },
 
     // ── تسجيل الصوت ──
@@ -446,11 +522,14 @@ function searchApp() {
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            sampleRate: 16000
           } 
         });
         
-        this.mediaRecorder = new MediaRecorder(this.stream);
+        this.mediaRecorder = new MediaRecorder(this.stream, {
+          mimeType: 'audio/webm'
+        });
         this.audioChunks = [];
         this.audioTranscribed = false;
         
@@ -477,13 +556,17 @@ function searchApp() {
         
       } catch (error) {
         console.error('خطأ في الميكروفون:', error);
-        alert('⚠️ لا يمكن الوصول إلى الميكروفون. تأكد من منح الإذن.');
+        this.showError('⚠️ لا يمكن الوصول إلى الميكروفون. تأكد من منح الإذن.');
       }
     },
 
     stopRecording() {
       if (this.mediaRecorder && this.recording) {
-        this.mediaRecorder.stop();
+        try {
+          this.mediaRecorder.stop();
+        } catch (e) {
+          console.warn('Error stopping recorder:', e);
+        }
         this.recording = false;
         if (this.question === '🎤 جاري التسجيل...') {
           this.question = '';
@@ -496,27 +579,35 @@ function searchApp() {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
         
-        const res = await fetch('/api/v1/search/speech-to-text', {
+        // إضافة model_id إذا كان نموذج ASR
+        const model = this.availableModels.find(m => m.id === this.selectedModelId);
+        if (model && model.task_type === 'speech-to-text') {
+          formData.append('model_id', this.selectedModelId.toString());
+        }
+        
+        const res = await fetch('/api/v1/hf/speech-to-text', {
           method: 'POST',
           body: formData,
         });
         
-        if (!res.ok) throw new Error('فشل تحويل الصوت');
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText || 'فشل تحويل الصوت');
+        }
+        
         const data = await res.json();
         
-        if (data.text && data.text.trim()) {
+        if (data.ok && data.text) {
           this.audioTranscribed = true;
           this.question = data.text;
+          // إرسال السؤال تلقائياً بعد التحويل
           setTimeout(() => {
             this.sendQuestion();
           }, 300);
         } else {
+          const errorMsg = data.error || 'لم يتم التعرف على الصوت';
           this.question = '';
-          const msg = '⚠️ لم يتم التعرف على الصوت، حاول مرة أخرى';
-          this.question = msg;
-          setTimeout(() => {
-            if (this.question === msg) this.question = '';
-          }, 3000);
+          this.showError('⚠️ ' + errorMsg);
         }
       } catch (error) {
         console.error('خطأ في تحويل الصوت:', error);
@@ -527,6 +618,12 @@ function searchApp() {
           }
         }, 3000);
       }
+    },
+
+    // ── عرض خطأ ──
+    showError(message) {
+      this.error = message;
+      setTimeout(() => { this.error = null; }, 5000);
     },
 
     // ── إرسال السؤال ──
@@ -550,13 +647,18 @@ function searchApp() {
         fileIds = [parseInt(this.selectedFileId)];
       }
       
+      // تحديد النموذج المحدد
+      const selectedModel = this.availableModels.find(m => m.id === this.selectedModelId);
+      
+      // بناء الطلب
       const body = {
         question: currentQuestion,
-        model: this.selectedModel,
         top_k: 5,
         file_ids: fileIds,
+        use_ai: true,
+        model_id: this.selectedModelId,
       };
-
+      
       try {
         const res = await fetch('/api/v1/search/query', {
           method: 'POST',
@@ -564,31 +666,73 @@ function searchApp() {
           body: JSON.stringify(body),
         });
         
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(errorText || 'فشل الطلب');
+        }
+        
         const data = await res.json();
         
-        this.messages.push({ 
-          ...data, 
+        // معالجة الاستجابة
+        this.messages.push({
+          question: currentQuestion,
+          answer: data.answer || '',
+          has_results: data.has_results || false,
+          sources: data.sources || [],
+          total_chunks_searched: data.total_chunks_searched || 0,
+          model_name: data.model_name || selectedModel?.name,
+          model_id: data.model_id || this.selectedModelId,
+          file_name: data.file_name || null,
+          loading: data.loading || false,
+          estimated_seconds: data.estimated_seconds,
+          error: data.error || null,
           showSources: false,
-          model: this.selectedModel,
+          audio_url: null,
         });
+        
       } catch (e) {
         console.error('خطأ:', e);
         this.messages.push({
           question: currentQuestion,
-          has_results: false,
           answer: '⚠️ حدث خطأ أثناء معالجة الطلب. حاول مرة أخرى.',
+          has_results: false,
           sources: [],
           total_chunks_searched: 0,
-          model: this.selectedModel,
+          model_name: selectedModel?.name,
+          model_id: this.selectedModelId,
+          file_name: null,
+          loading: false,
+          estimated_seconds: null,
+          error: e.message || 'خطأ غير معروف',
           showSources: false,
+          audio_url: null,
         });
       } finally {
         this.loading = false;
         this.$nextTick(() => {
-          const c = this.$refs.messagesContainer;
-          if (c) c.scrollTop = c.scrollHeight;
+          const container = this.$refs.messagesContainer;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
         });
+      }
+    },
+
+    // ── فهرسة ملف ── (إذا كانت موجودة في القالب)
+    async indexFile(fileId) {
+      try {
+        const res = await fetch(`/api/v1/search/index/${fileId}`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (data.indexed) {
+          this.showError('✅ تمت فهرسة الملف بنجاح (' + data.chunks + ' مقطع)');
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          this.showError('⚠️ ' + (data.reason || 'فشلت الفهرسة'));
+        }
+      } catch (e) {
+        this.showError('⚠️ حدث خطأ في الفهرسة');
       }
     },
   };
