@@ -34,11 +34,11 @@
 {% set m = fmt_meta.get(file.format, {'color':'slate', 'emoji':'📄', 'label':file.format|upper}) %}
 
 <!-- ============================================================
-     TOAST NOTIFICATIONS SYSTEM
+     TOAST NOTIFICATIONS SYSTEM - مبسط وغير مزعج
      ============================================================ -->
 
 <div x-data="toastManager()" x-init="init()" 
-     class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md pointer-events-none">
+     class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm pointer-events-none">
   
   <template x-for="(toast, index) in toasts" :key="index">
     <div x-show="toast.visible"
@@ -48,86 +48,34 @@
          x-transition:leave="transition ease-in duration-200"
          x-transition:leave-start="opacity-100 transform translate-y-0 scale-100"
          x-transition:leave-end="opacity-0 transform -translate-y-4 scale-95"
-         class="mb-3 pointer-events-auto rounded-xl shadow-lg border backdrop-blur-sm p-4 flex items-start gap-3"
+         class="mb-2 pointer-events-auto rounded-lg shadow-lg border p-3 flex items-center gap-2 text-sm"
          :class="{
-           'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700': toast.type === 'success',
-           'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700': toast.type === 'error',
-           'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700': toast.type === 'warning',
-           'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700': toast.type === 'info',
-           'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700': toast.type === 'loading'
+           'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700': toast.type === 'error',
+           'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700': toast.type === 'success',
+           'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700': toast.type === 'warning',
+           'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700': toast.type === 'info'
          }">
       
-      <!-- Icon -->
-      <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-           :class="{
-             'bg-emerald-100 dark:bg-emerald-800/30': toast.type === 'success',
-             'bg-red-100 dark:bg-red-800/30': toast.type === 'error',
-             'bg-amber-100 dark:bg-amber-800/30': toast.type === 'warning',
-             'bg-blue-100 dark:bg-blue-800/30': toast.type === 'info',
-             'bg-slate-100 dark:bg-slate-700': toast.type === 'loading'
-           }">
-        
-        <template x-if="toast.type === 'success'">
-          <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-          </svg>
-        </template>
-        
-        <template x-if="toast.type === 'error'">
-          <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
-          </svg>
-        </template>
-        
-        <template x-if="toast.type === 'warning'">
-          <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
-          </svg>
-        </template>
-        
-        <template x-if="toast.type === 'info'">
-          <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </template>
-        
-        <template x-if="toast.type === 'loading'">
-          <svg class="w-4 h-4 text-slate-600 dark:text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-        </template>
-        
-      </div>
+      <!-- أيقونة -->
+      <span class="flex-shrink-0 text-lg" 
+            x-text="toast.type === 'error' ? '❌' : toast.type === 'success' ? '✅' : toast.type === 'warning' ? '⚠️' : 'ℹ️'"></span>
       
-      <!-- Content -->
+      <!-- محتوى -->
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium" 
+        <p class="font-medium text-xs" 
            :class="{
-             'text-emerald-800 dark:text-emerald-200': toast.type === 'success',
              'text-red-800 dark:text-red-200': toast.type === 'error',
+             'text-emerald-800 dark:text-emerald-200': toast.type === 'success',
              'text-amber-800 dark:text-amber-200': toast.type === 'warning',
-             'text-blue-800 dark:text-blue-200': toast.type === 'info',
-             'text-slate-800 dark:text-slate-200': toast.type === 'loading'
+             'text-blue-800 dark:text-blue-200': toast.type === 'info'
            }"
-           x-text="toast.title">
-        </p>
-        <p class="text-xs mt-0.5" 
-           :class="{
-             'text-emerald-700 dark:text-emerald-300/70': toast.type === 'success',
-             'text-red-700 dark:text-red-300/70': toast.type === 'error',
-             'text-amber-700 dark:text-amber-300/70': toast.type === 'warning',
-             'text-blue-700 dark:text-blue-300/70': toast.type === 'info',
-             'text-slate-600 dark:text-slate-400': toast.type === 'loading'
-           }"
-           x-text="toast.message">
+           x-text="toast.message || toast.title">
         </p>
       </div>
       
-      <!-- Close button -->
-      <button @click="removeToast(index)" 
-              class="flex-shrink-0 p-1 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors">
-        <svg class="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <!-- زر إغلاق -->
+      <button @click="removeToast(index)" class="flex-shrink-0 p-0.5 hover:bg-slate-200/50 rounded">
+        <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
       </button>
@@ -394,8 +342,6 @@
                this.docType = d.doc_type || '';
                if (d.status === 'completed' || d.status === 'failed') {
                  this.polling = false;
-                 // لا نقوم بتحديث الصفحة تلقائياً
-                 // بدلاً من ذلك نرسل حدث لتحديث الواجهة
                  window.dispatchEvent(new CustomEvent('analysis-completed', {
                    detail: { analysisId: this.analysisId, status: d.status }
                  }));
@@ -536,266 +482,120 @@
   </div>
 
   <!-- =========================================================
-       DATA PREVIEW - DYNAMIC LOADING
+       DATA PREVIEW - محسّن مع عرض مباشر
        ========================================================= -->
 
   <div class="card overflow-hidden">
     
-    <!-- Header -->
+    <!-- Header مبسط -->
     <div class="p-3 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-      
       <div class="flex items-center gap-2">
         <h3 class="font-semibold text-slate-900 dark:text-white text-sm">
-          معاينة البيانات
+          📄 محتوى الملف
         </h3>
-        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
-              x-show="previewData && previewData.total_rows !== undefined">
-          <span x-text="formatNumber(previewData.total_rows)"></span> صف
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500"
+              x-show="previewData?.total_rows">
+          <span x-text="previewData.total_rows"></span> صف
         </span>
       </div>
       
-      <div class="flex items-center gap-2">
-        
-        <!-- Refresh preview -->
-        <button 
-          @click="previewFile({{ file.id }})"
-          class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          title="تحديث المعاينة">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
+      <div class="flex items-center gap-1">
+        <button @click="refreshPreview({{ file.id }})"
+                class="text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 transition-colors"
+                title="تحديث">
+          ↻
         </button>
-        
-        <!-- View toggle -->
-        <button 
-          x-show="previewData && previewData.content_type === 'tabular'"
-          @click="viewMode = viewMode === 'table' ? 'compact' : 'table'"
-          class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          title="تبديل عرض الجدول">
-          <span x-text="viewMode === 'table' ? '📊' : '📋'"></span>
-        </button>
-        
-        <!-- Fullscreen -->
-        <button 
-          @click="toggleFullscreen()"
-          class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          title="عرض كامل الشاشة">
-          <span x-text="isFullscreen ? '⛶' : '⛶'"></span>
-        </button>
-        
       </div>
-      
     </div>
     
-    <!-- Preview content -->
-    <div x-data="{
-      viewMode: 'table',
-      isFullscreen: false,
-      previewData: null,
-      previewError: null,
-      isLoading: false,
+    <!-- منطقة العرض الرئيسية -->
+    <div x-data="previewManager({{ file.id }})" x-init="init()" class="relative">
       
-      toggleFullscreen() {
-        this.isFullscreen = !this.isFullscreen;
-        const el = this.$el.closest('.card');
-        if (this.isFullscreen) {
-          el.classList.add('fixed', 'inset-4', 'z-50', 'shadow-2xl', 'overflow-auto');
-          document.body.style.overflow = 'hidden';
-        } else {
-          el.classList.remove('fixed', 'inset-4', 'z-50', 'shadow-2xl', 'overflow-auto');
-          document.body.style.overflow = '';
-        }
-      },
-      
-      formatNumber(num) {
-        return new Intl.NumberFormat('ar-EG').format(num);
-      },
-      
-      async loadPreview(fileId) {
-        this.isLoading = true;
-        this.previewError = null;
-        
-        try {
-          const response = await fetch(`/api/files/${fileId}/preview`);
-          const data = await response.json();
-          
-          if (!response.ok) {
-            throw new Error(data.error || 'فشل تحميل المعاينة');
-          }
-          
-          this.previewData = data;
-          
-          // إظهار رسالة نجاح
-          if (window.showSuccess) {
-            window.showSuccess('✅ تم تحميل المعاينة', 'تم عرض محتوى الملف بنجاح');
-          }
-          
-        } catch (error) {
-          this.previewError = error.message;
-          if (window.showError) {
-            window.showError('❌ فشل المعاينة', error.message);
-          }
-        } finally {
-          this.isLoading = false;
-        }
-      },
-      
-      init() {
-        // تحميل المعاينة تلقائياً عند تحميل المكون
-        this.loadPreview({{ file.id }});
-        
-        // الاستماع لأحداث تحديث المعاينة
-        window.addEventListener('preview-update', (e) => {
-          if (e.detail && e.detail.fileId === {{ file.id }}) {
-            this.loadPreview(e.detail.fileId);
-          }
-        });
-      }
-    }">
-    
-    <!-- Loading state -->
-    <template x-if="isLoading">
-      <div class="p-12 text-center">
-        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-          <svg class="w-6 h-6 text-brand-500 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-        </div>
-        <p class="text-sm font-medium text-slate-700 dark:text-slate-300">جاري تحميل المعاينة...</p>
-        <p class="text-xs text-slate-400 mt-1">قد يستغرق هذا بضع ثوانٍ</p>
-      </div>
-    </template>
-    
-    <!-- Error state -->
-    <template x-if="!isLoading && previewError">
-      <div class="p-12 text-center">
-        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 flex items-center justify-center">
-          <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
-          </svg>
-        </div>
-        <p class="text-sm font-medium text-amber-700 dark:text-amber-300" x-text="previewError || 'تعذّرت المعاينة'"></p>
-        <p class="text-xs text-amber-500 dark:text-amber-400/70 mt-1">
-          قد يكون الملف غير مدعوم للمعاينة أو مفقوداً
-        </p>
-        <button @click="loadPreview({{ file.id }})"
-                class="mt-4 text-xs py-1.5 px-4 rounded-lg bg-brand-50 dark:bg-brand-900/20 
-                       hover:bg-brand-100 dark:hover:bg-brand-900/40 text-brand-600 
-                       transition-colors font-medium">
-          🔄 إعادة المحاولة
-        </button>
-      </div>
-    </template>
-    
-    <!-- Preview content -->
-    <template x-if="!isLoading && !previewError && previewData">
-      
-      <!-- Text preview -->
-      <template x-if="previewData.content_type === 'text'">
-        <div class="overflow-auto max-h-[60vh] p-4 space-y-1 font-mono text-xs text-slate-700 dark:text-slate-300 leading-relaxed"
-             :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[60vh]'">
-          <template x-for="row in previewData.rows" :key="row.id">
-            <p class="border-b border-slate-50 dark:border-slate-800 pb-1 break-words 
-                      hover:bg-slate-50 dark:hover:bg-slate-800/30 px-1 rounded transition-colors"
-               x-text="row.content || row.text || ''"></p>
-          </template>
+      <!-- Loading بسيط -->
+      <template x-if="loading">
+        <div class="flex items-center justify-center py-12">
+          <div class="flex items-center gap-3 text-slate-400">
+            <svg class="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span class="text-sm">جاري التحميل...</span>
+          </div>
         </div>
       </template>
       
-      <!-- Tabular preview -->
-      <template x-if="previewData.content_type === 'tabular'">
-        <div class="overflow-auto"
-             :class="isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[50vh]'">
-          
-          <table class="w-full text-xs"
-                 :class="viewMode === 'compact' ? 'text-[10px]' : ''">
-            
-            <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
-              <tr>
-                <th class="px-3 py-2 text-slate-400 font-medium text-center w-8">#</th>
-                <template x-for="col in previewData.columns" :key="col">
-                  <th class="px-3 py-2 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start 
-                             hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                      @click="sortBy(col)"
-                      :title="'ترتيب حسب ' + col">
-                    <span x-text="col"></span>
-                    <span class="text-slate-400">↕</span>
-                  </th>
-                </template>
-              </tr>
-            </thead>
-            
-            <tbody class="divide-y divide-slate-50 dark:divide-slate-700/30">
-              <template x-for="(row, index) in previewData.rows" :key="index">
-                <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
-                  <td class="px-3 py-1.5 text-slate-400 text-center text-[10px] 
-                             group-hover:text-slate-600 dark:group-hover:text-slate-300"
-                      x-text="index + 1"></td>
-                  <template x-for="col in previewData.columns" :key="col">
-                    <td class="px-3 py-1.5 text-slate-700 dark:text-slate-300 
-                               whitespace-nowrap max-w-[180px] truncate"
-                        :class="viewMode === 'compact' ? 'py-1 text-[10px]' : 'py-1.5'"
-                        :title="row[col] || ''">
-                      <span x-text="row[col] !== null && row[col] !== undefined ? row[col] : '—'"></span>
-                    </td>
+      <!-- خطأ -->
+      <template x-if="!loading && error">
+        <div class="flex flex-col items-center justify-center py-12 text-slate-400">
+          <span class="text-4xl mb-2">📭</span>
+          <p class="text-sm font-medium text-slate-600 dark:text-slate-300" x-text="error"></p>
+          <button @click="loadPreview()" 
+                  class="mt-3 text-xs px-4 py-1.5 rounded bg-brand-50 text-brand-600 hover:bg-brand-100">
+            إعادة المحاولة
+          </button>
+        </div>
+      </template>
+      
+      <!-- عرض البيانات -->
+      <template x-if="!loading && !error && data">
+        
+        <!-- عرض النص -->
+        <template x-if="data.content_type === 'text'">
+          <div class="p-4 max-h-[400px] overflow-auto font-mono text-sm bg-slate-50 dark:bg-slate-800/30">
+            <template x-for="(row, idx) in data.rows" :key="idx">
+              <div class="py-0.5 border-b border-slate-100 dark:border-slate-700/30 text-slate-700 dark:text-slate-300"
+                   x-text="row.content || row.text || ''"></div>
+            </template>
+          </div>
+        </template>
+        
+        <!-- عرض جدولي -->
+        <template x-if="data.content_type === 'tabular'">
+          <div class="overflow-auto max-h-[500px]">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
+                <tr>
+                  <th class="px-3 py-2 text-slate-400 font-medium text-center w-8 text-xs">#</th>
+                  <template x-for="col in data.columns" :key="col">
+                    <th class="px-3 py-2 text-slate-600 dark:text-slate-300 font-medium text-xs text-start whitespace-nowrap">
+                      <span x-text="col"></span>
+                    </th>
                   </template>
                 </tr>
-              </template>
-            </tbody>
-            
-          </table>
-          
+              </thead>
+              <tbody class="divide-y divide-slate-50 dark:divide-slate-700/20">
+                <template x-for="(row, idx) in data.rows" :key="idx">
+                  <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                    <td class="px-3 py-1.5 text-slate-400 text-center text-xs" x-text="idx + 1"></td>
+                    <template x-for="col in data.columns" :key="col">
+                      <td class="px-3 py-1.5 text-slate-700 dark:text-slate-300 text-xs max-w-[200px] truncate"
+                          :title="row[col] || ''">
+                        <span x-text="row[col] ?? '—'"></span>
+                      </td>
+                    </template>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        
+        <!-- معلومات إضافية -->
+        <div class="p-2 border-t border-slate-100 dark:border-slate-700/50 text-xs text-slate-400 flex justify-between">
+          <span>عرض <span x-text="data.rows?.length || 0"></span> صف</span>
+          <span><span x-text="data.columns?.length || 0"></span> عمود</span>
         </div>
         
-        <!-- Footer with stats -->
-        <div class="p-2 border-t border-slate-100 dark:border-slate-700/50 
-                    flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-          <span>
-            عرض <span x-text="previewData.rows ? previewData.rows.length : 0"></span> صف
-            <span x-show="previewData.total_rows > (previewData.rows ? previewData.rows.length : 0)">
-              من أصل <span x-text="formatNumber(previewData.total_rows)"></span>
-            </span>
-          </span>
-          <span>
-            <span x-text="previewData.columns ? previewData.columns.length : 0"></span> أعمدة
-          </span>
+      </template>
+      
+      <!-- الحالة الافتراضية -->
+      <template x-if="!loading && !error && !data">
+        <div class="flex flex-col items-center justify-center py-12 text-slate-400">
+          <span class="text-4xl mb-2">👆</span>
+          <p class="text-sm font-medium text-slate-600 dark:text-slate-300">اضغط على زر التحديث لعرض المحتوى</p>
         </div>
       </template>
       
-      <!-- Empty state -->
-      <template x-if="previewData && (!previewData.rows || previewData.rows.length === 0)">
-        <div class="p-12 text-center">
-          <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-            <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <p class="text-sm font-medium text-slate-700 dark:text-slate-300">لا توجد بيانات للمعاينة</p>
-          <p class="text-xs text-slate-400 mt-1">الملف فارغ أو غير مدعوم للمعاينة المباشرة</p>
-        </div>
-      </template>
-      
-    </template>
-    
-    <!-- Initial state (when no preview data) -->
-    <template x-if="!isLoading && !previewError && !previewData">
-      <div class="p-12 text-center">
-        <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
-          <svg class="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-          </svg>
-        </div>
-        <p class="text-sm font-medium text-slate-700 dark:text-slate-300">اضغط على زر المعاينة</p>
-        <p class="text-xs text-slate-400 mt-1">لعرض محتوى الملف</p>
-        <button @click="loadPreview({{ file.id }})"
-                class="mt-4 btn-primary text-xs py-1.5 px-4">
-          👁️ معاينة الملف
-        </button>
-      </div>
-    </template>
-    
     </div>
     
   </div>
@@ -836,54 +636,47 @@
      ============================================================ -->
 
 <script>
-// ===== TOAST MANAGER =====
+// ===== TOAST MANAGER - مبسط وغير مزعج =====
 function toastManager() {
   return {
     toasts: [],
     idCounter: 0,
     
     init() {
-      window.showToast = this.showToast.bind(this);
-      window.showSuccess = (title, message) => this.showToast('success', title, message);
-      window.showError = (title, message) => this.showToast('error', title, message);
-      window.showWarning = (title, message) => this.showToast('warning', title, message);
-      window.showInfo = (title, message) => this.showToast('info', title, message);
-      window.showLoading = (title, message) => this.showToast('loading', title, message, false);
-      window.updateToast = this.updateToast.bind(this);
-      window.removeToastById = this.removeToastById.bind(this);
+      // فقط نوفر دوال للخطأ والتحذير والمعلومات الهامة
+      window.showError = (message) => {
+        this.addToast('error', message);
+      };
+      window.showWarning = (message) => {
+        this.addToast('warning', message);
+      };
+      window.showInfo = (message) => {
+        this.addToast('info', message);
+      };
+      window.showSuccess = (message) => {
+        this.addToast('success', message);
+      };
+      // إزالة دوال التحميل المزعجة
     },
     
-    showToast(type, title, message, autoClose = true) {
+    addToast(type, message) {
       const id = ++this.idCounter;
       const toast = {
         id,
         type,
-        title,
         message,
         visible: true,
-        timeout: null
-      };
-      
-      this.toasts.push(toast);
-      
-      if (autoClose && type !== 'loading') {
-        const duration = type === 'success' ? 3000 : 
-                        type === 'error' ? 5000 : 
-                        type === 'warning' ? 4000 : 3000;
-        toast.timeout = setTimeout(() => {
+        timeout: setTimeout(() => {
           this.removeToast(this.toasts.indexOf(toast));
-        }, duration);
-      }
-      
-      return id;
+        }, 4000)
+      };
+      this.toasts.push(toast);
     },
     
     removeToast(index) {
       if (index === -1) return;
       const toast = this.toasts[index];
-      if (toast && toast.timeout) {
-        clearTimeout(toast.timeout);
-      }
+      if (toast?.timeout) clearTimeout(toast.timeout);
       if (toast) {
         toast.visible = false;
         setTimeout(() => {
@@ -907,23 +700,73 @@ function toastManager() {
       setTimeout(() => {
         this.toasts = [];
       }, 300);
+    }
+  };
+}
+
+// ===== PREVIEW MANAGER - مدير المعاينة المحسّن =====
+function previewManager(fileId) {
+  return {
+    data: null,
+    loading: false,
+    error: null,
+    
+    init() {
+      // تحميل تلقائي عند فتح الملف
+      this.loadPreview();
+      
+      // الاستماع لتحديثات المعاينة
+      window.addEventListener('preview-update', (e) => {
+        if (e.detail?.fileId === fileId) {
+          this.loadPreview();
+        }
+      });
+      
+      // ربط الدالة بالعالمية لتحديث المعاينة من الخارج
+      window.refreshPreview = (id) => {
+        if (id === fileId) {
+          this.loadPreview();
+        }
+      };
     },
     
-    updateToast(id, type, title, message, autoClose = true) {
-      const toast = this.toasts.find(t => t.id === id);
-      if (toast) {
-        if (toast.timeout) clearTimeout(toast.timeout);
-        toast.type = type;
-        toast.title = title;
-        toast.message = message;
+    async loadPreview() {
+      if (this.loading) return;
+      
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await fetch(`/api/files/${fileId}/preview`);
         
-        if (autoClose && type !== 'loading') {
-          const duration = type === 'success' ? 3000 : 
-                          type === 'error' ? 5000 : 4000;
-          toast.timeout = setTimeout(() => {
-            this.removeToast(this.toasts.indexOf(toast));
-          }, duration);
+        if (!response.ok) {
+          // محاولة قراءة رسالة الخطأ
+          let errorMsg = `خطأ ${response.status}`;
+          try {
+            const errData = await response.json();
+            errorMsg = errData.error || errData.message || errorMsg;
+          } catch(e) {}
+          throw new Error(errorMsg);
         }
+        
+        const result = await response.json();
+        this.data = result;
+        
+        // إظهار رسالة فقط إذا لم توجد بيانات
+        if (!result.rows || result.rows.length === 0) {
+          this.error = 'الملف فارغ أو لا يحتوي على بيانات قابلة للعرض';
+        }
+        
+      } catch (err) {
+        console.error('Preview error:', err);
+        this.error = err.message || 'فشل تحميل المعاينة';
+        
+        // إشعار خطأ فقط
+        if (window.showError) {
+          window.showError(this.error);
+        }
+      } finally {
+        this.loading = false;
       }
     }
   };
@@ -972,7 +815,7 @@ function fileViewer(fileId) {
         this.fileExists = data.exists;
         
         if (!this.fileExists) {
-          window.showWarning('⚠️ ملف مفقود', 'الملف غير موجود فعلياً على الخادم. قد يكون قد تم حذفه.');
+          window.showWarning('⚠️ الملف غير موجود على الخادم');
         }
       } catch (error) {
         // افتراض أن الملف موجود في حالة خطأ في الاتصال
@@ -987,44 +830,33 @@ function fileViewer(fileId) {
       this.isPreviewing = true;
       
       try {
-        // إرسال حدث لتحديث المعاينة
+        // إرسال حدث تحديث فقط
         window.dispatchEvent(new CustomEvent('preview-update', {
           detail: { fileId: id }
         }));
-        
-        // إظهار رسالة جاري التحميل
-        const loadingId = window.showLoading(
-          '⏳ جاري تحميل المعاينة',
-          'جاري تحميل محتوى الملف...'
-        );
-        
-        // تحميل المعاينة عبر API
-        const response = await fetch(`/api/files/${id}/preview`);
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'فشل تحميل المعاينة');
-        }
-        
-        // تحديث رسالة التحميل إلى نجاح
-        window.updateToast(loadingId, 'success',
-          '✅ تم تحميل المعاينة',
-          `تم عرض ${data.rows ? data.rows.length : 0} صف من الملف`
-        );
         
         // تحديث حالة وجود الملف
         this.fileExists = true;
         
       } catch (error) {
-        window.showError('❌ فشل المعاينة', error.message);
-        
-        // التحقق مما إذا كان الخطأ بسبب فقدان الملف
-        if (error.message.includes('No such file') || error.message.includes('not found')) {
-          this.fileExists = false;
+        // إشعار خطأ فقط
+        if (window.showError) {
+          window.showError(error.message || 'فشل تحميل المعاينة');
         }
-        
       } finally {
         this.isPreviewing = false;
+      }
+    },
+    
+    // ===== REFRESH PREVIEW =====
+    refreshPreview(id) {
+      if (window.refreshPreview) {
+        window.refreshPreview(id);
+      } else {
+        // إرسال حدث تحديث كبديل
+        window.dispatchEvent(new CustomEvent('preview-update', {
+          detail: { fileId: id }
+        }));
       }
     },
     
@@ -1032,11 +864,6 @@ function fileViewer(fileId) {
     toggleFavorite(id) {
       const newState = !this.isFavorite;
       const action = newState ? 'إضافة' : 'إزالة';
-      
-      const loadingId = window.showLoading(
-        `⏳ ${action} من المفضلة`,
-        'جاري تحديث المفضلة...'
-      );
       
       this.isFavorite = newState;
       
@@ -1054,17 +881,12 @@ function fileViewer(fileId) {
         window.dispatchEvent(new CustomEvent('favorite-updated', {
           detail: { fileId: id, isFavorite: data.is_favorite }
         }));
-        window.updateToast(loadingId, 'success',
-          `✅ ${action === 'إضافة' ? 'تمت الإضافة' : 'تمت الإزالة'} بنجاح`,
-          `تم ${action === 'إضافة' ? 'إضافة' : 'إزالة'} الملف ${action === 'إضافة' ? 'إلى' : 'من'} المفضلة`
-        );
+        // إشعار نجاح فقط
+        window.showSuccess(`✅ تم ${action === 'إضافة' ? 'إضافة' : 'إزالة'} الملف ${action === 'إضافة' ? 'إلى' : 'من'} المفضلة`);
       })
       .catch((err) => {
         this.isFavorite = !newState;
-        window.updateToast(loadingId, 'error',
-          '❌ فشل تحديث المفضلة',
-          err.message || 'حدث خطأ غير متوقع'
-        );
+        window.showError(`❌ فشل تحديث المفضلة: ${err.message}`);
       });
     },
     
@@ -1072,30 +894,22 @@ function fileViewer(fileId) {
     startAnalysis() {
       if (this.isAnalyzing) return;
       if (!this.fileExists) {
-        window.showError('❌ لا يمكن التحليل', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        window.showError('❌ الملف غير موجود، يرجى إعادة تحميله');
         return;
       }
       
       this.isAnalyzing = true;
-      
-      const loadingId = window.showLoading(
-        '⏳ جاري تحليل الملف',
-        'يرجى الانتظار، هذا قد يستغرق بضع ثوانٍ...'
-      );
       
       fetch(`/api/v1/intelligence/analyze/${fileId}`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
       .then(r => {
-        if (!r.ok) throw new Error(`خطأ في الخادم: ${r.status}`);
+        if (!r.ok) throw new Error(`خطأ ${r.status}`);
         return r.json();
       })
       .then(d => {
-        window.updateToast(loadingId, 'info',
-          '🔄 جاري المعالجة',
-          'تم بدء تحليل الملف بنجاح، جاري استخراج المعلومات...'
-        );
+        window.showInfo('🔄 جاري تحليل الملف...');
         
         if (window.analysisComponent) {
           window.analysisComponent.analysisId = d.analysis_id;
@@ -1103,14 +917,9 @@ function fileViewer(fileId) {
           window.analysisComponent.polling = true;
           window.analysisComponent.pollStatus();
         }
-        
-        // لا نقوم بتحديث حالة isAnalyzing هنا، ينتظر اكتمال التحليل
       })
       .catch((err) => {
-        window.updateToast(loadingId, 'error',
-          '❌ فشل تحليل الملف',
-          err.message || 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.'
-        );
+        window.showError(`❌ فشل تحليل الملف: ${err.message}`);
         this.isAnalyzing = false;
         if (window.analysisComponent) {
           window.analysisComponent.status = 'error';
@@ -1122,7 +931,7 @@ function fileViewer(fileId) {
     convertFile(id, format) {
       if (this.isConverting) return;
       if (!this.fileExists) {
-        window.showError('❌ لا يمكن التحويل', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        window.showError('❌ الملف غير موجود، يرجى إعادة تحميله');
         return;
       }
       
@@ -1137,10 +946,7 @@ function fileViewer(fileId) {
       };
       const formatName = formatNames[format] || format.toUpperCase();
       
-      const loadingId = window.showLoading(
-        '⏳ جاري التحويل',
-        `جاري تحويل الملف إلى ${formatName}...`
-      );
+      window.showInfo(`🔄 جاري تحويل الملف إلى ${formatName}...`);
       
       fetch(`/files/${id}/convert`, {
         method: 'POST',
@@ -1148,15 +954,12 @@ function fileViewer(fileId) {
         body: JSON.stringify({ target_format: format })
       })
       .then(r => {
-        if (!r.ok) throw new Error(`خطأ في الخادم: ${r.status}`);
+        if (!r.ok) throw new Error(`خطأ ${r.status}`);
         return r.json();
       })
       .then(data => {
         if (data.success) {
-          window.updateToast(loadingId, 'success',
-            '✅ تم التحويل بنجاح',
-            `تم تحويل الملف إلى ${formatName}`
-          );
+          window.showSuccess(`✅ تم تحويل الملف إلى ${formatName}`);
           if (data.download_url) {
             setTimeout(() => {
               window.location.href = data.download_url;
@@ -1168,10 +971,7 @@ function fileViewer(fileId) {
         this.isConverting = false;
       })
       .catch((err) => {
-        window.updateToast(loadingId, 'error',
-          '❌ فشل التحويل',
-          err.message || 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.'
-        );
+        window.showError(`❌ فشل التحويل: ${err.message}`);
         this.isConverting = false;
       });
     },
@@ -1180,34 +980,28 @@ function fileViewer(fileId) {
     cleanFile(id) {
       if (this.isCleaning) return;
       if (!this.fileExists) {
-        window.showError('❌ لا يمكن التنظيف', 'الملف غير موجود فعلياً. يرجى إعادة تحميل الملف.');
+        window.showError('❌ الملف غير موجود، يرجى إعادة تحميله');
         return;
       }
       
       this.isCleaning = true;
       
-      const loadingId = window.showLoading(
-        '🧹 جاري تنظيف البيانات',
-        'جاري تنظيف الملف... قد يستغرق هذا بعض الوقت.'
-      );
+      window.showInfo('🧹 جاري تنظيف البيانات...');
       
       fetch(`/files/${id}/clean`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
       .then(r => {
-        if (!r.ok) throw new Error(`خطأ في الخادم: ${r.status}`);
+        if (!r.ok) throw new Error(`خطأ ${r.status}`);
         return r.json();
       })
       .then(data => {
         if (data.success) {
-          window.updateToast(loadingId, 'success',
-            '✅ تم التنظيف بنجاح',
-            `تم تنظيف الملف. ${data.rows_cleaned || ''} صف تمت معالجته.`
-          );
+          window.showSuccess(`✅ تم تنظيف الملف بنجاح`);
           // تحديث المعاينة بعد التنظيف
           setTimeout(() => {
-            this.previewFile(id);
+            this.refreshPreview(id);
           }, 500);
         } else {
           throw new Error(data.message || 'فشل تنظيف الملف');
@@ -1215,10 +1009,7 @@ function fileViewer(fileId) {
         this.isCleaning = false;
       })
       .catch((err) => {
-        window.updateToast(loadingId, 'error',
-          '❌ فشل التنظيف',
-          err.message || 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.'
-        );
+        window.showError(`❌ فشل التنظيف: ${err.message}`);
         this.isCleaning = false;
       });
     },
@@ -1234,25 +1025,17 @@ function fileViewer(fileId) {
       
       this.isDeleting = true;
       
-      const loadingId = window.showLoading(
-        '⏳ جاري الحذف',
-        `جاري حذف الملف...`
-      );
-      
       fetch(`/files/${id}/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
       .then(r => {
-        if (!r.ok) throw new Error(`خطأ في الخادم: ${r.status}`);
+        if (!r.ok) throw new Error(`خطأ ${r.status}`);
         return r.json();
       })
       .then(data => {
         if (data.success) {
-          window.updateToast(loadingId, 'success',
-            '✅ تم الحذف بنجاح',
-            `تم حذف الملف`
-          );
+          window.showSuccess('✅ تم حذف الملف بنجاح');
           setTimeout(() => {
             window.location.reload();
           }, 1500);
@@ -1262,10 +1045,7 @@ function fileViewer(fileId) {
         this.isDeleting = false;
       })
       .catch((err) => {
-        window.updateToast(loadingId, 'error',
-          '❌ فشل حذف الملف',
-          err.message || 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.'
-        );
+        window.showError(`❌ فشل حذف الملف: ${err.message}`);
         this.isDeleting = false;
       });
     },
@@ -1277,7 +1057,7 @@ function fileViewer(fileId) {
       url.searchParams.set('file_id', fileId);
       window.history.pushState({}, '', url);
       
-      window.showInfo('📂 فتح اللوحة', `جاري فتح لوحة ${panel}...`);
+      window.showInfo(`📂 جاري فتح لوحة ${panel}...`);
       
       fetch(`/workspace/panel/${panel}?file_id=${fileId}`)
         .then(r => r.text())
@@ -1288,11 +1068,11 @@ function fileViewer(fileId) {
             if (window.Alpine) {
               window.Alpine.initTree(container);
             }
-            window.showSuccess('✅ تم الفتح', `تم فتح لوحة ${panel} بنجاح`);
+            window.showSuccess(`✅ تم فتح لوحة ${panel} بنجاح`);
           }
         })
         .catch((err) => {
-          window.showError('❌ فشل الفتح', err.message || 'حدث خطأ غير متوقع');
+          window.showError(`❌ فشل الفتح: ${err.message}`);
         });
     }
   };
