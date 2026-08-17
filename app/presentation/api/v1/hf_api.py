@@ -46,10 +46,6 @@ class ChatRequest(BaseModel):
     model_id: int | None = None          # override auto-selected model
 
 
-class SpeechToTextRequest(BaseModel):
-    model_id: int | None = None          # optional: specify ASR model
-
-
 class AvailableModelsResponse(BaseModel):
     models: list[dict]
     default_model_id: int | None = None
@@ -165,7 +161,7 @@ async def list_models_by_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List HF models filtered by task type (question-answering, summarization, speech-to-text, etc.)"""
+    """List HF models filtered by task type."""
     from app.infrastructure.database.models import UserRole
     
     query = select(AIModelRegistry).where(
@@ -200,7 +196,7 @@ async def ask_question(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Answer a question about a file (or any free text context) using a HF model.
+    Answer a question about a file using a HF model.
     Supports task_type: question-answering, text2text-generation.
     """
     model = await _get_model_or_404(body.model_id, db)
@@ -211,7 +207,6 @@ async def ask_question(
     if not model.hf_model_id:
         raise HTTPException(400, "معرّف Hugging Face مفقود لهذا النموذج")
 
-    # Get context text
     context = ""
     if body.analysis_id:
         analysis = await db.get(DocumentAnalysis, body.analysis_id)
@@ -263,7 +258,6 @@ async def summarize_file(
     if not model.hf_model_id:
         raise HTTPException(400, "معرّف Hugging Face مفقود لهذا النموذج")
 
-    # Resolve text
     text = body.text or ""
     if not text and body.analysis_id:
         analysis = await db.get(DocumentAnalysis, body.analysis_id)
@@ -296,7 +290,6 @@ async def chat(
 ):
     """
     Smart chat endpoint — auto-routes to summarization or Q&A based on message intent.
-    Falls back to a helpful message when no models are configured.
     """
     from app.infrastructure.database.models import UserRole
 
@@ -313,10 +306,8 @@ async def chat(
         if model.task_type not in ("question-answering", "text2text-generation", "summarization"):
             return {"ok": False, "error": f"هذا النموذج لا يدعم الدردشة (نوعه: {model.task_type})"}
     else:
-        # Auto-select based on intent
         model = await _get_default_model_for_task(target_task, db)
         if not model:
-            # Try fallback to any chat-capable model
             fallback_tasks = ["question-answering", "text2text-generation", "summarization"]
             for task in fallback_tasks:
                 model = await _get_default_model_for_task(task, db)
@@ -354,7 +345,6 @@ async def chat(
             text=context if is_summarize else None,
         )
         
-        # Extract answer based on task type
         if model.task_type == "summarization":
             answer = result.get("summary") or result.get("answer") or ""
         else:
@@ -383,10 +373,14 @@ async def chat(
         return {"ok": False, "loading": False, "error": "حدث خطأ غير متوقع، يُرجى المحاولة مجدداً."}
 
 
+# ============================================================
+# 🔧 FIXED: Speech-to-Text endpoint with correct FastAPI syntax
+# ============================================================
+
 @router.post("/speech-to-text")
 async def speech_to_text(
-    audio: UploadFile = File(...),
-    model_id: int | None = Form(None),
+    audio: UploadFile = File(...),  # ✅ صحيح: File() بدون وسائط إضافية
+    model_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -402,7 +396,6 @@ async def speech_to_text(
         if model.task_type != "speech-to-text":
             return {"ok": False, "error": f"هذا النموذج لا يدعم تحويل الصوت (نوعه: {model.task_type})"}
     else:
-        # Auto-select: find first active ASR model
         model = await _get_default_model_for_task("speech-to-text", db)
         if not model:
             return {
@@ -426,28 +419,24 @@ async def speech_to_text(
     # 3. Save audio to temp file
     tmp_path = None
     try:
-        # Read audio content
         content = await audio.read()
         if len(content) == 0:
             return {"ok": False, "error": "الملف الصوتي فارغ"}
         
-        # Save to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             tmp_file.write(content)
             tmp_path = tmp_file.name
         
-        # 4. Run ASR using the service
+        # 4. Run ASR
         result = await run_task(
             task_type="speech-to-text",
             hf_model_id=model.hf_model_id,
             audio_path=tmp_path,
         )
         
-        # 5. Extract text from result
         text = result.get("text", "")
         chunks = result.get("chunks", [])
         
-        # If no text, try alternative response format
         if not text and isinstance(result, str):
             text = result
         
@@ -473,78 +462,11 @@ async def speech_to_text(
         logger.error(f"Speech-to-text error: {e}")
         return {"ok": False, "error": f"حدث خطأ أثناء تحويل الصوت: {str(e)}"}
     finally:
-        # Cleanup temp file
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
             except Exception as e:
                 logger.warning(f"Could not delete temp file {tmp_path}: {e}")
-
-
-@router.post("/speech-to-text-bytes")
-async def speech_to_text_bytes(
-    audio_bytes: bytes,
-    model_id: int | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Convert audio bytes to text (alternative endpoint for binary data).
-    """
-    # 1. Select ASR model
-    if model_id:
-        model = await db.get(AIModelRegistry, model_id)
-        if not model or not model.is_active:
-            return {"ok": False, "error": "النموذج غير موجود أو غير مفعّل"}
-        if model.task_type != "speech-to-text":
-            return {"ok": False, "error": f"هذا النموذج لا يدعم تحويل الصوت (نوعه: {model.task_type})"}
-    else:
-        model = await _get_default_model_for_task("speech-to-text", db)
-        if not model:
-            return {
-                "ok": False,
-                "error": "لا توجد نماذج تحويل صوت إلى نص مفعّلة"
-            }
-    
-    if not model.hf_model_id:
-        return {"ok": False, "error": "معرّف Hugging Face مفقود لهذا النموذج"}
-    
-    # 2. Save audio to temp file
-    tmp_path = None
-    try:
-        if len(audio_bytes) == 0:
-            return {"ok": False, "error": "البيانات الصوتية فارغة"}
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_file:
-            tmp_file.write(audio_bytes)
-            tmp_path = tmp_file.name
-        
-        # 3. Run ASR
-        result = await run_task(
-            task_type="speech-to-text",
-            hf_model_id=model.hf_model_id,
-            audio_path=tmp_path,
-        )
-        
-        text = result.get("text", "")
-        if not text and isinstance(result, str):
-            text = result
-        
-        return {
-            "ok": True,
-            "text": text,
-            "model_name": model.name,
-            "model_id": model.id,
-        }
-    except Exception as e:
-        logger.error(f"Speech-to-text bytes error: {e}")
-        return {"ok": False, "error": str(e)}
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
 
 
 @router.get("/extract/{file_id}")
@@ -553,14 +475,14 @@ async def extract_file_text(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Extract and return the raw text content of a file (for preview / context inspection)."""
+    """Extract and return the raw text content of a file."""
     text = await _extract_file_text(file_id, current_user.id, db)
     return {
         "file_id": file_id,
         "text_length": len(text),
         "preview": text[:500] + ("…" if len(text) > 500 else ""),
         "has_text": bool(text.strip()),
-        "full_text": text if len(text) <= 5000 else None,  # Only return full text if small enough
+        "full_text": text if len(text) <= 5000 else None,
     }
 
 
