@@ -11,7 +11,8 @@
         <svg class="w-5 h-5 sm:w-6 sm:h-6 text-brand-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
-        {{ 'البحث الذكي' if mode === 'smart' else 'الدردشة الذكية' }}
+        {# استخدام == بدلاً من === #}
+        <span x-text="mode === 'smart' ? 'البحث الذكي' : 'الدردشة الذكية'"></span>
       </h1>
       <p class="text-xs sm:text-sm text-zinc-400 mt-0.5 hidden sm:block" x-text="mode === 'smart' ? 'اسأل أي سؤال وسيجيبك النظام بناءً على محتوى مستنداتك المعالجة' : 'تحدث مع الذكاء الاصطناعي دون الحاجة إلى مستندات'"></p>
     </div>
@@ -179,7 +180,7 @@
           <template x-if="mode === 'smart' && indexed_count > 0">
             <div>
               <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
-                🤖 مرحباً! لدي {{ indexed_count }} ملف جاهز للبحث
+                🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
               </h3>
               <p class="text-zinc-400 text-sm mb-5 max-w-md">
                 اكتب سؤالك وسأبحث في محتوى مستنداتك لأجد لك الإجابة
