@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 {% block title %}Workspace — Smart Spreadsheet{% endblock %}
 {% block page_title %}{% endblock %}
@@ -501,6 +500,7 @@ function workspace() {
     selectedFileName: '',
     filePanelOpen: true,
     fileSearch: '',
+    isDeleting: false,
 
     init() {
       {% if open_file_id %}
@@ -542,23 +542,108 @@ function workspace() {
     },
 
 
-    openPanel(tab, fileId, fileName) {
-      if (fileId) {
-        this.selectedFileId = fileId;
-        this.selectedFileName = fileName || '';
-      }
-
-      this.activeTab = tab;
-      this._loadPanel(tab, fileId);
-    },
-
-
     clearFile() {
       this.selectedFileId = null;
       this.selectedFileName = '';
       this.activeTab = 'home';
 
       this._loadPanel('home');
+    },
+
+
+    async deleteFile(fileId, fileName) {
+      // منع النقر المتكرر
+      if (this.isDeleting) return;
+      
+      // تأكيد الحذف
+      if (!confirm(`هل أنت متأكد من حذف الملف "${fileName || 'غير معروف'}"؟`)) {
+        return;
+      }
+
+      this.isDeleting = true;
+
+      // إظهار حالة التحميل على الزر (اختياري)
+      const deleteBtn = document.querySelector(`[data-delete-btn="${fileId}"]`);
+      if (deleteBtn) {
+        deleteBtn.classList.add('opacity-50', 'pointer-events-none');
+        deleteBtn.innerHTML = `
+          <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        `;
+      }
+
+      try {
+        const response = await fetch(`/files/delete/${fileId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `فشل الحذف (${response.status})`);
+        }
+
+        // إذا كان الملف المحذوف هو الملف المحدد حالياً
+        if (this.selectedFileId === fileId) {
+          this.clearFile();
+        }
+
+        // إعادة تحميل قائمة الملفات
+        await htmx.ajax('GET', '/workspace/panel/files', {
+          target: '#file-list-container',
+          swap: 'innerHTML'
+        });
+
+        // إظهار رسالة نجاح
+        this._showToast('تم حذف الملف بنجاح ✓', 'success');
+
+      } catch (error) {
+        console.error('Delete failed:', error);
+        this._showToast(error.message || 'فشل حذف الملف', 'error');
+      } finally {
+        this.isDeleting = false;
+        
+        // استعادة الزر
+        if (deleteBtn) {
+          deleteBtn.classList.remove('opacity-50', 'pointer-events-none');
+          deleteBtn.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          `;
+        }
+      }
+    },
+
+
+    _showToast(message, type = 'info') {
+      // إزالة أي توست موجود
+      const oldToast = document.querySelector('.custom-toast');
+      if (oldToast) oldToast.remove();
+
+      // إنشاء عنصر التوست
+      const toast = document.createElement('div');
+      toast.className = `custom-toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 transform translate-y-0 ${
+        type === 'success' 
+          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' 
+          : type === 'error'
+          ? 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+          : 'bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
+      }`;
+      toast.textContent = message;
+
+      document.body.appendChild(toast);
+
+      // إخفاء التوست بعد 3 ثواني
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(1rem)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
     },
 
 
@@ -608,10 +693,6 @@ function workspace() {
 
       if (!panel) return;
 
-      /*
-       * Subtle loading state.
-       * Keeps the workspace visually stable while HTMX loads.
-       */
       panel.classList.add(
         'opacity-60',
         'pointer-events-none',
@@ -635,6 +716,7 @@ function workspace() {
           'opacity-60',
           'pointer-events-none'
         );
+        this._showToast('فشل تحميل المحتوى', 'error');
       });
     },
 
@@ -679,6 +761,7 @@ function workspace() {
       if (status) {
         status.textContent =
           `جارٍ رفع ${files.length} ملف…`;
+        status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-400';
       }
 
       try {
@@ -689,15 +772,14 @@ function workspace() {
               method: 'POST',
               body: formData,
               headers: {
-                'HX-Request': 'true'
+                'X-Requested-With': 'XMLHttpRequest'
               }
             }
           );
 
         if (!res.ok) {
-          throw new Error(
-            `Upload failed: ${res.status}`
-          );
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.message || `فشل الرفع (${res.status})`);
         }
 
         await res.text();
@@ -714,25 +796,40 @@ function workspace() {
         if (status) {
           status.textContent =
             files.length === 1
-              ? 'تم رفع الملف ✓'
-              : `تم رفع ${files.length} ملفات ✓`;
+              ? '✅ تم رفع الملف'
+              : `✅ تم رفع ${files.length} ملفات`;
+          status.className = 'h-4 mt-1.5 text-[10px] text-center text-emerald-600 dark:text-emerald-400';
 
           setTimeout(() => {
             status.textContent = '';
+            status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-400';
           }, 3000);
         }
 
-      } catch (error) {
+        this._showToast(
+          files.length === 1 
+            ? 'تم رفع الملف بنجاح ✓' 
+            : `تم رفع ${files.length} ملفات بنجاح ✓`,
+          'success'
+        );
 
+      } catch (error) {
         console.error(
           'File upload failed:',
           error
         );
 
         if (status) {
-          status.textContent =
-            'فشل رفع الملف';
+          status.textContent = '❌ فشل رفع الملف';
+          status.className = 'h-4 mt-1.5 text-[10px] text-center text-red-600 dark:text-red-400';
+
+          setTimeout(() => {
+            status.textContent = '';
+            status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-400';
+          }, 3000);
         }
+
+        this._showToast(error.message || 'فشل رفع الملف', 'error');
 
       } finally {
         e.target.value = '';
