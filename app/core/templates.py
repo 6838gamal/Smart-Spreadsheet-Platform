@@ -25,6 +25,7 @@ DEFAULT_TRANSLATIONS = {
     'ar': {
         # Auth
         'login': 'تسجيل الدخول',
+        'login_heading': 'تسجيل الدخول',
         'logout': 'تسجيل الخروج',
         'register': 'إنشاء حساب',
         'email': 'البريد الإلكتروني',
@@ -40,6 +41,17 @@ DEFAULT_TRANSLATIONS = {
         'create_account': 'إنشاء حساب جديد',
         'already_have_account': 'لديك حساب بالفعل؟',
         'dont_have_account': 'ليس لديك حساب؟',
+        'sign_in_to_continue': 'سجل الدخول للمتابعة',
+        'or_continue_with': 'أو تابع باستخدام',
+        'sign_in_with_google': 'تسجيل الدخول عبر جوجل',
+        'switch_lang': 'English',
+        'subtitle_login': 'تسجيل الدخول إلى منصة الجداول الذكية',
+        'admin_login': 'دخول الإدارة',
+        'admin_only': 'للمسؤولين فقط',
+        'back_to_client_login': 'العودة إلى تسجيل دخول العميل',
+        'email_placeholder': 'example@email.com',
+        'password_placeholder': '••••••••',
+        'logout_success': 'تم تسجيل الخروج بنجاح',
         
         # Files
         'files': 'الملفات',
@@ -112,6 +124,11 @@ DEFAULT_TRANSLATIONS = {
         'passwords_mismatch': 'كلمات المرور غير متطابقة',
         'password_reset_sent': 'تم إرسال رابط إعادة التعيين',
         'session_expired': 'انتهت صلاحية الجلسة',
+        'state_mismatch': 'انتهت صلاحية جلسة تسجيل الدخول. حاول مجدداً.',
+        'google_not_configured': 'تسجيل الدخول عبر جوجل غير مفعّل.',
+        'access_denied': 'تم رفض الإذن من جوجل. حاول مجدداً.',
+        'invalid_request': 'طلب غير صالح. حاول مجدداً.',
+        'no_token': 'يرجى تسجيل الدخول للمتابعة.',
         
         # Languages
         'arabic': 'العربية',
@@ -165,6 +182,7 @@ DEFAULT_TRANSLATIONS = {
     'en': {
         # Auth
         'login': 'Login',
+        'login_heading': 'Login',
         'logout': 'Logout',
         'register': 'Register',
         'email': 'Email',
@@ -180,6 +198,17 @@ DEFAULT_TRANSLATIONS = {
         'create_account': 'Create Account',
         'already_have_account': 'Already have an account?',
         'dont_have_account': "Don't have an account?",
+        'sign_in_to_continue': 'Sign in to continue',
+        'or_continue_with': 'Or continue with',
+        'sign_in_with_google': 'Sign in with Google',
+        'switch_lang': 'العربية',
+        'subtitle_login': 'Login to Smart Spreadsheet Platform',
+        'admin_login': 'Admin Login',
+        'admin_only': 'For Administrators Only',
+        'back_to_client_login': 'Back to Client Login',
+        'email_placeholder': 'example@email.com',
+        'password_placeholder': '••••••••',
+        'logout_success': 'Logged out successfully',
         
         # Files
         'files': 'Files',
@@ -252,6 +281,11 @@ DEFAULT_TRANSLATIONS = {
         'passwords_mismatch': 'Passwords do not match',
         'password_reset_sent': 'Password reset link sent',
         'session_expired': 'Session expired',
+        'state_mismatch': 'Login session expired. Please try again.',
+        'google_not_configured': 'Google login is not configured.',
+        'access_denied': 'Access denied from Google. Please try again.',
+        'invalid_request': 'Invalid request. Please try again.',
+        'no_token': 'Please login to continue.',
         
         # Languages
         'arabic': 'Arabic',
@@ -647,13 +681,21 @@ class CustomTemplates(Jinja2Templates):
             directory: Templates directory path
             auto_reload: Auto reload templates in development
         """
-        super().__init__(directory=directory, auto_reload=auto_reload)
+        # ✅ إصلاح: إزالة auto_reload من super()
+        super().__init__(directory=directory)
+        
+        # ✅ تعيين auto_reload يدوياً إذا كان مدعوماً
+        try:
+            if hasattr(self.env, 'auto_reload'):
+                self.env.auto_reload = auto_reload
+        except Exception as e:
+            logger.warning(f"Could not set auto_reload: {e}")
         
         self._add_filters()
         self._add_globals()
         self._add_tests()
         
-        logger.info("✅ Custom templates initialized with full l10n support")
+        logger.info("✅ Custom templates initialized successfully")
     
     def _add_filters(self):
         """Add custom filters to the environment."""
@@ -685,6 +727,7 @@ class CustomTemplates(Jinja2Templates):
             'get_language_direction': get_language_direction,
             'get_supported_languages': get_supported_languages,
             'is_rtl_language': is_rtl_language,
+            'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
             
             # JSON
             'json_dumps': lambda v, **kwargs: json.dumps(v, ensure_ascii=False, **kwargs),
@@ -769,6 +812,7 @@ class CustomTemplates(Jinja2Templates):
             'get_language_direction': get_language_direction,
             'get_supported_languages': get_supported_languages,
             'is_rtl_language': is_rtl_language,
+            'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
         }
         
         # Merge with provided context (provided context takes precedence)
@@ -805,10 +849,15 @@ def get_templates(template_dir: str = "templates") -> CustomTemplates:
     """
     template_path = Path(template_dir)
     if not template_path.exists():
-        logger.warning(f"Templates directory not found: {template_dir}")
+        logger.warning(f"⚠️ Templates directory not found: {template_dir}")
         template_path.mkdir(parents=True, exist_ok=True)
     
-    return CustomTemplates(directory=template_dir)
+    try:
+        return CustomTemplates(directory=template_dir)
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize custom templates: {e}")
+        # Fallback to default Jinja2Templates
+        return Jinja2Templates(directory=template_dir)
 
 
 # Create global templates instance
