@@ -1038,296 +1038,10 @@
 </div>
 
 <!-- ============================================================
-     STYLES
-     ============================================================ -->
-
-<style>
-/* Card base */
-.wizard-card {
-  @apply bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm;
-}
-
-.wizard-header {
-  @apply w-full flex items-center gap-3 p-3 sm:p-4 transition-colors text-left;
-}
-
-.wizard-header:not(.cursor-default):hover {
-  @apply bg-slate-50 dark:bg-slate-800/30;
-}
-
-.wizard-number {
-  @apply w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all flex-shrink-0;
-}
-
-.wizard-number-active {
-  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
-}
-
-.wizard-number-done {
-  @apply bg-emerald-500 text-white;
-}
-
-.wizard-number-success {
-  @apply bg-emerald-500 text-white;
-}
-
-.wizard-number-locked {
-  @apply bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500;
-}
-
-.wizard-body {
-  @apply px-3 pb-4 sm:px-4 sm:pb-5;
-}
-
-.wizard-connector {
-  @apply w-0.5 h-5 mx-auto transition-colors duration-300;
-}
-
-.wizard-connector-active {
-  @apply bg-brand-400 dark:bg-brand-500;
-}
-
-/* File cards */
-.file-card {
-  @apply w-full flex items-center gap-3 p-2.5 rounded-lg transition-all border-2 border-transparent;
-}
-
-.file-card:hover {
-  @apply bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700;
-}
-
-.file-card-selected {
-  @apply bg-brand-50 dark:bg-brand-900/20 border-brand-300 dark:border-brand-600;
-}
-
-.file-icon {
-  @apply w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0;
-}
-
-.file-check {
-  @apply w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center transition-all;
-}
-
-/* Format cards */
-.format-card {
-  @apply flex items-center gap-2.5 p-2.5 rounded-lg border-2 transition-all text-left;
-  @apply border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600;
-  @apply bg-white dark:bg-slate-800/50;
-}
-
-.format-card-selected {
-  @apply border-brand-500 dark:border-brand-400 bg-brand-50 dark:bg-brand-900/20;
-}
-
-.format-icon {
-  @apply w-7 h-7 rounded-lg flex items-center justify-center text-xs flex-shrink-0;
-}
-
-.format-selected-check {
-  @apply w-4 h-4 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0;
-}
-
-/* Convert button */
-.convert-button {
-  @apply w-full py-3 px-4 rounded-xl font-bold text-white text-sm transition-all;
-  @apply bg-gradient-to-r from-brand-500 to-violet-500 hover:from-brand-600 hover:to-violet-600;
-  @apply disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
-.convert-button-loading {
-  @apply opacity-80 cursor-wait;
-}
-
-/* Progress */
-.progress-card {
-  @apply bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-slate-700/50 space-y-4;
-}
-
-.progress-track {
-  @apply w-full h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700;
-}
-
-.progress-fill {
-  @apply h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500 relative;
-}
-
-.progress-shimmer {
-  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer;
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-.progress-percent {
-  @apply text-xl font-bold text-brand-600 dark:text-brand-400 flex items-end gap-0.5;
-}
-
-.progress-spinner-wrapper {
-  @apply w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0;
-}
-
-.progress-spinner {
-  @apply w-6 h-6 text-brand-500 animate-spin;
-}
-
-.progress-current-stage {
-  @apply flex items-center gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/50;
-}
-
-.stage-pulse {
-  @apply w-2 h-2 rounded-full bg-brand-500 animate-pulse flex-shrink-0;
-}
-
-.progress-stages {
-  @apply flex items-center justify-between gap-1 pt-1;
-}
-
-.progress-stage {
-  @apply flex flex-col items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 transition-colors flex-1;
-}
-
-.progress-stage.active {
-  @apply text-brand-600 dark:text-brand-400;
-}
-
-.progress-stage.done {
-  @apply text-emerald-500 dark:text-emerald-400;
-}
-
-.stage-dot {
-  @apply w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold transition-all;
-  @apply bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400;
-}
-
-.progress-stage.active .stage-dot {
-  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
-}
-
-.progress-stage.done .stage-dot {
-  @apply bg-emerald-500 text-white;
-}
-
-.stage-line {
-  @apply flex-1 h-0.5 bg-slate-200 dark:bg-slate-700;
-}
-
-.progress-stage.done + .stage-line {
-  @apply bg-emerald-400 dark:bg-emerald-500;
-}
-
-/* Success */
-.success-card {
-  @apply bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/50 overflow-hidden;
-}
-
-.success-header {
-  @apply flex items-center gap-3 p-4 bg-emerald-100/50 dark:bg-emerald-800/20;
-}
-
-.success-icon {
-  @apply w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white;
-}
-
-.success-body {
-  @apply p-4 space-y-3;
-}
-
-.stat-card {
-  @apply bg-white dark:bg-slate-800/50 rounded-lg p-2.5 text-center border border-emerald-200/50 dark:border-emerald-700/30;
-}
-
-.stat-value {
-  @apply text-sm font-bold text-emerald-700 dark:text-emerald-300;
-}
-
-.stat-label {
-  @apply text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5;
-}
-
-.download-button {
-  @apply flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-all;
-  @apply bg-emerald-600 hover:bg-emerald-700 text-white;
-}
-
-.new-conversion-button {
-  @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
-  @apply text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50;
-}
-
-/* Error */
-.error-card {
-  @apply bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-700/50 p-4 space-y-3;
-}
-
-.error-icon {
-  @apply w-8 h-8 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 text-white;
-}
-
-.retry-button {
-  @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
-  @apply bg-red-100 dark:bg-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/50;
-}
-
-/* Empty state */
-.empty-state {
-  @apply flex flex-col items-center justify-center py-6;
-}
-
-.empty-icon {
-  @apply w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center text-2xl;
-}
-
-/* Ready summary */
-.ready-summary {
-  @apply flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-700/50;
-}
-
-.ready-file {
-  @apply flex items-center gap-3 flex-1 min-w-0;
-}
-
-.ready-file-icon {
-  @apply w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-sm flex-shrink-0;
-}
-
-.ready-arrow {
-  @apply text-slate-400 dark:text-slate-500 flex-shrink-0;
-}
-
-.ready-target {
-  @apply flex items-center gap-2 flex-shrink-0;
-}
-
-/* Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 dark:bg-slate-600 rounded-full;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-400 dark:bg-slate-500;
-}
-</style>
-
-<!-- ============================================================
      ALPINE.JS
      ============================================================ -->
 
 <script>
-
 function convertWizard() {
 
   return {
@@ -1405,6 +1119,7 @@ function convertWizard() {
       const formats = {{ export_formats | tojson }};
       console.log('📋 export_formats from server:', formats);
 
+      // ✅ إذا كان هناك ملف محدد، انتقل إلى الخطوة 2
       if (this.fileId) {
         this.step = 2;
         this.targetFormat = this.getDefaultTargetFormat();
@@ -1463,12 +1178,12 @@ function convertWizard() {
       this.fileId = id;
       this.fileName = name;
       this.fileFormat = format;
-      
+
       if (!this.targetFormat) {
         this.targetFormat = this.getDefaultTargetFormat();
         console.log('🔄 Set default target format:', this.targetFormat);
       }
-      
+
       this.convStatus = 'idle';
       this.currentPct = 0;
       this.progressMsg = '';
@@ -1901,5 +1616,289 @@ function convertWizard() {
   };
 
 }
-
 </script>
+
+<!-- ============================================================
+     STYLES
+     ============================================================ -->
+
+<style>
+/* Card base */
+.wizard-card {
+  @apply bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm;
+}
+
+.wizard-header {
+  @apply w-full flex items-center gap-3 p-3 sm:p-4 transition-colors text-left;
+}
+
+.wizard-header:not(.cursor-default):hover {
+  @apply bg-slate-50 dark:bg-slate-800/30;
+}
+
+.wizard-number {
+  @apply w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all flex-shrink-0;
+}
+
+.wizard-number-active {
+  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
+}
+
+.wizard-number-done {
+  @apply bg-emerald-500 text-white;
+}
+
+.wizard-number-success {
+  @apply bg-emerald-500 text-white;
+}
+
+.wizard-number-locked {
+  @apply bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500;
+}
+
+.wizard-body {
+  @apply px-3 pb-4 sm:px-4 sm:pb-5;
+}
+
+.wizard-connector {
+  @apply w-0.5 h-5 mx-auto transition-colors duration-300;
+}
+
+.wizard-connector-active {
+  @apply bg-brand-400 dark:bg-brand-500;
+}
+
+/* File cards */
+.file-card {
+  @apply w-full flex items-center gap-3 p-2.5 rounded-lg transition-all border-2 border-transparent;
+}
+
+.file-card:hover {
+  @apply bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700;
+}
+
+.file-card-selected {
+  @apply bg-brand-50 dark:bg-brand-900/20 border-brand-300 dark:border-brand-600;
+}
+
+.file-icon {
+  @apply w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0;
+}
+
+.file-check {
+  @apply w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center transition-all;
+}
+
+/* Format cards */
+.format-card {
+  @apply flex items-center gap-2.5 p-2.5 rounded-lg border-2 transition-all text-left;
+  @apply border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600;
+  @apply bg-white dark:bg-slate-800/50;
+}
+
+.format-card-selected {
+  @apply border-brand-500 dark:border-brand-400 bg-brand-50 dark:bg-brand-900/20;
+}
+
+.format-icon {
+  @apply w-7 h-7 rounded-lg flex items-center justify-center text-xs flex-shrink-0;
+}
+
+.format-selected-check {
+  @apply w-4 h-4 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0;
+}
+
+/* Convert button */
+.convert-button {
+  @apply w-full py-3 px-4 rounded-xl font-bold text-white text-sm transition-all;
+  @apply bg-gradient-to-r from-brand-500 to-violet-500 hover:from-brand-600 hover:to-violet-600;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.convert-button-loading {
+  @apply opacity-80 cursor-wait;
+}
+
+/* Progress */
+.progress-card {
+  @apply bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-slate-700/50 space-y-4;
+}
+
+.progress-track {
+  @apply w-full h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700;
+}
+
+.progress-fill {
+  @apply h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500 relative;
+}
+
+.progress-shimmer {
+  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+.progress-percent {
+  @apply text-xl font-bold text-brand-600 dark:text-brand-400 flex items-end gap-0.5;
+}
+
+.progress-spinner-wrapper {
+  @apply w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0;
+}
+
+.progress-spinner {
+  @apply w-6 h-6 text-brand-500 animate-spin;
+}
+
+.progress-current-stage {
+  @apply flex items-center gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/50;
+}
+
+.stage-pulse {
+  @apply w-2 h-2 rounded-full bg-brand-500 animate-pulse flex-shrink-0;
+}
+
+.progress-stages {
+  @apply flex items-center justify-between gap-1 pt-1;
+}
+
+.progress-stage {
+  @apply flex flex-col items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 transition-colors flex-1;
+}
+
+.progress-stage.active {
+  @apply text-brand-600 dark:text-brand-400;
+}
+
+.progress-stage.done {
+  @apply text-emerald-500 dark:text-emerald-400;
+}
+
+.stage-dot {
+  @apply w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold transition-all;
+  @apply bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400;
+}
+
+.progress-stage.active .stage-dot {
+  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
+}
+
+.progress-stage.done .stage-dot {
+  @apply bg-emerald-500 text-white;
+}
+
+.stage-line {
+  @apply flex-1 h-0.5 bg-slate-200 dark:bg-slate-700;
+}
+
+.progress-stage.done + .stage-line {
+  @apply bg-emerald-400 dark:bg-emerald-500;
+}
+
+/* Success */
+.success-card {
+  @apply bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/50 overflow-hidden;
+}
+
+.success-header {
+  @apply flex items-center gap-3 p-4 bg-emerald-100/50 dark:bg-emerald-800/20;
+}
+
+.success-icon {
+  @apply w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white;
+}
+
+.success-body {
+  @apply p-4 space-y-3;
+}
+
+.stat-card {
+  @apply bg-white dark:bg-slate-800/50 rounded-lg p-2.5 text-center border border-emerald-200/50 dark:border-emerald-700/30;
+}
+
+.stat-value {
+  @apply text-sm font-bold text-emerald-700 dark:text-emerald-300;
+}
+
+.stat-label {
+  @apply text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5;
+}
+
+.download-button {
+  @apply flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-all;
+  @apply bg-emerald-600 hover:bg-emerald-700 text-white;
+}
+
+.new-conversion-button {
+  @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
+  @apply text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50;
+}
+
+/* Error */
+.error-card {
+  @apply bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-700/50 p-4 space-y-3;
+}
+
+.error-icon {
+  @apply w-8 h-8 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 text-white;
+}
+
+.retry-button {
+  @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
+  @apply bg-red-100 dark:bg-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/50;
+}
+
+/* Empty state */
+.empty-state {
+  @apply flex flex-col items-center justify-center py-6;
+}
+
+.empty-icon {
+  @apply w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center text-2xl;
+}
+
+/* Ready summary */
+.ready-summary {
+  @apply flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-700/50;
+}
+
+.ready-file {
+  @apply flex items-center gap-3 flex-1 min-w-0;
+}
+
+.ready-file-icon {
+  @apply w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-sm flex-shrink-0;
+}
+
+.ready-arrow {
+  @apply text-slate-400 dark:text-slate-500 flex-shrink-0;
+}
+
+.ready-target {
+  @apply flex items-center gap-2 flex-shrink-0;
+}
+
+/* Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-600 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
+</style>
