@@ -243,6 +243,7 @@
           {{ t.download or 'تحميل' }}
         </a>
 
+        <!-- ✅ Convert button with proper file_id -->
         <a
           href="/converter?file_id={{ f.id }}"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors font-medium"
@@ -411,15 +412,32 @@ function filesPage() {
         
         await this.updateStats();
         
-        // Show redirect message if single file
-        if (fileList.length === 1) {
-          const redirectMsg = `🔄 ${this.t?.redirecting_to_converter || 'جاري التوجيه إلى المحول…'}`;
-          this.showResult(redirectMsg, 'info');
+        // ✅ Check if redirect is needed (single file uploaded from converter)
+        const hasRedirect = result.html && result.html.includes('window.location.href');
+        
+        if (hasRedirect) {
+          const match = result.html.match(/window\.location\.href\s*=\s*"([^"]+)"/);
+          if (match && match[1]) {
+            const redirectUrl = match[1];
+            console.log('🔄 Redirecting to:', redirectUrl);
+            this.showResult('🔄 ' + (this.t?.redirecting_to_converter || 'جاري التوجيه إلى المحول…'), 'info');
+            setTimeout(() => {
+              window.location.href = redirectUrl;
+            }, 800);
+            return;
+          }
         }
         
-        setTimeout(() => {
-          window.location.reload();
-        }, 600);
+        // If single file and no redirect, reload the page
+        if (fileList.length === 1) {
+          setTimeout(() => {
+            window.location.reload();
+          }, 600);
+        } else {
+          setTimeout(() => {
+            window.location.reload();
+          }, 500);
+        }
 
       } catch (error) {
         console.error('Upload failed:', error);
@@ -505,6 +523,12 @@ function filesPage() {
       } else {
         window.open(`/files/${fileId}/download`, '_blank');
       }
+    },
+
+    // ✅ Fixed: Go to converter with file_id
+    goToConverter(fileId) {
+      console.log('🔄 Going to converter with file_id:', fileId);
+      window.location.href = `/converter?file_id=${fileId}`;
     },
 
     async deleteFile(fileId) {
