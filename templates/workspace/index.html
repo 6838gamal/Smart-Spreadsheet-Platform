@@ -552,29 +552,16 @@ function workspace() {
 
 
     async deleteFile(fileId, fileName) {
-      // منع النقر المتكرر
       if (this.isDeleting) return;
       
-      // تأكيد الحذف
       if (!confirm(`هل أنت متأكد من حذف الملف "${fileName || 'غير معروف'}"؟`)) {
         return;
       }
 
       this.isDeleting = true;
 
-      // إظهار حالة التحميل على الزر (اختياري)
-      const deleteBtn = document.querySelector(`[data-delete-btn="${fileId}"]`);
-      if (deleteBtn) {
-        deleteBtn.classList.add('opacity-50', 'pointer-events-none');
-        deleteBtn.innerHTML = `
-          <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        `;
-      }
-
       try {
-        const response = await fetch(`/files/delete/${fileId}`, {
+        const response = await fetch(`/api/files/${fileId}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -587,18 +574,15 @@ function workspace() {
           throw new Error(errorData.message || `فشل الحذف (${response.status})`);
         }
 
-        // إذا كان الملف المحذوف هو الملف المحدد حالياً
         if (this.selectedFileId === fileId) {
           this.clearFile();
         }
 
-        // إعادة تحميل قائمة الملفات
         await htmx.ajax('GET', '/workspace/panel/files', {
           target: '#file-list-container',
           swap: 'innerHTML'
         });
 
-        // إظهار رسالة نجاح
         this._showToast('تم حذف الملف بنجاح ✓', 'success');
 
       } catch (error) {
@@ -606,26 +590,14 @@ function workspace() {
         this._showToast(error.message || 'فشل حذف الملف', 'error');
       } finally {
         this.isDeleting = false;
-        
-        // استعادة الزر
-        if (deleteBtn) {
-          deleteBtn.classList.remove('opacity-50', 'pointer-events-none');
-          deleteBtn.innerHTML = `
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          `;
-        }
       }
     },
 
 
     _showToast(message, type = 'info') {
-      // إزالة أي توست موجود
       const oldToast = document.querySelector('.custom-toast');
       if (oldToast) oldToast.remove();
 
-      // إنشاء عنصر التوست
       const toast = document.createElement('div');
       toast.className = `custom-toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 transform translate-y-0 ${
         type === 'success' 
@@ -638,7 +610,6 @@ function workspace() {
 
       document.body.appendChild(toast);
 
-      // إخفاء التوست بعد 3 ثواني
       setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transform = 'translateY(1rem)';
@@ -648,9 +619,7 @@ function workspace() {
 
 
     _loadPanel(tab, fileIdOverride) {
-      const fid =
-        fileIdOverride ||
-        this.selectedFileId;
+      const fid = fileIdOverride || this.selectedFileId;
 
       let url;
 
@@ -688,8 +657,7 @@ function workspace() {
           break;
       }
 
-      const panel =
-        document.getElementById('workspace-panel');
+      const panel = document.getElementById('workspace-panel');
 
       if (!panel) return;
 
@@ -722,17 +690,12 @@ function workspace() {
 
 
     filterFiles() {
-      const q =
-        this.fileSearch
-          .toLowerCase()
-          .trim();
+      const q = this.fileSearch.toLowerCase().trim();
 
       document
         .querySelectorAll('[data-file-card]')
         .forEach(el => {
-          const name =
-            (el.dataset.fileName || '')
-              .toLowerCase();
+          const name = (el.dataset.fileName || '').toLowerCase();
 
           el.style.display =
             (!q || name.includes(q))
@@ -755,49 +718,59 @@ function workspace() {
         formData.append('files', file);
       }
 
-      const status =
-        document.getElementById('upload-status');
+      const status = document.getElementById('upload-status');
 
       if (status) {
-        status.textContent =
-          `جارٍ رفع ${files.length} ملف…`;
+        status.textContent = `جارٍ رفع ${files.length} ملف…`;
         status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-400';
       }
 
       try {
-        const res =
-          await fetch(
-            '/files/upload',
-            {
-              method: 'POST',
-              body: formData,
-              headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-              }
-            }
-          );
+        const res = await fetch('/files/upload', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
 
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.message || `فشل الرفع (${res.status})`);
         }
 
-        await res.text();
-
-        htmx.ajax(
-          'GET',
-          '/workspace/panel/files',
-          {
-            target: '#file-list-container',
-            swap: 'innerHTML'
+        const responseText = await res.text();
+        
+        // ✅ Check if redirect is needed (single file uploaded)
+        const hasRedirect = responseText.includes('window.location.href');
+        
+        if (hasRedirect) {
+          const match = responseText.match(/window\.location\.href\s*=\s*"([^"]+)"/);
+          if (match && match[1]) {
+            const redirectUrl = match[1];
+            console.log('🔄 Redirecting to:', redirectUrl);
+            
+            if (status) {
+              status.textContent = '✅ تم رفع الملف — جارٍ التوجيه…';
+              status.className = 'h-4 mt-1.5 text-[10px] text-center text-emerald-600 dark:text-emerald-400';
+            }
+            
+            setTimeout(() => {
+              window.location.href = redirectUrl;
+            }, 500);
+            
+            return;
           }
-        );
+        }
+
+        // ✅ If no redirect, just refresh the file list
+        await htmx.ajax('GET', '/workspace/panel/files', {
+          target: '#file-list-container',
+          swap: 'innerHTML'
+        });
 
         if (status) {
-          status.textContent =
-            files.length === 1
-              ? '✅ تم رفع الملف'
-              : `✅ تم رفع ${files.length} ملفات`;
+          status.textContent = files.length === 1 ? '✅ تم رفع الملف' : `✅ تم رفع ${files.length} ملفات`;
           status.className = 'h-4 mt-1.5 text-[10px] text-center text-emerald-600 dark:text-emerald-400';
 
           setTimeout(() => {
@@ -807,17 +780,12 @@ function workspace() {
         }
 
         this._showToast(
-          files.length === 1 
-            ? 'تم رفع الملف بنجاح ✓' 
-            : `تم رفع ${files.length} ملفات بنجاح ✓`,
+          files.length === 1 ? 'تم رفع الملف بنجاح ✓' : `تم رفع ${files.length} ملفات بنجاح ✓`,
           'success'
         );
 
       } catch (error) {
-        console.error(
-          'File upload failed:',
-          error
-        );
+        console.error('File upload failed:', error);
 
         if (status) {
           status.textContent = '❌ فشل رفع الملف';
