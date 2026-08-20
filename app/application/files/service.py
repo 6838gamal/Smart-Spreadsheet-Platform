@@ -531,7 +531,8 @@ class FileService:
         Returns:
             dict: Sync result
         """
-        updated = 0        errors = 0
+        updated = 0
+        errors = 0
         
         for local_file in local_files:
             try:
