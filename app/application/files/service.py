@@ -7,8 +7,12 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+import aiofiles
+from PIL import Image
+import io
+import tempfile
 
 from app.core.exceptions import NotFoundError, AuthorizationError, ValidationError
 from app.infrastructure.repositories.file_repository import FileRepository
@@ -26,7 +30,7 @@ class FileService:
     File service - stores metadata in PostgreSQL and file bytes in the configured storage backend.
     
     This service provides:
-    - File upload to Supabase Storage
+    - File upload to Supabase Storage with image processing
     - File metadata management in PostgreSQL
     - File content retrieval through temporary processing paths
     - File deletion from Supabase Storage
@@ -58,8 +62,12 @@ class FileService:
             'json', 'xml', 'yaml', 'yml', 'parquet', 'feather', 'arrow',
             'sqlite', 'db', 'sql', 'docx', 'doc', 'pdf', 'pptx', 'odt',
             'html', 'htm', 'md', 'rst', 'jpg', 'jpeg', 'png', 'bmp',
-            'gif', 'webp', 'svg', 'ico', 'zip', 'gz', 'tar', '7z', 'rar'
+            'gif', 'webp', 'svg', 'ico', 'tiff', 'heic',
+            'zip', 'gz', 'tar', '7z', 'rar'
         }
+        
+        # Image formats for special processing
+        self.IMAGE_FORMATS = {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'heic'}
 
     # ============================================================
     # FILE UPLOAD
@@ -85,45 +93,91 @@ class FileService:
         # Validate file
         await self._validate_file(file)
         
-        # Generate stable client/storage key for metadata
+        # Get file extension and check if image
+        file_extension = file.filename.split('.')[-1].lower() if file.filename else ''
+        is_image = file_extension in self.IMAGE_FORMATS or (file.content_type and file.content_type.startswith('image/'))
+        
+        # Read file content
+        try:
+            file_content = await file.read()
+        except Exception as e:
+            logger.error(f"Failed to read file content: {e}")
+            raise ValidationError(f"Failed to read file: {str(e)}")
+        
+        # Process image if needed
+        thumbnail_url = None
+        image_width = None
+        image_height = None
+        
+        if is_image and file_content:
+            try:
+                img = Image.open(io.BytesIO(file_content))
+                image_width, image_height = img.size
+                logger.info(f"Image dimensions: {image_width}x{image_height}")
+                
+                # Create thumbnail
+                thumbnail = img.copy()
+                thumbnail.thumbnail((200, 200), Image.Resampling.LANCZOS)
+                thumbnail_buffer = io.BytesIO()
+                thumbnail.save(thumbnail_buffer, format='WEBP', quality=80)
+                thumbnail_content = thumbnail_buffer.getvalue()
+                
+                # Upload thumbnail to storage
+                thumbnail_filename = f"thumbnails/{user_id}/{hashlib.md5(file_content).hexdigest()[:16]}.webp"
+                thumbnail_meta = await self.storage.save_bytes(thumbnail_filename, thumbnail_content, "image/webp")
+                thumbnail_url = thumbnail_meta.get("url") or thumbnail_meta.get("path")
+                logger.info(f"Thumbnail created: {thumbnail_url}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to process image: {e}")
+                # Continue without thumbnail
+        
+        # Generate storage key
         storage_key = self._generate_storage_key(file.filename, user_id)
         
-        # Get file size
-        file_size = file.size or 0
-        
-        # Save file bytes to configured object storage
+        # Save file to storage
         try:
+            # Reset file position for storage
+            await file.seek(0)
             meta = await self.storage.save_upload(file, user_id)
+            logger.info(f"File saved to storage: {meta.get('path')}")
         except Exception as e:
-            logger.error(f"Failed to save file to server: {e}")
+            logger.error(f"Failed to save file to storage: {e}")
             raise ValidationError(f"Failed to save file: {str(e)}")
         
-        # Create DB record with explicit parameters
+        # Create DB record
         try:
             db_file = await self.file_repo.create(
                 owner_id=user_id,
-                name=meta.get("name"),
-                original_name=meta.get("original_name"),
+                name=meta.get("name") or file.filename,
+                original_name=file.filename,
                 path=meta.get("path"),
-                size_bytes=meta.get("size_bytes") or file_size,
-                format=meta.get("format"),
-                mime_type=meta.get("mime_type"),
+                size_bytes=meta.get("size_bytes") or len(file_content),
+                format=file_extension,
+                mime_type=meta.get("mime_type") or file.content_type,
                 storage_key=storage_key,
                 is_locally_stored=False,
                 storage_backend=meta.get("storage_backend") or "supabase",
                 storage_bucket=meta.get("bucket"),
                 storage_object_key=meta.get("object_key"),
-                status="READY"
+                status="READY",
+                meta={
+                    "is_image": is_image,
+                    "image_width": image_width,
+                    "image_height": image_height,
+                    "thumbnail_url": thumbnail_url,
+                    "original_mime": file.content_type,
+                }
             )
         except Exception as e:
             logger.error(f"Failed to create file record: {e}")
             # Clean up uploaded file
-            if meta.get("path") and self.storage.file_exists(meta["path"]):
-                self.storage.delete_file(meta["path"])
+            if meta.get("path"):
+                try:
+                    await self.storage.delete_file(meta["path"])
+                except Exception as cleanup_error:
+                    logger.warning(f"Cleanup failed: {cleanup_error}")
             raise ValidationError(f"Failed to save file metadata: {str(e)}")
-        
-        # Try to extract metadata (non-blocking failure)
-        await self._extract_file_metadata(db_file, meta)
         
         duration_ms = int((time.time() - t0) * 1000)
         
@@ -138,6 +192,7 @@ class FileService:
                 "storage_key": storage_key,
                 "storage_backend": meta.get("storage_backend"),
                 "object_key": meta.get("object_key"),
+                "is_image": is_image,
                 "store_locally": False
             },
             duration_ms=duration_ms,
@@ -145,8 +200,9 @@ class FileService:
         )
         
         logger.info(
-            f"Uploaded file: {meta.get('original_name', 'unknown')} "
-            f"({db_file.size_human}) - Backend: {meta.get('storage_backend')} - Storage Key: {storage_key}"
+            f"Uploaded file: {file.filename} "
+            f"({db_file.size_human}) - Backend: {meta.get('storage_backend')} - "
+            f"Image: {is_image} - Storage Key: {storage_key}"
         )
         return db_file
 
@@ -197,7 +253,7 @@ class FileService:
             return cached_content
         
         # Try to get from Supabase/object storage
-        content = await self._get_from_server(f)
+        content = await self._get_from_storage(f)
         if content:
             # Cache for future requests
             await self._set_cache(file_id, content)
@@ -224,17 +280,26 @@ class FileService:
         """
         f = await self.get_file(file_id, user_id)
         
-        if not self.storage.file_exists(f.path):
+        # Try to get from storage
+        if hasattr(self.storage, 'file_exists') and not self.storage.file_exists(f.path):
+            # Try to get content from cache
+            content = await self.get_file_content(file_id, user_id)
+            if content:
+                yield content[start:end]
+                return
             raise NotFoundError("File content not found in storage")
         
         read_path = await self.storage.get_read_path(f.path, user_id)
+        if not Path(read_path).exists():
+            raise NotFoundError("File content not found")
+        
         chunk_size = 8192
-        with open(read_path, 'rb') as fp:
-            fp.seek(start)
+        async with aiofiles.open(read_path, 'rb') as fp:
+            await fp.seek(start)
             bytes_remaining = (end or f.size_bytes) - start
             
             while bytes_remaining > 0:
-                chunk = fp.read(min(chunk_size, bytes_remaining))
+                chunk = await fp.read(min(chunk_size, bytes_remaining))
                 if not chunk:
                     break
                 bytes_remaining -= len(chunk)
@@ -278,10 +343,16 @@ class FileService:
             sort_order=sort_order
         )
         
-        # Enrich with storage availability without marking files as locally persisted
+        # Enrich with storage availability and thumbnail info
         for f in files:
             f.is_cached_locally = False
             f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
+            # Add thumbnail URL to meta for template
+            if not f.meta:
+                f.meta = {}
+            if f.meta.get('is_image') and not f.meta.get('thumbnail_url'):
+                # Generate thumbnail URL if not present
+                f.meta['thumbnail_url'] = f"/api/files/{f.id}/thumbnail"
         
         return files, total
 
@@ -302,7 +373,7 @@ class FileService:
         """
         f = await self.get_file(file_id, user_id)
         download_token = self._generate_download_token(file_id, user_id)
-        server_available = self.storage.file_exists(f.path)
+        server_available = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
         
         return {
             "file_id": f.id,
@@ -318,6 +389,8 @@ class FileService:
             "storage_backend": getattr(self.storage, "backend_name", "supabase"),
             "is_favorite": f.is_favorite,
             "is_locally_stored": getattr(f, 'is_locally_stored', False),
+            "is_image": f.meta.get('is_image', False) if f.meta else False,
+            "thumbnail_url": f.meta.get('thumbnail_url', None) if f.meta else None,
             "created_at": f.created_at.isoformat() if f.created_at else None,
             "updated_at": f.updated_at.isoformat() if f.updated_at else None
         }
@@ -339,13 +412,15 @@ class FileService:
     async def update_metadata(self, file_id: int, user_id: int, metadata: Dict[str, Any]) -> File:
         """Update file metadata."""
         f = await self.get_file(file_id, user_id)
-        return await self.file_repo.update(f, meta=metadata)
+        current_meta = f.meta or {}
+        current_meta.update(metadata)
+        return await self.file_repo.update(f, meta=current_meta)
 
     # ============================================================
-    # FILE DELETION
+    # FILE DELETION - IMPROVED
     # ============================================================
 
-    async def delete_file(self, file_id: int, user_id: int, delete_local: bool = True) -> None:
+    async def delete_file(self, file_id: int, user_id: int, delete_local: bool = True) -> bool:
         """
         Delete file - removes bytes from Supabase Storage and metadata from PostgreSQL.
         
@@ -353,13 +428,32 @@ class FileService:
             file_id: File ID
             user_id: User ID for authorization
             delete_local: Deprecated; local persistent storage is disabled
+        
+        Returns:
+            bool: True if deletion was successful
         """
         f = await self.get_file(file_id, user_id)
         
         # Delete from object storage
-        if self.storage.file_exists(f.path):
-            self.storage.delete_file(f.path)
-            logger.info(f"Deleted file from storage: {f.path}")
+        try:
+            if hasattr(self.storage, 'file_exists') and self.storage.file_exists(f.path):
+                await self.storage.delete_file(f.path)
+                logger.info(f"Deleted file from storage: {f.path}")
+            else:
+                logger.warning(f"File not found in storage: {f.path}")
+        except Exception as e:
+            logger.error(f"Failed to delete from storage: {e}")
+            # Continue with database deletion even if storage deletion fails
+        
+        # Delete thumbnail if exists
+        if f.meta and f.meta.get('thumbnail_url'):
+            try:
+                thumbnail_path = f.meta['thumbnail_url'].split('/')[-1]
+                if hasattr(self.storage, 'file_exists') and self.storage.file_exists(thumbnail_path):
+                    await self.storage.delete_file(thumbnail_path)
+                    logger.info(f"Deleted thumbnail: {thumbnail_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete thumbnail: {e}")
         
         # Delete from cache
         await self._delete_from_cache(file_id)
@@ -382,7 +476,8 @@ class FileService:
             status=OperationStatus.SUCCESS
         )
         
-        logger.info(f"Deleted file: {f.original_name} from object storage")
+        logger.info(f"Deleted file: {f.original_name} from database")
+        return True
 
     # ============================================================
     # FILE SYNC AND CLEANUP
@@ -420,10 +515,9 @@ class FileService:
                     }
                     
                     if modified_at:
-                        update_data['meta'] = {
-                            **f.meta,
-                            'local_modified_at': modified_at
-                        }
+                        current_meta = f.meta or {}
+                        current_meta['local_modified_at'] = modified_at
+                        update_data['meta'] = current_meta
                     
                     await self.file_repo.update(f, **update_data)
                     updated += 1
@@ -451,8 +545,8 @@ class FileService:
         
         for f in old_files:
             try:
-                if self.storage.file_exists(f.path):
-                    self.storage.delete_file(f.path)
+                if hasattr(self.storage, 'file_exists') and self.storage.file_exists(f.path):
+                    await self.storage.delete_file(f.path)
                 
                 await self.file_repo.delete(f)
                 deleted += 1
@@ -475,11 +569,38 @@ class FileService:
         """Get file preview (for supported formats)."""
         f = await self.get_file(file_id, user_id)
         
-        if not self.storage.file_exists(f.path):
-            raise NotFoundError("File content not available in storage")
+        # For images, return metadata
+        if f.meta and f.meta.get('is_image'):
+            return {
+                "type": "image",
+                "width": f.meta.get('image_width'),
+                "height": f.meta.get('image_height'),
+                "thumbnail_url": f.meta.get('thumbnail_url'),
+                "format": f.format,
+                "size": f.size_bytes
+            }
         
-        read_path = await self.storage.get_read_path(f.path, user_id)
-        return self.engine.preview(read_path, f.format, rows=rows)
+        # Get file from storage
+        try:
+            if hasattr(self.storage, 'file_exists') and not self.storage.file_exists(f.path):
+                # Try to get from cache
+                content = await self.get_file_content(file_id, user_id)
+                if content:
+                    # Write to temp file for preview
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{f.format}") as tmp:
+                        tmp.write(content)
+                        tmp_path = tmp.name
+                    try:
+                        result = self.engine.preview(tmp_path, f.format, rows=rows)
+                    finally:
+                        Path(tmp_path).unlink(missing_ok=True)
+                    return result
+            
+            read_path = await self.storage.get_read_path(f.path, user_id)
+            return self.engine.preview(read_path, f.format, rows=rows)
+        except Exception as e:
+            logger.warning(f"Preview not available: {e}")
+            return {"error": str(e), "available": False}
 
     async def get_storage_stats(self, user_id: int) -> dict:
         """Get storage statistics for user."""
@@ -508,6 +629,7 @@ class FileService:
             ext = file.filename.split('.')[-1].lower()
             if ext not in self.SUPPORTED_FORMATS:
                 logger.warning(f"Unsupported file format: {ext}")
+                # Continue anyway - we allow unsupported formats
         
         if file.filename and ('..' in file.filename or '/' in file.filename or '\\' in file.filename):
             raise ValidationError("Invalid file name")
@@ -533,10 +655,12 @@ class FileService:
             read_path = await self.storage.get_read_path(meta.get("path"), db_file.owner_id)
             file_meta = self.engine.get_metadata(read_path, meta.get("format"))
             if file_meta:
-                await self.file_repo.update(db_file, meta={**db_file.meta, **file_meta})
+                current_meta = db_file.meta or {}
+                current_meta.update(file_meta)
+                await self.file_repo.update(db_file, meta=current_meta)
                 logger.info(f"Extracted metadata for file {db_file.id}: {file_meta}")
         except Exception as e:
-            logger.warning(f"Metadata extraction failed for {meta.get('name', 'unknown')}: {e}")
+            logger.warning(f"Metadata extraction failed: {e}")
 
     async def _log_operation(
         self,
@@ -592,14 +716,15 @@ class FileService:
         except Exception as e:
             logger.warning(f"Cache delete failed: {e}")
 
-    async def _get_from_server(self, file: File) -> Optional[bytes]:
+    async def _get_from_storage(self, file: File) -> Optional[bytes]:
         """Get file content from configured object storage."""
-        if not self.storage.file_exists(file.path):
-            return None
         try:
+            if hasattr(self.storage, 'file_exists') and not self.storage.file_exists(file.path):
+                return None
+            
             read_path = await self.storage.get_read_path(file.path, file.owner_id)
-            with open(read_path, 'rb') as fp:
-                return fp.read()
+            async with aiofiles.open(read_path, 'rb') as fp:
+                return await fp.read()
         except Exception as e:
             logger.error(f"Failed to read file from storage {file.path}: {e}")
             return None
