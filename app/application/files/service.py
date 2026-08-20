@@ -18,7 +18,7 @@ from app.core.exceptions import NotFoundError, AuthorizationError, ValidationErr
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.database.models import File, OperationType, OperationStatus
-from app.infrastructure.storage.storage import storage
+from app.infrastructure.storage.local_storage import storage
 from app.application.files.dto import RenameFileDTO
 from app.application.converter.engine import DataEngine
 
