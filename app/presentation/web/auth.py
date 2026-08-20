@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.application.auth.dto import RegisterDTO, LoginDTO
 from app.application.auth.service import AuthService
 from app.core.security import create_access_token
+from app.core.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,8 +28,6 @@ _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 # ── Server-side OAuth state store ─────────────────────────────────────────────
-# Replaces cookie-based state: works even when Replit's preview resets cookies
-# across desktop↔mobile mode switches or iframe boundaries.
 _state_lock: threading.Lock = threading.Lock()
 _oauth_states: dict[str, float] = {}   # state_token → expiry (unix timestamp)
 _STATE_TTL = 600   # seconds (10 min — same as before)
@@ -38,7 +37,6 @@ def _store_oauth_state(state: str) -> None:
     """Persist state token server-side and purge expired entries."""
     now = time.time()
     with _state_lock:
-        # Remove expired
         expired = [k for k, v in _oauth_states.items() if v < now]
         for k in expired:
             del _oauth_states[k]
@@ -88,11 +86,31 @@ async def root(request: Request):
 
 # ── Login page ────────────────────────────────────────────────────────────────
 @router.get("/auth/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = "", lang: str = "ar"):
+async def login_page(
+    request: Request, 
+    error: str = "", 
+    lang: str = "ar",
+    reason: str = "",
+):
+    """Display login page with language support."""
     google_enabled = bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET)
+    
+    # Get translations
+    from app.core.templates import get_texts
+    translations = get_texts(lang)
+    
     return templates.TemplateResponse(
-        request, "auth/login.html",
-        {"error": error, "lang": lang, "google_enabled": google_enabled},
+        request, 
+        "auth/login.html",
+        {
+            "error": error,
+            "lang": lang,
+            "reason": reason,
+            "google_enabled": google_enabled,
+            "translations": translations,
+            "get_texts": get_texts,
+            "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
+        },
     )
 
 
@@ -119,9 +137,6 @@ async def admin_login(
             )
 
         token = result.access_token
-        # Inject token into sessionStorage so the login page can recover the
-        # session automatically if the cookie is dropped (e.g. Replit iframe
-        # mobile-mode reload blocks third-party cookies).
         response = HTMLResponse(
             '<p class="text-green-400 text-sm text-center mt-2">جاري التحويل…</p>'
             f'<script>try{{sessionStorage.setItem("_ark","{token}")}}catch(e){{}}</script>',
@@ -145,7 +160,7 @@ async def google_redirect(request: Request):
         return RedirectResponse("/auth/login?error=google_not_configured", status_code=302)
 
     state = secrets.token_urlsafe(32)
-    _store_oauth_state(state)   # server-side; no cookie needed
+    _store_oauth_state(state)
     params = urlencode({
         "response_type": "code",
         "client_id":     settings.GOOGLE_CLIENT_ID,
@@ -167,18 +182,15 @@ async def google_callback(
     state: str = "",
     error: str = "",
 ):
-    # Errors from Google (e.g. user denied)
     if error:
         return RedirectResponse(f"/auth/login?error={error}", status_code=302)
 
-    # CSRF check — verified against server-side store (not a cookie)
     if not _consume_oauth_state(state):
         logger.warning("Google OAuth: invalid/expired state token received=%r", state)
         return RedirectResponse("/auth/login?error=state_mismatch", status_code=302)
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            # Exchange code → access token
             tok_resp = await client.post(_GOOGLE_TOKEN_URL, data={
                 "code":          code,
                 "client_id":     settings.GOOGLE_CLIENT_ID,
@@ -192,7 +204,6 @@ async def google_callback(
             if "error" in tokens:
                 raise ValueError(tokens.get("error_description", tokens["error"]))
 
-            # Fetch user profile
             info_resp = await client.get(_GOOGLE_INFO_URL, headers={
                 "Authorization": f"Bearer {tokens['access_token']}"
             })
@@ -203,9 +214,6 @@ async def google_callback(
         user = await svc.login_or_register_google(userinfo)
         jwt_token = create_access_token({"sub": str(user.id)})
 
-        # Redirect through session-init so the token is saved to sessionStorage.
-        # This lets the login page silently recover the session if the iframe
-        # drops the cookie (e.g. Replit mobile-mode switch).
         response = RedirectResponse(url="/auth/session-init", status_code=302)
         _set_auth_cookie(response, jwt_token)
         return response
@@ -221,13 +229,7 @@ async def recover_session(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Re-establish the session cookie from an Authorization Bearer token.
-
-    Used by the login page to recover a lost session (e.g. when the Replit
-    preview iframe reloads in mobile mode and drops the SameSite=None cookie).
-    The token is read from the Authorization header, validated, and a fresh
-    cookie is set so the user is silently redirected back to /dashboard.
-    """
+    """Re-establish the session cookie from an Authorization Bearer token."""
     try:
         user = await get_current_user(request, db)
         token = create_access_token({"sub": str(user.id)})
@@ -240,18 +242,11 @@ async def recover_session(
 
 @router.get("/auth/session-init", response_class=HTMLResponse)
 async def session_init(request: Request):
-    """Bridge page: reads the httpOnly cookie server-side, stores the token in
-    sessionStorage (so the login page can recover the session if the cookie is
-    dropped by Replit's iframe), then redirects to /dashboard.
-
-    Google OAuth redirects here instead of /dashboard directly.
-    """
+    """Bridge page: stores token in sessionStorage then redirects to dashboard."""
     token = request.cookies.get("access_token", "")
     if not token:
         return RedirectResponse("/auth/login", status_code=302)
 
-    # Embed token safely — JWTs only contain base64url chars + dots, no quotes
-    # or backslashes, so simple single-quote wrapping is safe here.
     html = (
         "<!DOCTYPE html><html><head><meta charset='UTF-8'/>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'/>"
@@ -268,8 +263,7 @@ async def session_init(request: Request):
 @router.post("/auth/logout")
 @router.get("/auth/logout")
 async def logout():
-    # Clear sessionStorage token via a tiny bridge page so the login page
-    # doesn't silently re-authenticate the user after an intentional logout.
+    """Logout user and clear session."""
     html = (
         "<!DOCTYPE html><html><head><meta charset='UTF-8'/></head><body>"
         "<script>"
