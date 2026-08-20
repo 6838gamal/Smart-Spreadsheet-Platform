@@ -1,4 +1,5 @@
-{# File list partial — loaded into the left file browser #}
+{# templates/workspace/_files_panel.html #}
+
 {% if files and files|length > 0 %}
 <div class="space-y-1" 
      x-data="fileListComponent()" 
@@ -17,7 +18,7 @@
     <div class="flex items-center gap-2">
       <!-- Format badge / Image thumbnail -->
       <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold overflow-hidden
-        {% if f.meta and f.meta.get('is_image') %}
+        {% if f.is_image %}
           bg-transparent border border-slate-200 dark:border-slate-700
         {% elif f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
         {% elif f.format == 'csv' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
@@ -30,10 +31,10 @@
         {% elif f.format in ['jpg','jpeg','png','gif','bmp','webp','svg','ico','tiff','heic'] %}bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
         
-        {% if f.meta and f.meta.get('is_image') and f.meta.get('thumbnail_url') %}
+        {% if f.is_image and f.thumbnail_url %}
           <!-- عرض صورة مصغرة -->
-          <img src="{{ f.meta.thumbnail_url }}" alt="{{ f.original_name }}" class="w-full h-full object-cover" loading="lazy">
-        {% elif f.meta and f.meta.get('is_image') %}
+          <img src="{{ f.thumbnail_url }}" alt="{{ f.original_name }}" class="w-full h-full object-cover" loading="lazy">
+        {% elif f.is_image %}
           <!-- أيقونة الصورة بدون مصغرة -->
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -51,11 +52,11 @@
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight" :title="'{{ f.original_name }}'">
           {{ f.original_name }}
-          {% if f.meta and f.meta.get('is_image') %}
+          {% if f.is_image %}
             <span class="text-pink-400 dark:text-pink-500">🖼️</span>
           {% endif %}
         </p>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <p class="text-xs text-slate-400 dark:text-slate-500">
             {% if f.size_bytes %}
               {% if f.size_bytes < 1024 %}
@@ -71,9 +72,9 @@
               0 B
             {% endif %}
           </p>
-          {% if f.meta and f.meta.get('is_image') and f.meta.get('image_width') and f.meta.get('image_height') %}
+          {% if f.is_image and f.image_width and f.image_height %}
           <span class="text-xs text-slate-400 dark:text-slate-500">
-            • {{ f.meta.image_width }}×{{ f.meta.image_height }}
+            • {{ f.image_width }}×{{ f.image_height }}
           </span>
           {% endif %}
           <span class="text-xs text-slate-400 dark:text-slate-500">
@@ -113,7 +114,7 @@
         ⬇️ تحميل
       </button>
       
-      <!-- Delete button - ✅ تم إصلاح escapejs -->
+      <!-- Delete button -->
       <button @click.stop="deleteFile({{ f.id }}, {{ f.original_name|tojson|safe }})"
               :disabled="deletingIds.includes({{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-900/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -131,54 +132,6 @@
   </div>
   {% endfor %}
 </div>
-{% else %}
-<!-- Empty state with upload -->
-<div class="py-8 text-center text-slate-400">
-  <svg class="w-12 h-12 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-  </svg>
-  <p class="text-sm font-medium text-slate-600 dark:text-slate-300">لا يوجد ملفات</p>
-  <p class="text-xs mt-1 text-slate-400 dark:text-slate-500">ارفع ملفاً للبدء</p>
-  
-  <!-- Upload buttons -->
-  <div class="mt-4 flex flex-col items-center gap-2">
-    <label for="file-upload" 
-           class="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white text-sm rounded-lg cursor-pointer transition-colors shadow-sm hover:shadow-md">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-      </svg>
-      رفع ملفات
-    </label>
-    <input id="file-upload" 
-           type="file" 
-           class="hidden" 
-           multiple 
-           accept="image/*,.xlsx,.xls,.csv,.pdf,.txt,.json,.xml,.html,.parquet,.doc,.docx" 
-           @change="uploadFiles($event)">
-    
-    <!-- زر رفع الصور مع معاينة -->
-    <label for="image-upload" 
-           class="inline-flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white text-sm rounded-lg cursor-pointer transition-colors shadow-sm hover:shadow-md">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-      </svg>
-      رفع صور (معاينة)
-    </label>
-    <input id="image-upload" 
-           type="file" 
-           class="hidden" 
-           multiple 
-           accept="image/*" 
-           @change="uploadImagesWithPreview($event)">
-    
-    <!-- منطقة السحب والإفلات -->
-    <div class="mt-2 w-full max-w-xs border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
-         id="drop-zone">
-      <p class="text-xs text-slate-400 dark:text-slate-500">أو اسحب الملفات هنا</p>
-    </div>
-  </div>
-</div>
-{% endif %}
 
 <!-- Alpine.js Component -->
 <script>
@@ -191,7 +144,7 @@ function fileListComponent() {
         loading: false,
         
         initFiles(filesData) {
-            this.files = filesData;
+            this.files = filesData || [];
         },
         
         selectFile(fileId) {
@@ -225,6 +178,7 @@ function fileListComponent() {
                 const data = await response.json();
                 
                 if (data.success) {
+                    // Remove file from list
                     this.files = this.files.filter(f => f.id !== fileId);
                     
                     if (this.selectedFileId === fileId) {
@@ -258,7 +212,7 @@ function fileListComponent() {
             this.showToast(`⏳ جاري رفع ${files.length} ملف...`, 'info');
             
             try {
-                const response = await fetch('/api/files/upload', {
+                const response = await fetch('/files/upload', {
                     method: 'POST',
                     body: formData,
                     headers: {
@@ -271,18 +225,26 @@ function fileListComponent() {
                     throw new Error(errorData.error || 'فشل رفع الملفات');
                 }
                 
-                const data = await response.json();
+                // For HTMX response, we need to update the files list
+                // The server returns HTML, so we can replace the panel content
+                const html = await response.text();
                 
-                if (data.success) {
-                    if (data.files) {
-                        this.files = [...data.files, ...this.files];
+                // Find the files panel container and update it
+                const panel = document.querySelector('.space-y-1');
+                if (panel) {
+                    // Replace the content with the new HTML
+                    // We need to extract the space-y-1 content from the response
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newPanel = doc.querySelector('.space-y-1');
+                    if (newPanel) {
+                        panel.innerHTML = newPanel.innerHTML;
+                        // Re-initialize the component data
+                        this.refreshFileList();
                     }
-                    
-                    this.showToast(`✅ تم رفع ${data.count || files.length} ملف بنجاح`, 'success');
-                    this.refreshFileList();
-                } else {
-                    throw new Error(data.error || 'حدث خطأ أثناء الرفع');
                 }
+                
+                this.showToast('✅ تم رفع الملفات بنجاح', 'success');
             } catch (error) {
                 console.error('Upload error:', error);
                 this.showToast(`❌ ${error.message}`, 'error');
@@ -326,7 +288,7 @@ function fileListComponent() {
                         </button>
                     </div>
                     <div class="grid grid-cols-3 gap-4 mb-4 overflow-y-auto flex-1" id="image-preview-grid">
-                        ${imageFiles.map((file, index) => `
+                        ${imageFiles.map((file) => `
                             <div class="aspect-square rounded-lg overflow-hidden border-2 border-slate-200 dark:border-slate-700">
                                 <img src="${URL.createObjectURL(file)}" 
                                      alt="${file.name}" 
@@ -368,7 +330,7 @@ function fileListComponent() {
             this.showToast(`⏳ جاري رفع ${imageFiles.length} صورة...`, 'info');
             
             try {
-                const response = await fetch('/api/files/upload', {
+                const response = await fetch('/files/upload', {
                     method: 'POST',
                     body: formData,
                     headers: {
@@ -381,18 +343,9 @@ function fileListComponent() {
                     throw new Error(errorData.error || 'فشل رفع الصور');
                 }
                 
-                const data = await response.json();
-                
-                if (data.success) {
-                    if (data.files) {
-                        this.files = [...data.files, ...this.files];
-                    }
-                    
-                    this.showToast(`✅ تم رفع ${data.count || imageFiles.length} صورة بنجاح`, 'success');
-                    this.refreshFileList();
-                } else {
-                    throw new Error(data.error || 'حدث خطأ أثناء الرفع');
-                }
+                // Refresh the file list
+                await this.refreshFileList();
+                this.showToast(`✅ تم رفع ${imageFiles.length} صورة بنجاح`, 'success');
             } catch (error) {
                 console.error('Upload error:', error);
                 this.showToast(`❌ ${error.message}`, 'error');
@@ -406,16 +359,22 @@ function fileListComponent() {
         
         async refreshFileList() {
             try {
-                const response = await fetch('/api/files/list', {
+                const response = await fetch('/workspace/files-list', {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest'
                     }
                 });
                 
                 if (response.ok) {
-                    const data = await response.json();
-                    if (data.files) {
-                        this.files = data.files;
+                    const html = await response.text();
+                    const panel = document.querySelector('.space-y-1');
+                    if (panel) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const newPanel = doc.querySelector('.space-y-1');
+                        if (newPanel) {
+                            panel.innerHTML = newPanel.innerHTML;
+                        }
                     }
                 }
             } catch (error) {
@@ -450,7 +409,7 @@ function fileListComponent() {
         
         async downloadFile(fileId) {
             try {
-                window.location.href = `/api/files/${fileId}/download`;
+                window.location.href = `/files/${fileId}/download`;
             } catch (error) {
                 console.error('Download error:', error);
                 this.showToast('❌ حدث خطأ أثناء التحميل', 'error');
@@ -490,50 +449,16 @@ function fileListComponent() {
 }
 </script>
 
-<!-- دعم السحب والإفلات -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const dropZone = document.getElementById('drop-zone');
-    if (!dropZone) return;
-    
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    });
-    
-    dropZone.addEventListener('dragenter', () => {
-        dropZone.classList.add('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
-    });
-    
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
-    });
-    
-    dropZone.addEventListener('drop', (e) => {
-        dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
-        
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            const fileInput = document.getElementById('file-upload');
-            if (fileInput) {
-                const dt = new DataTransfer();
-                for (let i = 0; i < files.length; i++) {
-                    dt.items.add(files[i]);
-                }
-                fileInput.files = dt.files;
-                fileInput.dispatchEvent(new Event('change'));
-                
-                dropZone.classList.add('border-green-500', 'bg-green-50/20');
-                setTimeout(() => {
-                    dropZone.classList.remove('border-green-500', 'bg-green-50/20');
-                }, 1000);
-            }
-        }
-    });
-});
-</script>
+{% else %}
+<!-- Empty state -->
+<div class="py-8 text-center text-slate-400">
+  <svg class="w-12 h-12 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+  </svg>
+  <p class="text-sm font-medium text-slate-600 dark:text-slate-300">لا يوجد ملفات</p>
+  <p class="text-xs mt-1 text-slate-400 dark:text-slate-500">ارفع ملفاً للبدء</p>
+</div>
+{% endif %}
 
 <!-- HTMX support for dynamic updates -->
 {% if request.headers.get('HX-Request') %}
