@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 import os
 
-# ✅ استيراد الإعدادات
+# استيراد الإعدادات
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,89 @@ DEFAULT_TRANSLATIONS = {
         'in': 'في',
         'on': 'على',
         'at': 'في',
+
+        # Converter
+        'converter': 'المحول',
+        'convert': 'تحويل',
+        'converting': 'جاري التحويل...',
+        'convert_file': 'تحويل الملف',
+        'select_file': 'اختر ملفاً للتحويل',
+        'select_target_format': 'اختر الصيغة المستهدفة',
+        'target_format': 'الصيغة المستهدفة',
+        'format': 'الصيغة',
+        'sheet_name': 'اسم ورقة العمل',
+        'sheet': 'ورقة العمل',
+        'sheets': 'أوراق العمل',
+        'all_sheets': 'جميع الأوراق',
+        'selected_sheets': 'الأوراق المحددة',
+        'preview': 'معاينة',
+        'no_file_selected': 'لم يتم اختيار ملف',
+        'please_select_file': 'الرجاء اختيار ملف للتحويل',
+        'conversion_complete': 'تم التحويل بنجاح',
+        'conversion_failed': 'فشل التحويل',
+        'download_converted': 'تحميل الملف المحول',
+        'conversion_settings': 'إعدادات التحويل',
+        'advanced_settings': 'إعدادات متقدمة',
+        'output_filename': 'اسم الملف الناتج',
+        'overwrite_existing': 'استبدال الملف الموجود',
+        'conversion_options': 'خيارات التحويل',
+        'start_conversion': 'بدء التحويل',
+        'conversion_progress': 'تقدم التحويل',
+        'conversion_time': 'وقت التحويل',
+        'rows_converted': 'الصفوف المحولة',
+        'columns_converted': 'الأعمدة المحولة',
+        'drag_drop_files': 'اسحب وأفلت الملفات هنا',
+        'or_click_to_browse': 'أو انقر للتصفح',
+        'supported_formats': 'الصيغ المدعومة',
+        'max_file_size': 'الحد الأقصى لحجم الملف',
+        'converter_description': 'حوّل ملفاتك بين صيغ مختلفة بسهولة',
+        'select_conversion_type': 'اختر نوع التحويل',
+        'single_file': 'ملف واحد',
+        'multiple_files': 'ملفات متعددة',
+        'batch_conversion': 'تحويل دفعة',
+        'conversion_queue': 'قائمة الانتظار',
+        'complete': 'مكتمل',
+        'failed': 'فشل',
+        'cancelled': 'ملغي',
+        'status': 'الحالة',
+        'progress': 'التقدم',
+        'elapsed_time': 'الوقت المنقضي',
+        'estimated_time': 'الوقت المتوقع',
+        'conversion_history': 'سجل التحويلات',
+        'clear_history': 'مسح السجل',
+        'export_result': 'تصدير النتيجة',
+        'conversion_success': 'تم التحويل بنجاح',
+        'conversion_error': 'حدث خطأ أثناء التحويل',
+        'retry_conversion': 'إعادة المحاولة',
+        'cancel_conversion': 'إلغاء التحويل',
+        'conversion_options_help': 'خيارات إضافية للتحويل',
+        'preserve_formatting': 'الحفاظ على التنسيق',
+        'optimize_size': 'تحسين الحجم',
+        'include_metadata': 'تضمين البيانات الوصفية',
+        'custom_settings': 'إعدادات مخصصة',
+        'default_settings': 'الإعدادات الافتراضية',
+        'reset_settings': 'إعادة تعيين الإعدادات',
+        'save_settings': 'حفظ الإعدادات',
+        'load_settings': 'تحميل الإعدادات',
+        'conversion_template': 'قالب التحويل',
+        'apply_template': 'تطبيق القالب',
+        'create_template': 'إنشاء قالب',
+        'delete_template': 'حذف قالب',
+        'edit_template': 'تعديل قالب',
+        'template_name': 'اسم القالب',
+        'template_description': 'وصف القالب',
+        'template_created': 'تم إنشاء القالب',
+        'template_updated': 'تم تحديث القالب',
+        'template_deleted': 'تم حذف القالب',
+        'no_templates': 'لا يوجد قوالب',
+        'select_template': 'اختر قالباً',
+        'conversion_quality': 'جودة التحويل',
+        'high_quality': 'جودة عالية',
+        'medium_quality': 'جودة متوسطة',
+        'low_quality': 'جودة منخفضة',
+        'speed_priority': 'أولوية السرعة',
+        'quality_priority': 'أولوية الجودة',
+        'balanced': 'متوازن',
     },
     'en': {
         # Auth
@@ -338,6 +421,89 @@ DEFAULT_TRANSLATIONS = {
         'in': 'in',
         'on': 'on',
         'at': 'at',
+
+        # Converter
+        'converter': 'Converter',
+        'convert': 'Convert',
+        'converting': 'Converting...',
+        'convert_file': 'Convert File',
+        'select_file': 'Select a file to convert',
+        'select_target_format': 'Select target format',
+        'target_format': 'Target Format',
+        'format': 'Format',
+        'sheet_name': 'Sheet Name',
+        'sheet': 'Sheet',
+        'sheets': 'Sheets',
+        'all_sheets': 'All Sheets',
+        'selected_sheets': 'Selected Sheets',
+        'preview': 'Preview',
+        'no_file_selected': 'No file selected',
+        'please_select_file': 'Please select a file to convert',
+        'conversion_complete': 'Conversion complete',
+        'conversion_failed': 'Conversion failed',
+        'download_converted': 'Download converted file',
+        'conversion_settings': 'Conversion Settings',
+        'advanced_settings': 'Advanced Settings',
+        'output_filename': 'Output Filename',
+        'overwrite_existing': 'Overwrite existing',
+        'conversion_options': 'Conversion Options',
+        'start_conversion': 'Start Conversion',
+        'conversion_progress': 'Conversion Progress',
+        'conversion_time': 'Conversion Time',
+        'rows_converted': 'Rows converted',
+        'columns_converted': 'Columns converted',
+        'drag_drop_files': 'Drag and drop files here',
+        'or_click_to_browse': 'Or click to browse',
+        'supported_formats': 'Supported formats',
+        'max_file_size': 'Maximum file size',
+        'converter_description': 'Convert your files between different formats easily',
+        'select_conversion_type': 'Select conversion type',
+        'single_file': 'Single file',
+        'multiple_files': 'Multiple files',
+        'batch_conversion': 'Batch conversion',
+        'conversion_queue': 'Conversion Queue',
+        'complete': 'Complete',
+        'failed': 'Failed',
+        'cancelled': 'Cancelled',
+        'status': 'Status',
+        'progress': 'Progress',
+        'elapsed_time': 'Elapsed Time',
+        'estimated_time': 'Estimated Time',
+        'conversion_history': 'Conversion History',
+        'clear_history': 'Clear History',
+        'export_result': 'Export Result',
+        'conversion_success': 'Conversion successful',
+        'conversion_error': 'Conversion error',
+        'retry_conversion': 'Retry Conversion',
+        'cancel_conversion': 'Cancel Conversion',
+        'conversion_options_help': 'Additional conversion options',
+        'preserve_formatting': 'Preserve formatting',
+        'optimize_size': 'Optimize size',
+        'include_metadata': 'Include metadata',
+        'custom_settings': 'Custom Settings',
+        'default_settings': 'Default Settings',
+        'reset_settings': 'Reset Settings',
+        'save_settings': 'Save Settings',
+        'load_settings': 'Load Settings',
+        'conversion_template': 'Conversion Template',
+        'apply_template': 'Apply Template',
+        'create_template': 'Create Template',
+        'delete_template': 'Delete Template',
+        'edit_template': 'Edit Template',
+        'template_name': 'Template Name',
+        'template_description': 'Template Description',
+        'template_created': 'Template Created',
+        'template_updated': 'Template Updated',
+        'template_deleted': 'Template Deleted',
+        'no_templates': 'No Templates',
+        'select_template': 'Select Template',
+        'conversion_quality': 'Conversion Quality',
+        'high_quality': 'High Quality',
+        'medium_quality': 'Medium Quality',
+        'low_quality': 'Low Quality',
+        'speed_priority': 'Speed Priority',
+        'quality_priority': 'Quality Priority',
+        'balanced': 'Balanced',
     }
 }
 
@@ -691,10 +857,8 @@ class CustomTemplates(Jinja2Templates):
             directory: Templates directory path
             auto_reload: Auto reload templates in development
         """
-        # ✅ إزالة auto_reload من super()
         super().__init__(directory=directory)
         
-        # ✅ تعيين auto_reload يدوياً إذا كان مدعوماً
         try:
             if hasattr(self.env, 'auto_reload'):
                 self.env.auto_reload = auto_reload
@@ -709,10 +873,9 @@ class CustomTemplates(Jinja2Templates):
     
     def _add_filters(self):
         """Add custom filters to the environment."""
-        # Core filters
         self.env.filters['escapejs'] = escapejs
         self.env.filters['tojson_safe'] = tojson_safe
-        self.env.filters['timesince'] = timesince  # ✅ إضافة timesince
+        self.env.filters['timesince'] = timesince
         self.env.filters['time_ago'] = time_ago
         self.env.filters['format_size'] = format_size
         self.env.filters['file_icon'] = file_icon
@@ -720,18 +883,14 @@ class CustomTemplates(Jinja2Templates):
         self.env.filters['t'] = translate_filter
         self.env.filters['translate'] = translate_filter
         
-        # JSON filters
         self.env.filters['json'] = lambda v: json.dumps(v, ensure_ascii=False, default=str)
         self.env.filters['pretty_json'] = lambda v: json.dumps(v, ensure_ascii=False, indent=2, default=str)
     
     def _add_globals(self):
         """Add global functions and variables to the environment."""
         self.env.globals.update({
-            # Time
             'now': datetime.now,
             'today': lambda: datetime.now().date(),
-            
-            # Translation
             'get_texts': get_texts,
             't': t,
             'translate': t,
@@ -739,14 +898,8 @@ class CustomTemplates(Jinja2Templates):
             'get_supported_languages': get_supported_languages,
             'is_rtl_language': is_rtl_language,
             'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
-            
-            # Settings
-            'settings': settings,  # ✅ إضافة settings
-            
-            # JSON
+            'settings': settings,
             'json_dumps': lambda v, **kwargs: json.dumps(v, ensure_ascii=False, **kwargs),
-            
-            # Helpers
             'range': lambda start, end: range(start, end),
             'dict_get': lambda d, key, default=None: d.get(key, default) if d else default,
             'list_get': lambda l, index, default=None: l[index] if l and 0 <= index < len(l) else default,
@@ -769,49 +922,28 @@ class CustomTemplates(Jinja2Templates):
         headers: Optional[Dict[str, str]] = None,
         media_type: str = "text/html",
     ):
-        """
-        Override TemplateResponse to inject default context.
-        
-        Args:
-            request: FastAPI request
-            name: Template name
-            context: Template context
-            status_code: HTTP status code
-            headers: HTTP headers
-            media_type: Response media type
-        
-        Returns:
-            TemplateResponse: Rendered template response
-        """
-        # Get language from various sources
+        """Override TemplateResponse to inject default context."""
+        # Get language
         lang = context.get('lang')
         
-        # Try from request state
         if not lang and hasattr(request.state, 'lang'):
             lang = request.state.lang
         
-        # Try from cookie
         if not lang and hasattr(request, 'cookies'):
             lang = request.cookies.get('lang')
         
-        # Try from user in request state
         if not lang and hasattr(request.state, 'user'):
             user = request.state.user
             if user and hasattr(user, 'default_lang') and user.default_lang:
                 lang = user.default_lang
         
-        # Default
         if not lang or lang not in DEFAULT_TRANSLATIONS:
             lang = 'ar'
         
-        # Get translations and direction
         translations = get_texts(lang)
         direction = get_language_direction(lang)
-        
-        # Get user from request state
         user = getattr(request.state, 'user', None)
         
-        # Build default context
         default_context = {
             'request': request,
             'now': datetime.now(),
@@ -820,7 +952,7 @@ class CustomTemplates(Jinja2Templates):
             'translations': translations,
             'user': user,
             'is_authenticated': user is not None and getattr(user, 'is_active', False),
-            'settings': settings,  # ✅ إضافة settings
+            'settings': settings,
             'get_texts': get_texts,
             't': t,
             'translate': t,
@@ -830,10 +962,8 @@ class CustomTemplates(Jinja2Templates):
             'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
         }
         
-        # Merge with provided context (provided context takes precedence)
         merged_context = {**default_context, **context}
         
-        # Store language in request state for future use
         request.state.lang = lang
         request.state.direction = direction
         request.state.translations = translations
@@ -853,15 +983,7 @@ class CustomTemplates(Jinja2Templates):
 # ============================================================
 
 def get_templates(template_dir: str = "templates") -> CustomTemplates:
-    """
-    Get or create the templates instance.
-    
-    Args:
-        template_dir: Templates directory path
-    
-    Returns:
-        CustomTemplates: Templates instance
-    """
+    """Get or create the templates instance."""
     template_path = Path(template_dir)
     if not template_path.exists():
         logger.warning(f"⚠️ Templates directory not found: {template_dir}")
@@ -871,7 +993,6 @@ def get_templates(template_dir: str = "templates") -> CustomTemplates:
         return CustomTemplates(directory=template_dir)
     except Exception as e:
         logger.error(f"❌ Failed to initialize custom templates: {e}")
-        # Fallback to default Jinja2Templates
         return Jinja2Templates(directory=template_dir)
 
 
@@ -881,12 +1002,11 @@ try:
     logger.info("✅ Templates initialized successfully")
 except Exception as e:
     logger.error(f"❌ Failed to initialize templates: {e}")
-    # Fallback to default
     templates = Jinja2Templates(directory="templates")
 
 
 # ============================================================
-# HELPER FUNCTIONS FOR ROUTES
+# HELPER FUNCTIONS
 # ============================================================
 
 async def render_template(
@@ -896,19 +1016,7 @@ async def render_template(
     status_code: int = 200,
     headers: Optional[Dict[str, str]] = None,
 ) -> CustomTemplates.TemplateResponse:
-    """
-    Helper function to render templates with automatic language detection.
-    
-    Args:
-        request: FastAPI request
-        template_name: Template name
-        context: Template context
-        status_code: HTTP status code
-        headers: HTTP headers
-    
-    Returns:
-        TemplateResponse: Rendered template response
-    """
+    """Helper function to render templates with automatic language detection."""
     context = context or {}
     return templates.TemplateResponse(
         request=request,
@@ -920,14 +1028,7 @@ async def render_template(
 
 
 async def set_language_cookie(response: Response, lang: str, max_age: int = 60 * 60 * 24 * 30) -> None:
-    """
-    Set language cookie in response.
-    
-    Args:
-        response: Response object
-        lang: Language code
-        max_age: Cookie max age in seconds
-    """
+    """Set language cookie in response."""
     if lang not in DEFAULT_TRANSLATIONS:
         lang = 'ar'
     
@@ -942,12 +1043,7 @@ async def set_language_cookie(response: Response, lang: str, max_age: int = 60 *
 
 
 async def clear_language_cookie(response: Response) -> None:
-    """
-    Clear language cookie.
-    
-    Args:
-        response: Response object
-    """
+    """Clear language cookie."""
     response.delete_cookie(key="lang", path="/")
 
 
@@ -956,21 +1052,16 @@ async def clear_language_cookie(response: Response) -> None:
 # ============================================================
 
 __all__ = [
-    # Main instance
     'templates',
     'CustomTemplates',
     'get_templates',
     'render_template',
-    
-    # Translation
     'get_texts',
     't',
     'get_language_direction',
     'get_supported_languages',
     'is_rtl_language',
     'DEFAULT_TRANSLATIONS',
-    
-    # Filters
     'escapejs',
     'tojson_safe',
     'timesince',
@@ -978,15 +1069,11 @@ __all__ = [
     'format_size',
     'file_icon',
     'truncate_text',
-    
-    # Tests
     'is_image',
     'is_video',
     'is_audio',
     'is_document',
     'is_spreadsheet',
-    
-    # Helpers
     'set_language_cookie',
     'clear_language_cookie',
 ]
