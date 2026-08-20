@@ -1,18 +1,25 @@
 {# File list partial — loaded into the left file browser #}
 {% if files and files|length > 0 %}
-<div class="space-y-1">
+<div class="space-y-1" 
+     x-data="fileListComponent()" 
+     x-init="initFiles({{ files|jsonify|safe }})">
+  
   {% for f in files %}
   <div class="group rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700
-              hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all cursor-pointer p-2"
+              hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all cursor-pointer p-2
+              {{ 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' if f.id == selected_file_id else '' }}"
        data-file-card
        data-file-id="{{ f.id }}"
        data-file-name="{{ f.original_name }}"
-       @click="selectFile({{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')">
+       @click="selectFile({{ f.id }})"
+       :class="{ 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20': selectedFileId === {{ f.id }} }">
 
     <div class="flex items-center gap-2">
-      <!-- Format badge -->
-      <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold
-        {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
+      <!-- Format badge / Image thumbnail -->
+      <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold overflow-hidden
+        {% if f.is_image %}
+          bg-transparent border border-slate-200 dark:border-slate-700
+        {% elif f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
         {% elif f.format == 'csv' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
         {% elif f.format == 'json' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400
         {% elif f.format == 'pdf' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
@@ -20,184 +27,544 @@
         {% elif f.format == 'txt' %}bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-400
         {% elif f.format == 'html' %}bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400
         {% elif f.format == 'xml' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400
+        {% elif f.format in ['jpg','jpeg','png','gif','bmp','webp','svg','ico','tiff','heic'] %}bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
-        {% if f.format %}
-          {{ f.format[:3]|upper }}
+        
+        {% if f.is_image and f.thumbnail_url %}
+          <!-- عرض صورة مصغرة -->
+          <img src="{{ f.thumbnail_url }}" alt="{{ f.original_name }}" class="w-full h-full object-cover" loading="lazy">
+        {% elif f.is_image %}
+          <!-- أيقونة الصورة بدون مصغرة -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
         {% else %}
-          ???
+          {% if f.format %}
+            {{ f.format[:3]|upper }}
+          {% else %}
+            ???
+          {% endif %}
         {% endif %}
       </div>
 
       <!-- Name & size -->
       <div class="min-w-0 flex-1">
-        <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight">{{ f.original_name }}</p>
-        <p class="text-xs text-slate-400 dark:text-slate-500">
-          {% if f.size_bytes %}
-            {% if f.size_bytes < 1024 %}
-              {{ f.size_bytes }} B
-            {% elif f.size_bytes < 1024 * 1024 %}
-              {{ (f.size_bytes / 1024)|round(1) }} KB
-            {% elif f.size_bytes < 1024 * 1024 * 1024 %}
-              {{ (f.size_bytes / (1024 * 1024))|round(1) }} MB
-            {% else %}
-              {{ (f.size_bytes / (1024 * 1024 * 1024))|round(2) }} GB
-            {% endif %}
-          {% else %}
-            0 B
+        <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight" :title="'{{ f.original_name }}'">
+          {{ f.original_name }}
+          {% if f.is_image %}
+            <span class="text-pink-400 dark:text-pink-500">🖼️</span>
           {% endif %}
         </p>
+        <div class="flex items-center gap-2">
+          <p class="text-xs text-slate-400 dark:text-slate-500">
+            {% if f.size_bytes %}
+              {% if f.size_bytes < 1024 %}
+                {{ f.size_bytes }} B
+              {% elif f.size_bytes < 1024 * 1024 %}
+                {{ (f.size_bytes / 1024)|round(1) }} KB
+              {% elif f.size_bytes < 1024 * 1024 * 1024 %}
+                {{ (f.size_bytes / (1024 * 1024))|round(1) }} MB
+              {% else %}
+                {{ (f.size_bytes / (1024 * 1024 * 1024))|round(2) }} GB
+              {% endif %}
+            {% else %}
+              0 B
+            {% endif %}
+          </p>
+          {% if f.is_image and f.image_width and f.image_height %}
+          <span class="text-xs text-slate-400 dark:text-slate-500">
+            • {{ f.image_width }}×{{ f.image_height }}
+          </span>
+          {% endif %}
+          <span class="text-xs text-slate-400 dark:text-slate-500">
+            • {{ f.uploaded_at|timesince }}
+          </span>
+        </div>
       </div>
     </div>
 
     <!-- Quick actions (shown on hover) -->
-    <div class="hidden group-hover:flex items-center gap-1 mt-1.5 ps-10">
+    <div class="hidden group-hover:flex items-center gap-1 mt-1.5 ps-12 flex-wrap">
       <!-- View button -->
-      <button @click.stop="openPanel('view', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+      <button @click.stop="openPanel('view', {{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
               title="عرض الملف">
-        عرض
+        👁️ عرض
       </button>
       
       <!-- Analyze button -->
-      <button @click.stop="openPanel('analyze', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+      <button @click.stop="openPanel('analyze', {{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 text-brand-600 dark:text-brand-400 transition-colors"
               title="تحليل الملف بالذكاء الاصطناعي">
-        تحليل
+        🤖 تحليل
       </button>
       
-      <!-- Convert button - NEW: uses the workspace panel route -->
-      <button @click.stop="openPanel('convert', {{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
+      <!-- Convert button -->
+      <button @click.stop="openPanel('convert', {{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 text-violet-600 dark:text-violet-400 transition-colors"
               title="تحويل الملف إلى صيغة أخرى">
-        تحويل
+        🔄 تحويل
       </button>
       
       <!-- Download button -->
       <button @click.stop="downloadFile({{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 transition-colors"
               title="تحميل الملف">
-        تحميل
+        ⬇️ تحميل
       </button>
       
-      <!-- Delete button -->
-      <button @click.stop="deleteFile({{ f.id }}, '{{ f.original_name | replace("'", "\\'") }}')"
-              class="text-xs px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-900/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition-colors"
+      <!-- Delete button - Improved with Alpine -->
+      <button @click.stop="deleteFile({{ f.id }}, '{{ f.original_name|escapejs }}')"
+              :disabled="deletingIds.includes({{ f.id }})"
+              class="text-xs px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-900/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="حذف الملف">
-        حذف
+        <span x-show="!deletingIds.includes({{ f.id }})">🗑️ حذف</span>
+        <span x-show="deletingIds.includes({{ f.id }})" class="inline-flex items-center gap-1">
+          <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+          </svg>
+          جاري...
+        </span>
       </button>
     </div>
   </div>
   {% endfor %}
 </div>
+
 {% else %}
-<!-- Empty state -->
+<!-- Empty state with upload -->
 <div class="py-8 text-center text-slate-400">
-  <svg class="w-10 h-10 mx-auto mb-2 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg class="w-12 h-12 mx-auto mb-3 text-slate-200 dark:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
   </svg>
-  <p class="text-xs">لا يوجد ملفات</p>
-  <p class="text-xs mt-1 text-slate-300 dark:text-slate-600">ارفع ملفاً للبدء</p>
+  <p class="text-sm font-medium text-slate-600 dark:text-slate-300">لا يوجد ملفات</p>
+  <p class="text-xs mt-1 text-slate-400 dark:text-slate-500">ارفع ملفاً للبدء</p>
+  
+  <!-- Upload buttons -->
+  <div class="mt-4 flex flex-col items-center gap-2">
+    <label for="file-upload" 
+           class="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white text-sm rounded-lg cursor-pointer transition-colors shadow-sm hover:shadow-md">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+      </svg>
+      رفع ملفات
+    </label>
+    <input id="file-upload" 
+           type="file" 
+           class="hidden" 
+           multiple 
+           accept="image/*,.xlsx,.xls,.csv,.pdf,.txt,.json,.xml,.html,.parquet,.doc,.docx" 
+           @change="uploadFiles($event)">
+    
+    <!-- زر رفع الصور مع معاينة -->
+    <label for="image-upload" 
+           class="inline-flex items-center gap-2 px-4 py-2 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white text-sm rounded-lg cursor-pointer transition-colors shadow-sm hover:shadow-md">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      </svg>
+      رفع صور (معاينة)
+    </label>
+    <input id="image-upload" 
+           type="file" 
+           class="hidden" 
+           multiple 
+           accept="image/*" 
+           @change="uploadImagesWithPreview($event)">
+    
+    <!-- منطقة السحب والإفلات -->
+    <div class="mt-2 w-full max-w-xs border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg p-6 text-center hover:border-blue-400 transition-colors"
+         id="drop-zone">
+      <p class="text-xs text-slate-400 dark:text-slate-500">أو اسحب الملفات هنا</p>
+    </div>
+  </div>
 </div>
 {% endif %}
 
+<!-- Alpine.js Component -->
 <script>
-// JavaScript functions for file actions
-// These work with Alpine.js or vanilla JS
-
-function openPanel(panelType, fileId, fileName) {
-    // This function is called from the Alpine.js @click handler
-    // It navigates to the appropriate panel
-    if (typeof Alpine !== 'undefined') {
-        // If using Alpine.js, the function is defined in the parent component
-        return;
-    }
-    
-    // Fallback for vanilla JS
-    const panelMap = {
-        'view': '/workspace/panel/view/' + fileId,
-        'analyze': '/workspace/panel/analyze/' + fileId,
-        'convert': '/workspace/panel/convert?file_id=' + fileId,
-        'clean': '/workspace/panel/clean?file_id=' + fileId,
-        'merge': '/workspace/panel/merge'
-    };
-    
-    const url = panelMap[panelType];
-    if (url) {
-        window.location.href = url;
-    }
-}
-
-function selectFile(fileId, fileName) {
-    // Handle file selection
-    console.log('Selected file:', fileName, 'ID:', fileId);
-    // You can add additional logic here
-}
-
-function downloadFile(fileId) {
-    // Download file
-    window.location.href = '/api/files/' + fileId + '/download';
-}
-
-function deleteFile(fileId, fileName) {
-    // Delete file with confirmation
-    if (confirm('هل أنت متأكد من حذف الملف "' + fileName + '"؟')) {
-        fetch('/api/files/' + fileId, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Refresh the file list
-                location.reload();
-            } else {
-                alert('حدث خطأ أثناء حذف الملف: ' + data.error);
+function fileListComponent() {
+    return {
+        files: [],
+        selectedFileId: null,
+        deletingIds: [],
+        uploading: false,
+        loading: false,
+        
+        initFiles(filesData) {
+            this.files = filesData;
+        },
+        
+        selectFile(fileId) {
+            this.selectedFileId = fileId;
+            // يمكن إضافة منطق إضافي هنا مثل تحميل محتوى الملف
+            this.$dispatch('file-selected', { fileId: fileId });
+        },
+        
+        async deleteFile(fileId, fileName) {
+            // التحقق من عدم حذف نفس الملف مرتين
+            if (this.deletingIds.includes(fileId)) return;
+            
+            // طلب تأكيد
+            if (!confirm(`هل أنت متأكد من حذف الملف "${fileName}"؟`)) {
+                return;
             }
-        })
-        .catch(error => {
-            alert('حدث خطأ: ' + error.message);
+            
+            // إضافة الملف إلى قائمة الجاري حذفهم
+            this.deletingIds.push(fileId);
+            
+            try {
+                const response = await fetch(`/api/files/${fileId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'فشل حذف الملف');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // إزالة الملف من القائمة مباشرة
+                    this.files = this.files.filter(f => f.id !== fileId);
+                    
+                    // إلغاء التحديد إذا كان الملف محدّداً
+                    if (this.selectedFileId === fileId) {
+                        this.selectedFileId = null;
+                    }
+                    
+                    // عرض رسالة نجاح
+                    this.showToast('✅ تم حذف الملف بنجاح', 'success');
+                    
+                    // تحديث العدد الإجمالي
+                    this.$dispatch('file-deleted', { fileId: fileId });
+                } else {
+                    throw new Error(data.error || 'حدث خطأ أثناء الحذف');
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                this.showToast(`❌ ${error.message}`, 'error');
+            } finally {
+                // إزالة الملف من قائمة الجاري حذفهم
+                this.deletingIds = this.deletingIds.filter(id => id !== fileId);
+            }
+        },
+        
+        async uploadFiles(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            this.uploading = true;
+            const formData = new FormData();
+            
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            
+            // إظهار حالة التحميل
+            this.showToast(`⏳ جاري رفع ${files.length} ملف...`, 'info');
+            
+            try {
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'فشل رفع الملفات');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // إضافة الملفات الجديدة إلى القائمة
+                    if (data.files) {
+                        this.files = [...data.files, ...this.files];
+                    }
+                    
+                    this.showToast(`✅ تم رفع ${data.count || files.length} ملف بنجاح`, 'success');
+                    
+                    // إعادة تحميل القائمة للحصول على التفاصيل الكاملة
+                    this.refreshFileList();
+                } else {
+                    throw new Error(data.error || 'حدث خطأ أثناء الرفع');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                this.showToast(`❌ ${error.message}`, 'error');
+            } finally {
+                this.uploading = false;
+                // إعادة تعيين الإدخال
+                event.target.value = '';
+            }
+        },
+        
+        async uploadImagesWithPreview(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            // فلترة الصور فقط
+            const imageFiles = Array.from(files).filter(file => 
+                file.type.startsWith('image/')
+            );
+            
+            if (imageFiles.length === 0) {
+                this.showToast('❌ الرجاء اختيار صور فقط', 'error');
+                event.target.value = '';
+                return;
+            }
+            
+            // عرض معاينة الصور
+            this.showImagePreview(imageFiles, event);
+        },
+        
+        showImagePreview(imageFiles, originalEvent) {
+            // إنشاء نافذة المعاينة
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+            overlay.innerHTML = `
+                <div class="bg-white dark:bg-slate-800 rounded-xl p-6 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-slate-800 dark:text-white">
+                            📸 معاينة الصور (${imageFiles.length})
+                        </h3>
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            <svg class="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 mb-4 overflow-y-auto flex-1" id="image-preview-grid">
+                        ${imageFiles.map((file, index) => `
+                            <div class="aspect-square rounded-lg overflow-hidden border-2 border-slate-200 dark:border-slate-700">
+                                <img src="${URL.createObjectURL(file)}" 
+                                     alt="${file.name}" 
+                                     class="w-full h-full object-cover"
+                                     loading="lazy">
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <button onclick="this.closest('.fixed').remove()" 
+                                class="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors">
+                            إلغاء
+                        </button>
+                        <button id="confirm-upload-btn" 
+                                class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors shadow-sm">
+                            ✅ رفع الكل
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // معالج زر التأكيد
+            document.getElementById('confirm-upload-btn').addEventListener('click', () => {
+                overlay.remove();
+                this.confirmImageUpload(imageFiles, originalEvent);
+            });
+        },
+        
+        async confirmImageUpload(imageFiles, originalEvent) {
+            if (!imageFiles || imageFiles.length === 0) return;
+            
+            this.uploading = true;
+            const formData = new FormData();
+            
+            for (let i = 0; i < imageFiles.length; i++) {
+                formData.append('files', imageFiles[i]);
+            }
+            
+            this.showToast(`⏳ جاري رفع ${imageFiles.length} صورة...`, 'info');
+            
+            try {
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'فشل رفع الصور');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.files) {
+                        this.files = [...data.files, ...this.files];
+                    }
+                    
+                    this.showToast(`✅ تم رفع ${data.count || imageFiles.length} صورة بنجاح`, 'success');
+                    this.refreshFileList();
+                } else {
+                    throw new Error(data.error || 'حدث خطأ أثناء الرفع');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                this.showToast(`❌ ${error.message}`, 'error');
+            } finally {
+                this.uploading = false;
+                if (originalEvent && originalEvent.target) {
+                    originalEvent.target.value = '';
+                }
+            }
+        },
+        
+        async refreshFileList() {
+            // تحديث القائمة من السيرفر
+            try {
+                const response = await fetch('/api/files/list', {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.files) {
+                        this.files = data.files;
+                    }
+                }
+            } catch (error) {
+                console.error('Refresh error:', error);
+            }
+        },
+        
+        openPanel(panelType, fileId) {
+            // إرسال حدث لفتح اللوحة
+            this.$dispatch('open-panel', { 
+                type: panelType, 
+                fileId: fileId 
+            });
+            
+            // يمكن استخدام HTMX للتنقل
+            if (typeof htmx !== 'undefined') {
+                const urls = {
+                    'view': `/workspace/panel/view/${fileId}`,
+                    'analyze': `/workspace/panel/analyze/${fileId}`,
+                    'convert': `/workspace/panel/convert?file_id=${fileId}`,
+                    'clean': `/workspace/panel/clean?file_id=${fileId}`,
+                    'merge': '/workspace/panel/merge'
+                };
+                
+                const url = urls[panelType];
+                if (url) {
+                    htmx.ajax('GET', url, {
+                        target: '#panel-container',
+                        swap: 'innerHTML'
+                    });
+                }
+            }
+        },
+        
+        async downloadFile(fileId) {
+            try {
+                // استخدام رابط التحميل
+                window.location.href = `/api/files/${fileId}/download`;
+            } catch (error) {
+                console.error('Download error:', error);
+                this.showToast('❌ حدث خطأ أثناء التحميل', 'error');
+            }
+        },
+        
+        showToast(message, type = 'info') {
+            // إزالة التوست القديم
+            const oldToast = document.querySelector('.custom-toast');
+            if (oldToast) oldToast.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = `custom-toast fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 transition-all max-w-md ${
+                type === 'success' ? 'bg-green-500 text-white' : 
+                type === 'error' ? 'bg-red-500 text-white' : 
+                type === 'warning' ? 'bg-yellow-500 text-white' :
+                'bg-blue-500 text-white'
+            }`;
+            toast.textContent = message;
+            toast.style.transform = 'translateY(-20px)';
+            toast.style.opacity = '0';
+            toast.style.transition = 'all 0.3s ease';
+            
+            document.body.appendChild(toast);
+            
+            // تشغيل الأنيميشن
+            requestAnimationFrame(() => {
+                toast.style.transform = 'translateY(0)';
+                toast.style.opacity = '1';
+            });
+            
+            // إزالة بعد 3 ثواني
+            setTimeout(() => {
+                toast.style.transform = 'translateY(-20px)';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+    }
+}
+</script>
+
+<!-- دعم السحب والإفلات -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('drop-zone');
+    if (!dropZone) return;
+    
+    // منع السلوك الافتراضي
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
         });
-    }
-}
-
-// Additional utility functions
-function formatFileSize(bytes) {
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size = bytes;
-    let unitIndex = 0;
-    while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex++;
-    }
-    return size.toFixed(1) + ' ' + units[unitIndex];
-}
-
-function getFileIcon(format) {
-    const icons = {
-        'xlsx': '📊',
-        'xls': '📊',
-        'csv': '📋',
-        'json': '📄',
-        'pdf': '📕',
-        'txt': '📝',
-        'html': '🌐',
-        'xml': '📰',
-        'parquet': '📦',
-        'jpg': '🖼️',
-        'jpeg': '🖼️',
-        'png': '🖼️',
-        'gif': '🖼️',
-        'svg': '🖼️',
-        'doc': '📄',
-        'docx': '📄',
-        'ppt': '📊',
-        'pptx': '📊'
-    };
-    return icons[format] || '📄';
-}
+    });
+    
+    // تأثيرات عند السحب
+    dropZone.addEventListener('dragenter', () => {
+        dropZone.classList.add('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
+    });
+    
+    // معالج الإفلات
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            // العثور على input file وتفعيله
+            const fileInput = document.getElementById('file-upload');
+            if (fileInput) {
+                const dt = new DataTransfer();
+                for (let i = 0; i < files.length; i++) {
+                    dt.items.add(files[i]);
+                }
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change'));
+                
+                // تغيير لون المنطقة للتأكيد
+                dropZone.classList.add('border-green-500', 'bg-green-50/20');
+                setTimeout(() => {
+                    dropZone.classList.remove('border-green-500', 'bg-green-50/20');
+                }, 1000);
+            }
+        }
+    });
+});
 </script>
 
 <!-- HTMX support for dynamic updates -->
@@ -218,5 +585,60 @@ function getFileIcon(format) {
       transform: translateY(0);
     }
   }
+  
+  /* تحسين عرض الصور المصغرة */
+  .image-thumbnail {
+    transition: transform 0.2s ease;
+  }
+  .image-thumbnail:hover {
+    transform: scale(1.05);
+  }
+  
+  /* تنسيق التحميل */
+  .htmx-indicator {
+    display: none;
+  }
+  .htmx-request .htmx-indicator {
+    display: inline-block;
+  }
+  .htmx-request.htmx-indicator {
+    display: inline-block;
+  }
 </style>
 {% endif %}
+
+<!-- تصفية إضافية -->
+<style>
+/* تحسينات عامة */
+[data-file-card] {
+    transition: all 0.2s ease;
+}
+
+[data-file-card]:hover .group-hover\\:flex {
+    display: flex !important;
+}
+
+/* تنسيق شريط التمرير للمعاينة */
+#image-preview-grid::-webkit-scrollbar {
+    width: 6px;
+}
+#image-preview-grid::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+#image-preview-grid::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+#image-preview-grid::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* تحسين الوضع المظلم */
+.dark #image-preview-grid::-webkit-scrollbar-track {
+    background: #374151;
+}
+.dark #image-preview-grid::-webkit-scrollbar-thumb {
+    background: #6B7280;
+}
+</style>
