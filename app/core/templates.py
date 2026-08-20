@@ -13,6 +13,9 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 import os
 
+# ✅ استيراد الإعدادات
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -471,12 +474,12 @@ def tojson_safe(value: Any, indent: Optional[int] = None) -> Markup:
         return Markup("null")
 
 
-def time_ago(value: Any, lang: str = 'ar') -> str:
+def timesince(value: Any, lang: str = 'ar') -> str:
     """
-    Display time as "X minutes ago" or "X days ago".
+    Display time since a date.
     
     Example:
-        {{ my_date|time_ago }}
+        {{ my_date|timesince }}
     """
     if value is None:
         return ""
@@ -510,13 +513,20 @@ def time_ago(value: Any, lang: str = 'ar') -> str:
         elif seconds < 604800:
             days = int(seconds / 86400)
             return t('days_ago', lang, days=days)
-        elif seconds < 2592000:  # 30 days
-            weeks = int(seconds / 604800)
-            return t('weeks_ago', lang, weeks=weeks)
         else:
             return dt.strftime("%Y-%m-%d")
     except Exception:
         return str(value)
+
+
+def time_ago(value: Any, lang: str = 'ar') -> str:
+    """
+    Display time as "X minutes ago" or "X days ago".
+    
+    Example:
+        {{ my_date|time_ago }}
+    """
+    return timesince(value, lang)
 
 
 def format_size(value: Any) -> str:
@@ -681,7 +691,7 @@ class CustomTemplates(Jinja2Templates):
             directory: Templates directory path
             auto_reload: Auto reload templates in development
         """
-        # ✅ إصلاح: إزالة auto_reload من super()
+        # ✅ إزالة auto_reload من super()
         super().__init__(directory=directory)
         
         # ✅ تعيين auto_reload يدوياً إذا كان مدعوماً
@@ -702,6 +712,7 @@ class CustomTemplates(Jinja2Templates):
         # Core filters
         self.env.filters['escapejs'] = escapejs
         self.env.filters['tojson_safe'] = tojson_safe
+        self.env.filters['timesince'] = timesince  # ✅ إضافة timesince
         self.env.filters['time_ago'] = time_ago
         self.env.filters['format_size'] = format_size
         self.env.filters['file_icon'] = file_icon
@@ -728,6 +739,9 @@ class CustomTemplates(Jinja2Templates):
             'get_supported_languages': get_supported_languages,
             'is_rtl_language': is_rtl_language,
             'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
+            
+            # Settings
+            'settings': settings,  # ✅ إضافة settings
             
             # JSON
             'json_dumps': lambda v, **kwargs: json.dumps(v, ensure_ascii=False, **kwargs),
@@ -806,6 +820,7 @@ class CustomTemplates(Jinja2Templates):
             'translations': translations,
             'user': user,
             'is_authenticated': user is not None and getattr(user, 'is_active', False),
+            'settings': settings,  # ✅ إضافة settings
             'get_texts': get_texts,
             't': t,
             'translate': t,
@@ -958,6 +973,7 @@ __all__ = [
     # Filters
     'escapejs',
     'tojson_safe',
+    'timesince',
     'time_ago',
     'format_size',
     'file_icon',
