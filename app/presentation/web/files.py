@@ -2,17 +2,19 @@
 
 import json
 import logging
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
+from typing import Optional
+import io
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.templates import templates
 from app.core.config import settings
-from app.infrastructure.database.models import User
+from app.infrastructure.database.models import User, File as FileModel
 from app.application.files.service import FileService
 
 logger = logging.getLogger(__name__)
@@ -118,12 +120,12 @@ async def files_page(
 async def upload_files(
     request: Request,
     files: list[UploadFile] = File(...),
-    store_locally: bool = Form(True),
+    store_locally: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Upload files to the server.
+    Upload files to the server with support for images and thumbnails.
     """
     svc = FileService(db)
     uploaded = []
@@ -132,11 +134,13 @@ async def upload_files(
     for file in files:
         try:
             f = await svc.upload(file, current_user.id, store_locally=store_locally)
-            await _auto_analyze(f.id, f.path, f.format, db)
+            # Auto-analyze for supported formats
+            if f.format and f.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt']:
+                await _auto_analyze(f.id, f.path, f.format, db)
             uploaded.append(f)
         except Exception as e:
             logger.error(f"Upload error for {file.filename}: {e}")
-            errors.append(f"{file.filename}: {e}")
+            errors.append(f"{file.filename}: {str(e)}")
 
     # HTMX response
     if request.headers.get("HX-Request"):
@@ -145,25 +149,27 @@ async def upload_files(
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
         if len(uploaded) == 1 and not errors:
+            # For single file, redirect to analysis
             redirect_url = f"/intelligence/analyze/{uploaded[0].id}"
             return HTMLResponse(
                 f'<div class="text-emerald-400 text-sm text-center">'
-                f'✓ تم رفع الملف — جارٍ التوجيه للتحليل…'
+                f'✅ تم رفع الملف — جارٍ التوجيه للتحليل…'
                 f'</div>'
                 f'<script>setTimeout(()=>window.location.href="{redirect_url}",600)</script>'
             )
 
-        msg = f"✓ تم رفع {len(uploaded)} ملف وبدأ التحليل تلقائياً"
+        msg = f"✅ تم رفع {len(uploaded)} ملف وبدأ التحليل تلقائياً"
         if errors:
-            msg += f" ({len(errors)} أخطاء)"
+            msg += f" ⚠️ ({len(errors)} أخطاء)"
         
-        storage_info = " (مخزن محلياً)" if store_locally else ""
+        storage_info = " (مخزن محلياً)" if store_locally else " (مخزن في السحابة)"
         
         return HTMLResponse(
             f'<div class="text-emerald-400 text-sm text-center">{msg}{storage_info}</div>'
             f'<script>setTimeout(()=>location.reload(),1500)</script>'
         )
 
+    # Non-HTMX response
     if len(uploaded) == 1:
         return RedirectResponse(url=f"/intelligence/analyze/{uploaded[0].id}", status_code=302)
     return RedirectResponse(url="/files", status_code=302)
@@ -177,7 +183,7 @@ async def file_detail(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Display file detail page.
+    Display file detail page with preview and analysis.
     """
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
@@ -206,7 +212,15 @@ async def file_detail(
     except Exception:
         analysis = None
 
-    file_exists_on_server = Path(f.path).exists() if f.path else False
+    # Check if file exists on server
+    file_exists_on_server = False
+    try:
+        if hasattr(svc.storage, 'file_exists'):
+            file_exists_on_server = svc.storage.file_exists(f.path)
+        else:
+            file_exists_on_server = Path(f.path).exists() if f.path else False
+    except Exception:
+        file_exists_on_server = False
 
     return templates.TemplateResponse(
         request,
@@ -230,26 +244,94 @@ async def download_file(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Download file from server.
+    Download file from server with support for large files.
     """
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    if not f.path or not Path(f.path).exists():
+    # Try to get file content
+    content = await svc.get_file_content(file_id, current_user.id)
+    if content:
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type=f.mime_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{f.original_name}"',
+                "Content-Length": str(len(content))
+            }
+        )
+    
+    # Try to stream from storage
+    try:
+        return StreamingResponse(
+            svc.stream_file(file_id, current_user.id),
+            media_type=f.mime_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{f.original_name}"',
+                "Content-Length": str(f.size_bytes)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        return RedirectResponse(url="/files", status_code=302)
+
+
+@router.get("/files/{file_id}/thumbnail")
+async def get_thumbnail(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get file thumbnail (for images).
+    """
+    svc = FileService(db)
+    f = await svc.get_file(file_id, current_user.id)
+    
+    # Check if file is an image
+    if not f.meta or not f.meta.get('is_image'):
+        raise HTTPException(status_code=404, detail="Not an image file")
+    
+    # Try to get thumbnail URL from meta
+    thumbnail_url = f.meta.get('thumbnail_url')
+    if thumbnail_url:
+        # Try to get thumbnail content
+        try:
+            # Extract path from URL
+            if '/thumbnails/' in thumbnail_url:
+                path_parts = thumbnail_url.split('/thumbnails/')
+                if len(path_parts) > 1:
+                    thumb_path = f"thumbnails/{path_parts[1]}"
+                    if hasattr(svc.storage, 'file_exists') and svc.storage.file_exists(thumb_path):
+                        read_path = await svc.storage.get_read_path(thumb_path, current_user.id)
+                        if Path(read_path).exists():
+                            return FileResponse(
+                                read_path,
+                                media_type="image/webp",
+                                headers={"Cache-Control": "public, max-age=31536000"}
+                            )
+        except Exception as e:
+            logger.warning(f"Failed to get thumbnail: {e}")
+    
+    # Generate thumbnail on the fly
+    try:
         content = await svc.get_file_content(file_id, current_user.id)
         if content:
-            from fastapi.responses import Response
-            return Response(
-                content=content,
-                media_type=f.mime_type or "application/octet-stream",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{f.original_name}"',
-                    "Content-Length": str(len(content))
-                }
+            img = Image.open(io.BytesIO(content))
+            img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+            thumbnail_buffer = io.BytesIO()
+            img.save(thumbnail_buffer, format='WEBP', quality=80)
+            thumbnail_buffer.seek(0)
+            
+            return StreamingResponse(
+                thumbnail_buffer,
+                media_type="image/webp",
+                headers={"Cache-Control": "public, max-age=31536000"}
             )
-        return RedirectResponse(url="/files", status_code=302)
+    except Exception as e:
+        logger.error(f"Thumbnail generation failed: {e}")
     
-    return FileResponse(f.path, filename=f.original_name)
+    raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 
 @router.post("/files/{file_id}/delete")
@@ -345,3 +427,25 @@ async def preview_file(
         "success": True,
         "data": preview
     })
+
+
+@router.post("/files/{file_id}/rename")
+async def rename_file(
+    file_id: int,
+    new_name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Rename a file.
+    """
+    from app.application.files.dto import RenameFileDTO
+    
+    svc = FileService(db)
+    dto = RenameFileDTO(new_name=new_name)
+    f = await svc.rename_file(file_id, current_user.id, dto)
+    
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(f'<span class="text-sm font-medium">{f.original_name}</span>')
+    
+    return RedirectResponse(url=f"/files/{file_id}", status_code=302)
