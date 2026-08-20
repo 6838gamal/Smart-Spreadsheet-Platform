@@ -444,7 +444,7 @@ class FileService:
         return await self.file_repo.update(f, meta=current_meta)
 
     # ============================================================
-    # FILE DELETION - IMPROVED
+    # FILE DELETION - IMPROVED (مع إصلاح ترتيب العمليات)
     # ============================================================
 
     async def delete_file(self, file_id: int, user_id: int, delete_local: bool = True) -> bool:
@@ -459,61 +459,110 @@ class FileService:
         Returns:
             bool: True if deletion was successful
         """
+        op = None
+        
+        # ✅ 1. Get file first (before any deletion)
         f = await self.get_file(file_id, user_id)
         
-        # Delete from object storage
+        # Store file info for logging before deletion
+        file_path = f.path
+        file_name = f.original_name
+        file_owner_id = f.owner_id
+        file_storage_key = getattr(f, 'storage_key', None)
+        file_meta = f.meta or {}
+        
+        # ✅ 2. Create operation log entry BEFORE deleting from DB
         try:
-            if hasattr(self.storage, 'file_exists') and self.storage.file_exists(f.path):
-                await self.storage.delete_file(f.path)
-                logger.info(f"🗑️ Deleted file from storage: {f.path}")
+            op = await self.op_repo.create(
+                type=OperationType.DELETE,
+                user_id=user_id,
+                file_id=file_id,
+                input_path=file_path,
+                params={"delete_local": delete_local, "file_name": file_name},
+            )
+            # Set to PENDING status
+            await self.op_repo.mark_complete(
+                op,
+                OperationStatus.PENDING,
+                result={"file_id": file_id, "storage_key": file_storage_key},
+                duration_ms=0,
+            )
+            logger.info(f"📝 Logged DELETE operation for file {file_id}")
+        except Exception as e:
+            logger.error(f"Failed to log delete operation: {e}")
+            # Continue with deletion even if logging fails
+        
+        # ✅ 3. Delete from object storage
+        try:
+            if hasattr(self.storage, 'file_exists') and self.storage.file_exists(file_path):
+                await self.storage.delete_file(file_path)
+                logger.info(f"🗑️ Deleted file from storage: {file_path}")
             else:
-                logger.warning(f"⚠️ File not found in storage: {f.path}")
+                logger.warning(f"⚠️ File not found in storage: {file_path}")
         except Exception as e:
             logger.error(f"❌ Failed to delete from storage: {e}")
             # Continue with database deletion even if storage deletion fails
         
-        # Delete thumbnail if exists
-        if f.meta and f.meta.get('thumbnail_url'):
+        # ✅ 4. Delete thumbnail if exists
+        if file_meta.get('thumbnail_url'):
             try:
-                thumbnail_path = f.meta['thumbnail_url'].split('/')[-1]
-                # Try to find and delete thumbnail
-                if hasattr(self.storage, 'file_exists'):
-                    # Check various possible paths
-                    possible_paths = [
-                        f"thumbnails/{f.owner_id}/{thumbnail_path}",
-                        f"thumbnails/{thumbnail_path}",
-                        thumbnail_path
-                    ]
-                    for path in possible_paths:
-                        if self.storage.file_exists(path):
-                            await self.storage.delete_file(path)
-                            logger.info(f"🗑️ Deleted thumbnail: {path}")
-                            break
+                thumbnail_url = file_meta['thumbnail_url']
+                if '/thumbnails/' in thumbnail_url:
+                    path_parts = thumbnail_url.split('/thumbnails/')
+                    if len(path_parts) > 1:
+                        thumbnail_name = path_parts[1].split('/')[-1] if '/' in path_parts[1] else path_parts[1]
+                        possible_paths = [
+                            f"thumbnails/{file_owner_id}/{thumbnail_name}",
+                            f"thumbnails/{thumbnail_name}",
+                        ]
+                        for path in possible_paths:
+                            if hasattr(self.storage, 'file_exists') and self.storage.file_exists(path):
+                                await self.storage.delete_file(path)
+                                logger.info(f"🗑️ Deleted thumbnail: {path}")
+                                break
             except Exception as e:
                 logger.warning(f"⚠️ Failed to delete thumbnail: {e}")
         
-        # Delete from cache
+        # ✅ 5. Delete from cache
         await self._delete_from_cache(file_id)
         
-        # Delete from database
-        await self.file_repo.delete(f)
+        # ✅ 6. Delete from database LAST (so operation_log still references the file)
+        try:
+            await self.file_repo.delete(f)
+            logger.info(f"🗑️ Deleted file record from database: {file_name} (ID: {file_id})")
+        except Exception as e:
+            logger.error(f"❌ Failed to delete file from database: {e}")
+            # Update operation log to FAILED if it exists
+            if op:
+                try:
+                    await self.op_repo.mark_complete(
+                        op,
+                        OperationStatus.FAILED,
+                        error=str(e),
+                        duration_ms=0,
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to update operation log: {log_error}")
+            raise
         
-        # Log the deletion
-        await self._log_operation(
-            user_id=user_id,
-            file_id=file_id,
-            operation_type=OperationType.DELETE,
-            input_path=f.path,
-            result={
-                "file_id": file_id,
-                "storage_key": getattr(f, 'storage_key', None),
-                "delete_local": delete_local
-            },
-            duration_ms=0,
-            status=OperationStatus.SUCCESS
-        )
+        # ✅ 7. Update operation log to SUCCESS
+        if op:
+            try:
+                await self.op_repo.mark_complete(
+                    op,
+                    OperationStatus.SUCCESS,
+                    result={
+                        "file_id": file_id,
+                        "storage_key": file_storage_key,
+                        "delete_local": delete_local,
+                        "deleted_from_storage": True,
+                    },
+                    duration_ms=0,
+                )
+                logger.info(f"✅ DELETE operation completed successfully for file {file_id}")
+            except Exception as e:
+                logger.error(f"Failed to update operation log: {e}")
         
-        logger.info(f"🗑️ Deleted file: {f.original_name} from database")
         return True
 
     # ============================================================
