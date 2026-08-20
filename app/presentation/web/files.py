@@ -54,6 +54,7 @@ def file_to_dict(file: FileModel) -> dict:
         "is_image": file.meta.get('is_image', False) if file.meta else False,
         "image_width": file.meta.get('image_width') if file.meta else None,
         "image_height": file.meta.get('image_height') if file.meta else None,
+        "size_human": file.size_human if hasattr(file, 'size_human') else f"{file.size_bytes} B" if file.size_bytes else "0 B",
     }
 
 
@@ -185,7 +186,49 @@ async def upload_files(
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
-        # Get all files to refresh the list
+        referer = request.headers.get("Referer", "")
+        is_converter = "/converter" in referer
+        
+        # ✅ If single file and no errors, redirect to converter with file_id
+        if len(uploaded_files) == 1 and not errors:
+            file_id = uploaded_files[0].id
+            redirect_url = f"/converter?file_id={file_id}&uploaded=true"
+            
+            # Get updated file list for the panel
+            all_files, total = await svc.list_files(
+                user_id=current_user.id,
+                limit=100,
+                offset=0,
+                sort_by="created_at",
+                sort_order="desc"
+            )
+            all_files_dict = files_to_dict_list(all_files)
+            
+            # Render the updated files panel
+            html_content = templates.TemplateResponse(
+                request,
+                "workspace/_files_panel.html",
+                {
+                    "files": all_files_dict,
+                    "total": total,
+                    "lang": current_user.default_lang,
+                    "uploaded_count": 1,
+                    "has_errors": False,
+                }
+            )
+            
+            return HTMLResponse(
+                f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف — جارٍ التوجيه إلى المحول…</div>'
+                f'<script>'
+                f'  console.log("🔄 Redirecting to:", "{redirect_url}");'
+                f'  setTimeout(function() {{'
+                f'    window.location.href = "{redirect_url}";'
+                f'  }}, 600);'
+                f'</script>'
+                + html_content.body.decode('utf-8')
+            )
+        
+        # Multiple files or errors - just refresh the list
         all_files, total = await svc.list_files(
             user_id=current_user.id,
             limit=100,
@@ -195,10 +238,6 @@ async def upload_files(
         )
         all_files_dict = files_to_dict_list(all_files)
         
-        referer = request.headers.get("Referer", "")
-        is_converter = "/converter" in referer
-        
-        # Render the updated files panel
         html_content = templates.TemplateResponse(
             request,
             "workspace/_files_panel.html",
@@ -211,24 +250,6 @@ async def upload_files(
             }
         )
         
-        # If single file and no errors, redirect
-        if len(uploaded_files) == 1 and not errors:
-            file_id = uploaded_files[0].id
-            if is_converter:
-                redirect_url = f"/converter?file_id={file_id}&uploaded=true"
-                return HTMLResponse(
-                    f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف بنجاح</div>'
-                    f'<script>setTimeout(function(){{window.location.href="{redirect_url}"}},500);</script>'
-                    + html_content.body.decode('utf-8')
-                )
-            else:
-                redirect_url = f"/intelligence/analyze/{file_id}"
-                return HTMLResponse(
-                    f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف — جارٍ التوجيه للتحليل…</div>'
-                    f'<script>setTimeout(function(){{window.location.href="{redirect_url}"}},600);</script>'
-                    + html_content.body.decode('utf-8')
-                )
-        
         msg = f"✅ تم رفع {len(uploaded_files)} ملف بنجاح"
         if errors:
             msg += f" ⚠️ ({len(errors)} أخطاء)"
@@ -240,7 +261,7 @@ async def upload_files(
 
     # Non-HTMX response
     if len(uploaded_files) == 1:
-        return RedirectResponse(url=f"/intelligence/analyze/{uploaded_files[0].id}", status_code=302)
+        return RedirectResponse(url=f"/converter?file_id={uploaded_files[0].id}&uploaded=true", status_code=302)
     return RedirectResponse(url="/files", status_code=302)
 
 
@@ -399,15 +420,39 @@ async def get_thumbnail(
     raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 
+@router.delete("/files/{file_id}")
+async def delete_file_api(
+    request: Request,
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete file from server - API endpoint."""
+    svc = FileService(db)
+    
+    try:
+        await svc.delete_file(file_id, current_user.id)
+        return JSONResponse({
+            "success": True,
+            "message": "File deleted successfully"
+        })
+    except Exception as e:
+        logger.error(f"Delete error: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+
 @router.post("/files/{file_id}/delete")
-async def delete_file(
+async def delete_file_web(
     request: Request,
     file_id: int,
     delete_local: bool = Form(True),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete file from server and optionally local storage."""
+    """Delete file from server - Web endpoint."""
     svc = FileService(db)
     await svc.delete_file(file_id, current_user.id, delete_local=delete_local)
     
@@ -561,6 +606,30 @@ async def api_list_files(
     })
 
 
+@router.get("/api/files/{file_id}")
+async def api_get_file(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """API endpoint to get a single file by ID."""
+    svc = FileService(db)
+    
+    try:
+        f = await svc.get_file(file_id, current_user.id)
+        file_dict = file_to_dict(f)
+        return JSONResponse({
+            "success": True,
+            "file": file_dict
+        })
+    except Exception as e:
+        logger.error(f"Error getting file: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=404)
+
+
 @router.delete("/api/files/{file_id}")
 async def api_delete_file(
     request: Request,
@@ -572,9 +641,9 @@ async def api_delete_file(
     svc = FileService(db)
     
     try:
-        success = await svc.delete_file(file_id, current_user.id)
+        await svc.delete_file(file_id, current_user.id)
         return JSONResponse({
-            "success": success,
+            "success": True,
             "message": "File deleted successfully"
         })
     except Exception as e:
