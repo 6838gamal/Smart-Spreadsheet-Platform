@@ -26,9 +26,7 @@ router = APIRouter()
 # ============================================================
 
 def file_to_dict(file: FileModel) -> dict:
-    """
-    Convert a File object to a dictionary for JSON serialization.
-    """
+    """Convert a File object to a dictionary for JSON serialization."""
     if not file:
         return None
     
@@ -60,9 +58,7 @@ def file_to_dict(file: FileModel) -> dict:
 
 
 def files_to_dict_list(files: List[FileModel]) -> List[dict]:
-    """
-    Convert a list of File objects to a list of dictionaries.
-    """
+    """Convert a list of File objects to a list of dictionaries."""
     if not files:
         return []
     return [file_to_dict(file) for file in files]
@@ -121,9 +117,7 @@ async def files_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Display files page with filtering, sorting, and pagination.
-    """
+    """Display files page with filtering, sorting, and pagination."""
     svc = FileService(db)
     limit = 20
     offset = (page - 1) * limit
@@ -140,8 +134,6 @@ async def files_page(
     )
     
     total_pages = max(1, (total + limit - 1) // limit)
-    
-    # Convert files to dictionaries for JSON serialization
     files_dict = files_to_dict_list(files)
     
     return templates.TemplateResponse(
@@ -172,22 +164,17 @@ async def upload_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Upload files to the server with support for images and thumbnails.
-    """
+    """Upload files to the server with support for images and thumbnails."""
     svc = FileService(db)
     uploaded_files = []
     errors = []
-    uploaded_dicts = []
     
     for file in files:
         try:
             f = await svc.upload(file, current_user.id, store_locally=store_locally)
-            # Auto-analyze for supported formats
             if f.format and f.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt', 'docx', 'doc']:
                 await _auto_analyze(f.id, f.path, f.format, db)
             uploaded_files.append(f)
-            uploaded_dicts.append(file_to_dict(f))
         except Exception as e:
             logger.error(f"Upload error for {file.filename}: {e}")
             errors.append(f"{file.filename}: {str(e)}")
@@ -198,18 +185,20 @@ async def upload_files(
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
-        # Get all files for the user to refresh the list
+        # Get all files to refresh the list
         all_files, total = await svc.list_files(
             user_id=current_user.id,
-            limit=50,
+            limit=100,
             offset=0,
             sort_by="created_at",
             sort_order="desc"
         )
         all_files_dict = files_to_dict_list(all_files)
         
+        referer = request.headers.get("Referer", "")
+        is_converter = "/converter" in referer
+        
         # Render the updated files panel
-        from app.core.templates import templates
         html_content = templates.TemplateResponse(
             request,
             "workspace/_files_panel.html",
@@ -222,12 +211,28 @@ async def upload_files(
             }
         )
         
-        # Add a small success message at the top
+        # If single file and no errors, redirect
+        if len(uploaded_files) == 1 and not errors:
+            file_id = uploaded_files[0].id
+            if is_converter:
+                redirect_url = f"/converter?file_id={file_id}&uploaded=true"
+                return HTMLResponse(
+                    f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف بنجاح</div>'
+                    f'<script>setTimeout(function(){{window.location.href="{redirect_url}"}},500);</script>'
+                    + html_content.body.decode('utf-8')
+                )
+            else:
+                redirect_url = f"/intelligence/analyze/{file_id}"
+                return HTMLResponse(
+                    f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف — جارٍ التوجيه للتحليل…</div>'
+                    f'<script>setTimeout(function(){{window.location.href="{redirect_url}"}},600);</script>'
+                    + html_content.body.decode('utf-8')
+                )
+        
         msg = f"✅ تم رفع {len(uploaded_files)} ملف بنجاح"
         if errors:
             msg += f" ⚠️ ({len(errors)} أخطاء)"
         
-        # Return the updated panel with a success indicator
         return HTMLResponse(
             f'<div class="mb-2 text-sm text-emerald-400 text-center">{msg}</div>'
             + html_content.body.decode('utf-8')
@@ -246,13 +251,10 @@ async def file_detail(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Display file detail page with preview and analysis.
-    """
+    """Display file detail page with preview and analysis."""
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    # Safe attribute access
     f.storage_key = getattr(f, 'storage_key', None)
     f.is_locally_stored = getattr(f, 'is_locally_stored', False)
     
@@ -263,7 +265,6 @@ async def file_detail(
         logger.warning(f"Preview not available for file {file_id}: {e}")
         preview = {"error": str(e), "available": False}
 
-    # Load latest analysis
     try:
         from app.infrastructure.database.models_intelligence import DocumentAnalysis
         analysis_res = await db.execute(
@@ -276,7 +277,6 @@ async def file_detail(
     except Exception:
         analysis = None
 
-    # Check if file exists on server
     file_exists_on_server = False
     try:
         if hasattr(svc.storage, 'file_exists'):
@@ -286,7 +286,6 @@ async def file_detail(
     except Exception:
         file_exists_on_server = False
 
-    # Convert file to dict for template
     file_dict = file_to_dict(f)
 
     return templates.TemplateResponse(
@@ -311,13 +310,10 @@ async def download_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Download file from server with support for large files.
-    """
+    """Download file from server with support for large files."""
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    # Try to get file content
     content = await svc.get_file_content(file_id, current_user.id)
     if content:
         return StreamingResponse(
@@ -329,7 +325,6 @@ async def download_file(
             }
         )
     
-    # Try to stream from storage
     try:
         return StreamingResponse(
             svc.stream_file(file_id, current_user.id),
@@ -350,20 +345,16 @@ async def get_thumbnail(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get file thumbnail (for images).
-    """
+    """Get file thumbnail (for images)."""
     from PIL import Image
     import io
     
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
-    # Check if file is an image
     if not f.meta or not f.meta.get('is_image'):
         raise HTTPException(status_code=404, detail="Not an image file")
     
-    # Try to get thumbnail from meta
     thumbnail_url = f.meta.get('thumbnail_url')
     if thumbnail_url:
         try:
@@ -386,7 +377,6 @@ async def get_thumbnail(
         except Exception as e:
             logger.warning(f"Failed to get thumbnail: {e}")
     
-    # Generate thumbnail on the fly
     try:
         content = await svc.get_file_content(file_id, current_user.id)
         if content:
@@ -417,15 +407,11 @@ async def delete_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Delete file from server and optionally local storage.
-    """
+    """Delete file from server and optionally local storage."""
     svc = FileService(db)
     await svc.delete_file(file_id, current_user.id, delete_local=delete_local)
     
-    # HTMX response - refresh the file list
     if request.headers.get("HX-Request"):
-        # Get updated file list
         all_files, total = await svc.list_files(
             user_id=current_user.id,
             limit=50,
@@ -455,9 +441,7 @@ async def toggle_favorite(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Toggle favorite status of a file.
-    """
+    """Toggle favorite status of a file."""
     svc = FileService(db)
     f = await svc.toggle_favorite(file_id, current_user.id)
     
@@ -475,9 +459,7 @@ async def sync_local_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Sync local files status with server.
-    """
+    """Sync local files status with server."""
     try:
         body = await request.json()
         local_files = body.get("files", [])
@@ -502,9 +484,7 @@ async def get_storage_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get storage statistics for current user.
-    """
+    """Get storage statistics for current user."""
     svc = FileService(db)
     stats = await svc.get_storage_stats(current_user.id)
     return JSONResponse(stats)
@@ -517,9 +497,7 @@ async def preview_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Get file preview as JSON.
-    """
+    """Get file preview as JSON."""
     svc = FileService(db)
     preview = await svc.get_preview(file_id, current_user.id, rows=rows)
     return JSONResponse({
@@ -536,9 +514,7 @@ async def rename_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Rename a file.
-    """
+    """Rename a file."""
     from app.application.files.dto import RenameFileDTO
     
     svc = FileService(db)
@@ -563,9 +539,7 @@ async def api_list_files(
     limit: int = 50,
     offset: int = 0,
 ):
-    """
-    API endpoint for Alpine.js to get file list as JSON.
-    """
+    """API endpoint for Alpine.js to get file list as JSON."""
     svc = FileService(db)
     
     files, total = await svc.list_files(
@@ -594,9 +568,7 @@ async def api_delete_file(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    API endpoint for Alpine.js to delete a file.
-    """
+    """API endpoint for Alpine.js to delete a file."""
     svc = FileService(db)
     
     try:
