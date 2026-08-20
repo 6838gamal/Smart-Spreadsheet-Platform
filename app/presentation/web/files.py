@@ -285,6 +285,9 @@ async def get_thumbnail(
     """
     Get file thumbnail (for images).
     """
+    from PIL import Image
+    import io
+    
     svc = FileService(db)
     f = await svc.get_file(file_id, current_user.id)
     
@@ -292,32 +295,40 @@ async def get_thumbnail(
     if not f.meta or not f.meta.get('is_image'):
         raise HTTPException(status_code=404, detail="Not an image file")
     
-    # Try to get thumbnail URL from meta
+    # Try to get thumbnail from meta
     thumbnail_url = f.meta.get('thumbnail_url')
     if thumbnail_url:
-        # Try to get thumbnail content
         try:
-            # Extract path from URL
+            # Try to extract object key from URL
             if '/thumbnails/' in thumbnail_url:
+                # Extract the path after thumbnails/
                 path_parts = thumbnail_url.split('/thumbnails/')
                 if len(path_parts) > 1:
-                    thumb_path = f"thumbnails/{path_parts[1]}"
-                    if hasattr(svc.storage, 'file_exists') and svc.storage.file_exists(thumb_path):
-                        read_path = await svc.storage.get_read_path(thumb_path, current_user.id)
-                        if Path(read_path).exists():
-                            return FileResponse(
-                                read_path,
-                                media_type="image/webp",
-                                headers={"Cache-Control": "public, max-age=31536000"}
-                            )
+                    # Try different possible paths
+                    possible_paths = [
+                        f"thumbnails/{path_parts[1]}",
+                        f"thumbnails/{current_user.id}/{path_parts[1].split('/')[-1]}",
+                    ]
+                    for thumb_path in possible_paths:
+                        if hasattr(svc.storage, 'file_exists') and svc.storage.file_exists(thumb_path):
+                            read_path = await svc.storage.get_read_path(thumb_path, current_user.id)
+                            if Path(read_path).exists():
+                                return FileResponse(
+                                    read_path,
+                                    media_type="image/webp",
+                                    headers={"Cache-Control": "public, max-age=31536000"}
+                                )
         except Exception as e:
-            logger.warning(f"Failed to get thumbnail: {e}")
+            logger.warning(f"⚠️ Failed to get thumbnail: {e}")
     
     # Generate thumbnail on the fly
     try:
         content = await svc.get_file_content(file_id, current_user.id)
         if content:
             img = Image.open(io.BytesIO(content))
+            # Convert to RGB if needed
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
             img.thumbnail((200, 200), Image.Resampling.LANCZOS)
             thumbnail_buffer = io.BytesIO()
             img.save(thumbnail_buffer, format='WEBP', quality=80)
@@ -329,8 +340,9 @@ async def get_thumbnail(
                 headers={"Cache-Control": "public, max-age=31536000"}
             )
     except Exception as e:
-        logger.error(f"Thumbnail generation failed: {e}")
+        logger.error(f"❌ Thumbnail generation failed: {e}")
     
+    # Return a default placeholder if thumbnail generation fails
     raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 
