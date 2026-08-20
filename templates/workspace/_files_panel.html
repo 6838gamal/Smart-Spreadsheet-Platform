@@ -2,7 +2,7 @@
 {% if files and files|length > 0 %}
 <div class="space-y-1" 
      x-data="fileListComponent()" 
-     x-init="initFiles({{ files|jsonify|safe }})">
+     x-init="initFiles({{ files|tojson|safe }})">
   
   {% for f in files %}
   <div class="group rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700
@@ -17,7 +17,7 @@
     <div class="flex items-center gap-2">
       <!-- Format badge / Image thumbnail -->
       <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold overflow-hidden
-        {% if f.is_image %}
+        {% if f.meta and f.meta.get('is_image') %}
           bg-transparent border border-slate-200 dark:border-slate-700
         {% elif f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400
         {% elif f.format == 'csv' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
@@ -30,10 +30,10 @@
         {% elif f.format in ['jpg','jpeg','png','gif','bmp','webp','svg','ico','tiff','heic'] %}bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
         
-        {% if f.is_image and f.thumbnail_url %}
+        {% if f.meta and f.meta.get('is_image') and f.meta.get('thumbnail_url') %}
           <!-- عرض صورة مصغرة -->
-          <img src="{{ f.thumbnail_url }}" alt="{{ f.original_name }}" class="w-full h-full object-cover" loading="lazy">
-        {% elif f.is_image %}
+          <img src="{{ f.meta.thumbnail_url }}" alt="{{ f.original_name }}" class="w-full h-full object-cover" loading="lazy">
+        {% elif f.meta and f.meta.get('is_image') %}
           <!-- أيقونة الصورة بدون مصغرة -->
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -51,7 +51,7 @@
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-slate-800 dark:text-white truncate leading-tight" :title="'{{ f.original_name }}'">
           {{ f.original_name }}
-          {% if f.is_image %}
+          {% if f.meta and f.meta.get('is_image') %}
             <span class="text-pink-400 dark:text-pink-500">🖼️</span>
           {% endif %}
         </p>
@@ -71,13 +71,13 @@
               0 B
             {% endif %}
           </p>
-          {% if f.is_image and f.image_width and f.image_height %}
+          {% if f.meta and f.meta.get('is_image') and f.meta.get('image_width') and f.meta.get('image_height') %}
           <span class="text-xs text-slate-400 dark:text-slate-500">
-            • {{ f.image_width }}×{{ f.image_height }}
+            • {{ f.meta.image_width }}×{{ f.meta.image_height }}
           </span>
           {% endif %}
           <span class="text-xs text-slate-400 dark:text-slate-500">
-            • {{ f.uploaded_at|timesince }}
+            • {{ f.created_at|timesince }}
           </span>
         </div>
       </div>
@@ -113,8 +113,8 @@
         ⬇️ تحميل
       </button>
       
-      <!-- Delete button - Improved with Alpine -->
-      <button @click.stop="deleteFile({{ f.id }}, '{{ f.original_name|escapejs }}')"
+      <!-- Delete button - ✅ تم إصلاح escapejs -->
+      <button @click.stop="deleteFile({{ f.id }}, {{ f.original_name|tojson|safe }})"
               :disabled="deletingIds.includes({{ f.id }})"
               class="text-xs px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-900/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="حذف الملف">
@@ -131,7 +131,6 @@
   </div>
   {% endfor %}
 </div>
-
 {% else %}
 <!-- Empty state with upload -->
 <div class="py-8 text-center text-slate-400">
@@ -197,20 +196,16 @@ function fileListComponent() {
         
         selectFile(fileId) {
             this.selectedFileId = fileId;
-            // يمكن إضافة منطق إضافي هنا مثل تحميل محتوى الملف
             this.$dispatch('file-selected', { fileId: fileId });
         },
         
         async deleteFile(fileId, fileName) {
-            // التحقق من عدم حذف نفس الملف مرتين
             if (this.deletingIds.includes(fileId)) return;
             
-            // طلب تأكيد
             if (!confirm(`هل أنت متأكد من حذف الملف "${fileName}"؟`)) {
                 return;
             }
             
-            // إضافة الملف إلى قائمة الجاري حذفهم
             this.deletingIds.push(fileId);
             
             try {
@@ -230,18 +225,13 @@ function fileListComponent() {
                 const data = await response.json();
                 
                 if (data.success) {
-                    // إزالة الملف من القائمة مباشرة
                     this.files = this.files.filter(f => f.id !== fileId);
                     
-                    // إلغاء التحديد إذا كان الملف محدّداً
                     if (this.selectedFileId === fileId) {
                         this.selectedFileId = null;
                     }
                     
-                    // عرض رسالة نجاح
                     this.showToast('✅ تم حذف الملف بنجاح', 'success');
-                    
-                    // تحديث العدد الإجمالي
                     this.$dispatch('file-deleted', { fileId: fileId });
                 } else {
                     throw new Error(data.error || 'حدث خطأ أثناء الحذف');
@@ -250,7 +240,6 @@ function fileListComponent() {
                 console.error('Delete error:', error);
                 this.showToast(`❌ ${error.message}`, 'error');
             } finally {
-                // إزالة الملف من قائمة الجاري حذفهم
                 this.deletingIds = this.deletingIds.filter(id => id !== fileId);
             }
         },
@@ -266,7 +255,6 @@ function fileListComponent() {
                 formData.append('files', files[i]);
             }
             
-            // إظهار حالة التحميل
             this.showToast(`⏳ جاري رفع ${files.length} ملف...`, 'info');
             
             try {
@@ -286,14 +274,11 @@ function fileListComponent() {
                 const data = await response.json();
                 
                 if (data.success) {
-                    // إضافة الملفات الجديدة إلى القائمة
                     if (data.files) {
                         this.files = [...data.files, ...this.files];
                     }
                     
                     this.showToast(`✅ تم رفع ${data.count || files.length} ملف بنجاح`, 'success');
-                    
-                    // إعادة تحميل القائمة للحصول على التفاصيل الكاملة
                     this.refreshFileList();
                 } else {
                     throw new Error(data.error || 'حدث خطأ أثناء الرفع');
@@ -303,7 +288,6 @@ function fileListComponent() {
                 this.showToast(`❌ ${error.message}`, 'error');
             } finally {
                 this.uploading = false;
-                // إعادة تعيين الإدخال
                 event.target.value = '';
             }
         },
@@ -312,7 +296,6 @@ function fileListComponent() {
             const files = event.target.files;
             if (!files || files.length === 0) return;
             
-            // فلترة الصور فقط
             const imageFiles = Array.from(files).filter(file => 
                 file.type.startsWith('image/')
             );
@@ -323,12 +306,10 @@ function fileListComponent() {
                 return;
             }
             
-            // عرض معاينة الصور
             this.showImagePreview(imageFiles, event);
         },
         
         showImagePreview(imageFiles, originalEvent) {
-            // إنشاء نافذة المعاينة
             const overlay = document.createElement('div');
             overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
             overlay.innerHTML = `
@@ -368,7 +349,6 @@ function fileListComponent() {
             `;
             document.body.appendChild(overlay);
             
-            // معالج زر التأكيد
             document.getElementById('confirm-upload-btn').addEventListener('click', () => {
                 overlay.remove();
                 this.confirmImageUpload(imageFiles, originalEvent);
@@ -425,7 +405,6 @@ function fileListComponent() {
         },
         
         async refreshFileList() {
-            // تحديث القائمة من السيرفر
             try {
                 const response = await fetch('/api/files/list', {
                     headers: {
@@ -445,13 +424,11 @@ function fileListComponent() {
         },
         
         openPanel(panelType, fileId) {
-            // إرسال حدث لفتح اللوحة
             this.$dispatch('open-panel', { 
                 type: panelType, 
                 fileId: fileId 
             });
             
-            // يمكن استخدام HTMX للتنقل
             if (typeof htmx !== 'undefined') {
                 const urls = {
                     'view': `/workspace/panel/view/${fileId}`,
@@ -473,7 +450,6 @@ function fileListComponent() {
         
         async downloadFile(fileId) {
             try {
-                // استخدام رابط التحميل
                 window.location.href = `/api/files/${fileId}/download`;
             } catch (error) {
                 console.error('Download error:', error);
@@ -482,7 +458,6 @@ function fileListComponent() {
         },
         
         showToast(message, type = 'info') {
-            // إزالة التوست القديم
             const oldToast = document.querySelector('.custom-toast');
             if (oldToast) oldToast.remove();
             
@@ -500,13 +475,11 @@ function fileListComponent() {
             
             document.body.appendChild(toast);
             
-            // تشغيل الأنيميشن
             requestAnimationFrame(() => {
                 toast.style.transform = 'translateY(0)';
                 toast.style.opacity = '1';
             });
             
-            // إزالة بعد 3 ثواني
             setTimeout(() => {
                 toast.style.transform = 'translateY(-20px)';
                 toast.style.opacity = '0';
@@ -523,7 +496,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropZone = document.getElementById('drop-zone');
     if (!dropZone) return;
     
-    // منع السلوك الافتراضي
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, (e) => {
             e.preventDefault();
@@ -531,7 +503,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // تأثيرات عند السحب
     dropZone.addEventListener('dragenter', () => {
         dropZone.classList.add('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
     });
@@ -540,13 +511,11 @@ document.addEventListener('DOMContentLoaded', function() {
         dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
     });
     
-    // معالج الإفلات
     dropZone.addEventListener('drop', (e) => {
         dropZone.classList.remove('border-blue-500', 'bg-blue-50/20', 'dark:bg-blue-900/20');
         
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            // العثور على input file وتفعيله
             const fileInput = document.getElementById('file-upload');
             if (fileInput) {
                 const dt = new DataTransfer();
@@ -556,7 +525,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 fileInput.files = dt.files;
                 fileInput.dispatchEvent(new Event('change'));
                 
-                // تغيير لون المنطقة للتأكيد
                 dropZone.classList.add('border-green-500', 'bg-green-50/20');
                 setTimeout(() => {
                     dropZone.classList.remove('border-green-500', 'bg-green-50/20');
@@ -570,7 +538,6 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- HTMX support for dynamic updates -->
 {% if request.headers.get('HX-Request') %}
 <style>
-  /* Styles specific to HTMX partial loads */
   .file-item-enter {
     animation: slideIn 0.3s ease-out;
   }
@@ -586,7 +553,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
-  /* تحسين عرض الصور المصغرة */
   .image-thumbnail {
     transition: transform 0.2s ease;
   }
@@ -594,7 +560,6 @@ document.addEventListener('DOMContentLoaded', function() {
     transform: scale(1.05);
   }
   
-  /* تنسيق التحميل */
   .htmx-indicator {
     display: none;
   }
@@ -607,9 +572,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </style>
 {% endif %}
 
-<!-- تصفية إضافية -->
 <style>
-/* تحسينات عامة */
 [data-file-card] {
     transition: all 0.2s ease;
 }
@@ -618,7 +581,6 @@ document.addEventListener('DOMContentLoaded', function() {
     display: flex !important;
 }
 
-/* تنسيق شريط التمرير للمعاينة */
 #image-preview-grid::-webkit-scrollbar {
     width: 6px;
 }
@@ -634,7 +596,6 @@ document.addEventListener('DOMContentLoaded', function() {
     background: #555;
 }
 
-/* تحسين الوضع المظلم */
 .dark #image-preview-grid::-webkit-scrollbar-track {
     background: #374151;
 }
