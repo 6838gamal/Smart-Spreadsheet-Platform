@@ -23,6 +23,7 @@ from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
 from app.presentation.web.files import files_to_dict_list, file_to_dict
+from app.core.templates import get_texts
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,26 +32,18 @@ router = APIRouter()
 # ── Helper function to safely extract files ─────────────────────────────────
 
 def _extract_files(file_list) -> list:
-    """
-    Extract File objects from a list that may contain objects or lists.
-    Handles SQLAlchemy result rows safely.
-    """
+    """Extract File objects from a list that may contain objects or lists."""
     result = []
     
     for item in file_list:
-        # If item is a File object
         if hasattr(item, 'path') and hasattr(item, 'id'):
             result.append(item)
-        # If item is a list (e.g., from SQLAlchemy row)
         elif isinstance(item, list):
             for f in item:
                 if hasattr(f, 'path') and hasattr(f, 'id'):
                     result.append(f)
-        # If item is a tuple (from SQLAlchemy row with selected columns)
         elif isinstance(item, tuple):
-            # Try to extract File attributes from tuple
             try:
-                # If tuple has 14+ elements, it's likely a File row
                 if len(item) >= 14:
                     file_obj = File(
                         id=item[0] if item[0] is not None else None,
@@ -71,7 +64,6 @@ def _extract_files(file_list) -> list:
                     result.append(file_obj)
             except Exception as e:
                 logger.warning(f"Error extracting file from tuple: {e}")
-        # If item is a dict
         elif isinstance(item, dict) and 'path' in item:
             try:
                 file_obj = File(
@@ -126,15 +118,12 @@ def _friendly_error(raw: str) -> tuple[str, str]:
 async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
     """Get user statistics directly from database."""
     try:
-        # Get total files
         files_query = select(func.count()).select_from(File).where(File.owner_id == user_id)
         total_files = await db.scalar(files_query) or 0
         
-        # Get total size
         size_query = select(func.sum(File.size_bytes)).where(File.owner_id == user_id)
         total_bytes = await db.scalar(size_query) or 0
         
-        # Format size
         if total_bytes < 1024:
             total_size_human = f"{total_bytes} B"
         elif total_bytes < 1024 * 1024:
@@ -144,16 +133,13 @@ async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
         else:
             total_size_human = f"{total_bytes / (1024 * 1024 * 1024):.2f} GB"
         
-        # Get total operations - using OperationLog instead of Operation
         ops_query = select(func.count()).select_from(OperationLog).where(OperationLog.user_id == user_id)
         total_operations = await db.scalar(ops_query) or 0
         
-        # Get favorites
         fav_query = select(File).where(File.owner_id == user_id, File.is_favorite == True).order_by(File.created_at.desc()).limit(10)
         favorites = await db.execute(fav_query)
         favorites_list = favorites.scalars().all()
         
-        # Get recent files (last 5)
         recent_query = select(File).where(File.owner_id == user_id).order_by(File.created_at.desc()).limit(5)
         recent = await db.execute(recent_query)
         recent_files = recent.scalars().all()
@@ -183,14 +169,14 @@ async def converter_page(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    file_id: int = Query(None),
+    uploaded: bool = Query(False),
 ):
     file_repo = FileRepository(db)
     all_files = await file_repo.get_by_owner(current_user.id, limit=100)
     
-    # Safely extract File objects from the result
     extracted_files = _extract_files(all_files)
     
-    # Only show files that still exist on disk; silently skip orphaned DB records
     files = []
     for f in extracted_files:
         if hasattr(f, 'path') and f.path:
@@ -200,22 +186,68 @@ async def converter_page(
             except Exception as e:
                 logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
     
-    # ===== Get user stats =====
     stats = await get_user_stats(db, current_user.id)
-    
-    # ✅ Convert files to dictionaries for JSON serialization
     files_dict = files_to_dict_list(files)
+    
+    selected_file = None
+    if file_id:
+        for f in files:
+            if f.id == file_id:
+                selected_file = file_to_dict(f)
+                break
+    
+    # Get translations
+    translations = get_texts(current_user.default_lang or 'ar')
     
     return templates.TemplateResponse(
         request,
         "workspace/index.html",
         {
             "user": current_user,
-            "files": files_dict,  # ✅ الآن تمرر قواميس وليس كائنات
+            "files": files_dict,
             "export_formats": EXPORT_FORMATS,
             "current_page": "converter",
             "lang": current_user.default_lang,
             "stats": stats,
+            "selected_file_id": file_id,
+            "selected_file": selected_file,
+            "uploaded_success": uploaded,
+            "translations": translations,
+            "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
+        },
+    )
+
+
+@router.get("/converter/files-list", response_class=HTMLResponse)
+async def converter_files_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get files list partial for converter page (HTMX)."""
+    file_repo = FileRepository(db)
+    all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+    
+    extracted_files = _extract_files(all_files)
+    
+    files = []
+    for f in extracted_files:
+        if hasattr(f, 'path') and f.path:
+            try:
+                if Path(f.path).exists():
+                    files.append(f)
+            except Exception:
+                pass
+    
+    files_dict = files_to_dict_list(files)
+    
+    return templates.TemplateResponse(
+        request,
+        "workspace/_files_panel.html",
+        {
+            "files": files_dict,
+            "total": len(files_dict),
+            "lang": current_user.default_lang,
         },
     )
 
@@ -228,7 +260,6 @@ async def get_file_sheets(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return the list of worksheet names for an Excel file (JSON)."""
     from fastapi.responses import JSONResponse
     file_repo = FileRepository(db)
     f = await file_repo.get_by_id(file_id)
@@ -259,7 +290,6 @@ async def preview_file(
         return HTMLResponse("")
 
     fmt = f.format.lower().lstrip(".")
-    # Non-tabular formats — just show metadata card
     non_tabular = {"jpg", "jpeg", "png", "bmp", "gif", "webp", "svg", "pdf"}
     if fmt in non_tabular:
         return HTMLResponse(f"""
@@ -298,12 +328,10 @@ async def preview_file(
         return HTMLResponse("""
         <div class="p-3 text-sm text-slate-400 text-center">الملف فارغ أو لا يحتوي بيانات</div>""")
 
-    # Build header cells
     ths = "".join(
         f'<th class="px-3 py-2 text-start text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap border-b border-slate-200 dark:border-slate-700">{c}</th>'
         for c in cols
     )
-    # Build data rows
     trs = ""
     for i, row in enumerate(rows):
         bg = "bg-white dark:bg-slate-800" if i % 2 == 0 else "bg-slate-50/60 dark:bg-slate-800/40"
@@ -360,7 +388,6 @@ async def convert_sse(
         yield _sse("progress", {"pct": 8, "step": "validation", "msg": "التحقق من البيانات…"})
         await asyncio.sleep(0)
 
-        # --- Validate ---
         try:
             if target_fmt not in EXPORT_FORMATS:
                 yield _sse("done", {"ok": False, "title": "صيغة غير مدعومة",
@@ -381,17 +408,15 @@ async def convert_sse(
             yield _sse("done", {"ok": False, "title": t, "detail": d})
             return
 
-        src_fmt   = f.format.lower().lstrip(".")
+        src_fmt = f.format.lower().lstrip(".")
         is_direct = (src_fmt, target_fmt) in DIRECT_PAIRS
 
-        # Decide conversion mode
-        selected_sheets = [s for s in sheets if s]  # non-empty strings only
-        is_excel_src    = src_fmt in {"xlsx", "xls", "xlsm", "xlsb", "ods"}
-        is_pdf_src      = src_fmt == "pdf"
+        selected_sheets = [s for s in sheets if s]
+        is_excel_src = src_fmt in {"xlsx", "xls", "xlsm", "xlsb", "ods"}
+        is_pdf_src = src_fmt == "pdf"
         multi_sheet_mode = is_excel_src and len(selected_sheets) > 1
-        pdf_pages_mode   = is_pdf_src and target_fmt == "xlsx"
+        pdf_pages_mode = is_pdf_src and target_fmt == "xlsx"
 
-        # --- Log operation ---
         op = await op_repo.create(
             type=OperationType.CONVERT,
             user_id=current_user.id,
@@ -402,17 +427,15 @@ async def convert_sse(
         )
         t0 = time.time()
 
-        # --- Read ---
         yield _sse("progress", {"pct": 28, "step": "reading", "msg": f"جاري قراءة {f.original_name}…"})
         await asyncio.sleep(0)
 
-        # Abort early if the client already disconnected
         if await request.is_disconnected():
             await op_repo.mark_complete(op, OperationStatus.FAILED, error="client disconnected",
                                         duration_ms=int((time.time() - t0) * 1000))
             return
 
-        _TIMEOUT = 300  # 5 minutes max per heavy step
+        _TIMEOUT = 300
 
         try:
             if is_direct:
@@ -468,35 +491,30 @@ async def convert_sse(
         else:
             rows_count = cols_count = 0
 
-        # --- Convert ---
         yield _sse("progress", {"pct": 62, "step": "converting",
                                  "msg": f"جاري التحويل إلى .{target_fmt.upper()}…"})
         await asyncio.sleep(0)
 
-        # Abort if client left before the heavy conversion step
         if await request.is_disconnected():
             await op_repo.mark_complete(op, OperationStatus.FAILED, error="client disconnected",
                                         duration_ms=int((time.time() - t0) * 1000))
             return
 
         stem = Path(f.original_name).stem
-        uid  = uuid.uuid4().hex[:6]
+        uid = uuid.uuid4().hex[:6]
 
-        # Multi-sheet → zip for non-xlsx/pdf targets
         if (multi_sheet_mode or pdf_pages_mode) and target_fmt not in {"xlsx", "pdf"}:
-            out_ext  = "zip"
+            out_ext = "zip"
         else:
-            out_ext  = target_fmt
+            out_ext = target_fmt
 
         out_name = f"{stem}_{uid}.{out_ext}"
         out_path = storage.get_output_path(current_user.id, out_name)
 
-        # Detect same-format pass-through (preserves everything: charts, formulas, macros)
         same_fmt = (src_fmt == target_fmt or
                     (src_fmt in {"xlsx", "xlsm", "xlsb", "xls"} and target_fmt == "xlsx"))
 
         async def _run(fn):
-            """Run a synchronous callable in the thread pool with a 5-minute timeout."""
             try:
                 return await asyncio.wait_for(
                     loop.run_in_executor(None, fn),
@@ -507,7 +525,6 @@ async def convert_sse(
 
         try:
             if same_fmt and not multi_sheet_mode:
-                # Direct file copy — zero data loss
                 await _run(lambda: engine.copy_preserve(f.path, str(out_path)))
                 actual_path = str(out_path)
                 actual_name = out_name
@@ -532,7 +549,6 @@ async def convert_sse(
                     )
                 actual_name = Path(actual_path).name
             else:
-                # Single-sheet: use rich write for pdf/html targets
                 _sp, _sf, _sh = f.path, src_fmt, (selected_sheets[0] if selected_sheets else sheet or None)
                 if target_fmt in {"pdf", "html", "htm"}:
                     await _run(lambda: engine.write_rich(
@@ -556,7 +572,6 @@ async def convert_sse(
             yield _sse("done", {"ok": False, "title": t, "detail": d})
             return
 
-        # --- Save & finish ---
         yield _sse("progress", {"pct": 90, "step": "saving", "msg": "جاري حفظ الملف الناتج…"})
         await asyncio.sleep(0)
 
