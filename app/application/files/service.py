@@ -18,7 +18,7 @@ from app.core.exceptions import NotFoundError, AuthorizationError, ValidationErr
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.database.models import File, OperationType, OperationStatus
-from app.infrastructure.storage.local_storage import storage
+from app.infrastructure.storage.storage import storage
 from app.application.files.dto import RenameFileDTO
 from app.application.converter.engine import DataEngine
 
@@ -113,7 +113,7 @@ class FileService:
             try:
                 img = Image.open(io.BytesIO(file_content))
                 image_width, image_height = img.size
-                logger.info(f"Image dimensions: {image_width}x{image_height}")
+                logger.info(f"✅ Image dimensions: {image_width}x{image_height}")
                 
                 # Create thumbnail
                 thumbnail = img.copy()
@@ -122,14 +122,19 @@ class FileService:
                 thumbnail.save(thumbnail_buffer, format='WEBP', quality=80)
                 thumbnail_content = thumbnail_buffer.getvalue()
                 
-                # Upload thumbnail to storage
+                # Upload thumbnail to storage using save_bytes
                 thumbnail_filename = f"thumbnails/{user_id}/{hashlib.md5(file_content).hexdigest()[:16]}.webp"
-                thumbnail_meta = await self.storage.save_bytes(thumbnail_filename, thumbnail_content, "image/webp")
-                thumbnail_url = thumbnail_meta.get("url") or thumbnail_meta.get("path")
-                logger.info(f"Thumbnail created: {thumbnail_url}")
+                
+                # ✅ استخدام storage.save_bytes
+                if hasattr(self.storage, 'save_bytes'):
+                    thumbnail_meta = await self.storage.save_bytes(thumbnail_filename, thumbnail_content, "image/webp")
+                    thumbnail_url = thumbnail_meta.get("public_url") or thumbnail_meta.get("path")
+                    logger.info(f"✅ Thumbnail created: {thumbnail_url}")
+                else:
+                    logger.warning("⚠️ Storage backend does not support save_bytes, skipping thumbnail")
                 
             except Exception as e:
-                logger.warning(f"Failed to process image: {e}")
+                logger.warning(f"⚠️ Failed to process image: {e}")
                 # Continue without thumbnail
         
         # Generate storage key
@@ -140,10 +145,32 @@ class FileService:
             # Reset file position for storage
             await file.seek(0)
             meta = await self.storage.save_upload(file, user_id)
-            logger.info(f"File saved to storage: {meta.get('path')}")
+            logger.info(f"✅ File saved to storage: {meta.get('path')}")
         except Exception as e:
-            logger.error(f"Failed to save file to storage: {e}")
-            raise ValidationError(f"Failed to save file: {str(e)}")
+            logger.error(f"❌ Failed to save file to storage: {e}")
+            # Try local fallback
+            try:
+                logger.info("🔄 Trying local fallback...")
+                # Write to local storage directly
+                local_path = Path(f"storage/uploads/{user_id}/{file.filename}")
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                async with aiofiles.open(local_path, 'wb') as f:
+                    await file.seek(0)
+                    content = await file.read()
+                    await f.write(content)
+                meta = {
+                    "path": str(local_path),
+                    "name": local_path.name,
+                    "original_name": file.filename,
+                    "size_bytes": len(content),
+                    "format": file_extension,
+                    "mime_type": file.content_type,
+                    "storage_backend": "local",
+                }
+                logger.info(f"✅ File saved locally: {meta.get('path')}")
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback also failed: {fallback_error}")
+                raise ValidationError(f"Failed to save file: {str(e)}")
         
         # Create DB record
         try:
@@ -170,13 +197,13 @@ class FileService:
                 }
             )
         except Exception as e:
-            logger.error(f"Failed to create file record: {e}")
+            logger.error(f"❌ Failed to create file record: {e}")
             # Clean up uploaded file
             if meta.get("path"):
                 try:
                     await self.storage.delete_file(meta["path"])
                 except Exception as cleanup_error:
-                    logger.warning(f"Cleanup failed: {cleanup_error}")
+                    logger.warning(f"⚠️ Cleanup failed: {cleanup_error}")
             raise ValidationError(f"Failed to save file metadata: {str(e)}")
         
         duration_ms = int((time.time() - t0) * 1000)
@@ -200,7 +227,7 @@ class FileService:
         )
         
         logger.info(
-            f"Uploaded file: {file.filename} "
+            f"✅ Uploaded file: {file.filename} "
             f"({db_file.size_human}) - Backend: {meta.get('storage_backend')} - "
             f"Image: {is_image} - Storage Key: {storage_key}"
         )
@@ -438,22 +465,32 @@ class FileService:
         try:
             if hasattr(self.storage, 'file_exists') and self.storage.file_exists(f.path):
                 await self.storage.delete_file(f.path)
-                logger.info(f"Deleted file from storage: {f.path}")
+                logger.info(f"🗑️ Deleted file from storage: {f.path}")
             else:
-                logger.warning(f"File not found in storage: {f.path}")
+                logger.warning(f"⚠️ File not found in storage: {f.path}")
         except Exception as e:
-            logger.error(f"Failed to delete from storage: {e}")
+            logger.error(f"❌ Failed to delete from storage: {e}")
             # Continue with database deletion even if storage deletion fails
         
         # Delete thumbnail if exists
         if f.meta and f.meta.get('thumbnail_url'):
             try:
                 thumbnail_path = f.meta['thumbnail_url'].split('/')[-1]
-                if hasattr(self.storage, 'file_exists') and self.storage.file_exists(thumbnail_path):
-                    await self.storage.delete_file(thumbnail_path)
-                    logger.info(f"Deleted thumbnail: {thumbnail_path}")
+                # Try to find and delete thumbnail
+                if hasattr(self.storage, 'file_exists'):
+                    # Check various possible paths
+                    possible_paths = [
+                        f"thumbnails/{f.owner_id}/{thumbnail_path}",
+                        f"thumbnails/{thumbnail_path}",
+                        thumbnail_path
+                    ]
+                    for path in possible_paths:
+                        if self.storage.file_exists(path):
+                            await self.storage.delete_file(path)
+                            logger.info(f"🗑️ Deleted thumbnail: {path}")
+                            break
             except Exception as e:
-                logger.warning(f"Failed to delete thumbnail: {e}")
+                logger.warning(f"⚠️ Failed to delete thumbnail: {e}")
         
         # Delete from cache
         await self._delete_from_cache(file_id)
@@ -476,7 +513,7 @@ class FileService:
             status=OperationStatus.SUCCESS
         )
         
-        logger.info(f"Deleted file: {f.original_name} from database")
+        logger.info(f"🗑️ Deleted file: {f.original_name} from database")
         return True
 
     # ============================================================
@@ -494,8 +531,7 @@ class FileService:
         Returns:
             dict: Sync result
         """
-        updated = 0
-        errors = 0
+        updated = 0        errors = 0
         
         for local_file in local_files:
             try:
@@ -551,7 +587,7 @@ class FileService:
                 await self.file_repo.delete(f)
                 deleted += 1
                 deleted_files.append(f.original_name)
-                logger.info(f"Cleaned up old file: {f.original_name} (ID: {f.id})")
+                logger.info(f"🧹 Cleaned up old file: {f.original_name} (ID: {f.id})")
             except Exception as e:
                 logger.error(f"Failed to clean up file {f.id}: {e}")
         
