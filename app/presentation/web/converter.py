@@ -22,6 +22,7 @@ from app.infrastructure.storage.local_storage import storage
 from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
+from app.presentation.web.files import files_to_dict_list, file_to_dict
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,7 +52,6 @@ def _extract_files(file_list) -> list:
             try:
                 # If tuple has 14+ elements, it's likely a File row
                 if len(item) >= 14:
-                    from app.infrastructure.database.models import File
                     file_obj = File(
                         id=item[0] if item[0] is not None else None,
                         name=item[1] if len(item) > 1 else None,
@@ -74,7 +74,6 @@ def _extract_files(file_list) -> list:
         # If item is a dict
         elif isinstance(item, dict) and 'path' in item:
             try:
-                from app.infrastructure.database.models import File
                 file_obj = File(
                     id=item.get('id'),
                     name=item.get('name'),
@@ -118,7 +117,7 @@ def _friendly_error(raw: str) -> tuple[str, str]:
     if "column" in r or "schema" in r or "dtype" in r:
         return "خطأ في البيانات", "البيانات لا تتوافق مع الصيغة المستهدفة. تحقق من هيكل الملف."
     if "timeout" in r:
-        return "انتهت المهلة الزمنية", "استغرقت العملية وقتًا طويلاً جداً. حاول بملف أصغر."
+        return "انتهت المهلة الزمنية", "استغرقت العملية وقتاً طويلاً جداً. حاول بملف أصغر."
     return "خطأ في التحويل", raw[:200] if raw else "حدث خطأ غير متوقع."
 
 
@@ -204,16 +203,19 @@ async def converter_page(
     # ===== Get user stats =====
     stats = await get_user_stats(db, current_user.id)
     
+    # ✅ Convert files to dictionaries for JSON serialization
+    files_dict = files_to_dict_list(files)
+    
     return templates.TemplateResponse(
         request,
         "workspace/index.html",
         {
             "user": current_user,
-            "files": files,
+            "files": files_dict,  # ✅ الآن تمرر قواميس وليس كائنات
             "export_formats": EXPORT_FORMATS,
             "current_page": "converter",
             "lang": current_user.default_lang,
-            "stats": stats,  # <-- Pass stats to template
+            "stats": stats,
         },
     )
 
