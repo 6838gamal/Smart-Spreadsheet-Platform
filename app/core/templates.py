@@ -1,11 +1,14 @@
-"""Template engine configuration for Jinja2 with custom filters and functions."""
+"""
+Template engine configuration for Jinja2 with custom filters, functions,
+and full internationalization (i18n/l10n) support.
+"""
 
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, Optional, List, Union
-from fastapi import Request
+from typing import Any, Dict, Optional, List, Union, Callable
+from fastapi import Request, Response
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 import os
@@ -59,6 +62,9 @@ DEFAULT_TRANSLATIONS = {
         'file_deleted': 'تم حذف الملف',
         'file_analyzed': 'تم تحليل الملف',
         'file_converted': 'تم تحويل الملف',
+        'file_not_found': 'الملف غير موجود',
+        'file_too_large': 'الملف كبير جداً',
+        'unsupported_format': 'صيغة غير مدعومة',
         
         # Actions
         'save': 'حفظ',
@@ -100,17 +106,17 @@ DEFAULT_TRANSLATIONS = {
         'save_error': 'فشل الحفظ',
         'update_success': 'تم التحديث بنجاح',
         'update_error': 'فشل التحديث',
-        'file_too_large': 'الملف كبير جداً',
-        'unsupported_format': 'صيغة غير مدعومة',
         'invalid_credentials': 'بيانات الدخول غير صحيحة',
         'user_not_found': 'المستخدم غير موجود',
         'email_exists': 'البريد الإلكتروني موجود مسبقاً',
         'passwords_mismatch': 'كلمات المرور غير متطابقة',
         'password_reset_sent': 'تم إرسال رابط إعادة التعيين',
+        'session_expired': 'انتهت صلاحية الجلسة',
         
         # Languages
         'arabic': 'العربية',
         'english': 'الإنجليزية',
+        'french': 'الفرنسية',
         'language': 'اللغة',
         'change_language': 'تغيير اللغة',
         
@@ -131,6 +137,30 @@ DEFAULT_TRANSLATIONS = {
         'workspace_created': 'تم إنشاء مساحة العمل',
         'workspace_deleted': 'تم حذف مساحة العمل',
         'workspace_updated': 'تم تحديث مساحة العمل',
+        
+        # Navigation
+        'navigation': 'القائمة',
+        'menu': 'القائمة',
+        'toggle_navigation': 'تبديل القائمة',
+        
+        # Errors
+        'page_not_found': 'الصفحة غير موجودة',
+        'server_error': 'خطأ في الخادم',
+        'bad_request': 'طلب غير صحيح',
+        'unauthorized': 'غير مصرح',
+        'forbidden': 'ممنوع',
+        
+        # Common
+        'or': 'أو',
+        'and': 'و',
+        'with': 'مع',
+        'from': 'من',
+        'to': 'إلى',
+        'for': 'لـ',
+        'of': 'من',
+        'in': 'في',
+        'on': 'على',
+        'at': 'في',
     },
     'en': {
         # Auth
@@ -172,6 +202,9 @@ DEFAULT_TRANSLATIONS = {
         'file_deleted': 'File Deleted',
         'file_analyzed': 'File Analyzed',
         'file_converted': 'File Converted',
+        'file_not_found': 'File Not Found',
+        'file_too_large': 'File is too large',
+        'unsupported_format': 'Unsupported format',
         
         # Actions
         'save': 'Save',
@@ -213,17 +246,17 @@ DEFAULT_TRANSLATIONS = {
         'save_error': 'Save failed',
         'update_success': 'Updated successfully',
         'update_error': 'Update failed',
-        'file_too_large': 'File is too large',
-        'unsupported_format': 'Unsupported format',
         'invalid_credentials': 'Invalid credentials',
         'user_not_found': 'User not found',
         'email_exists': 'Email already exists',
         'passwords_mismatch': 'Passwords do not match',
         'password_reset_sent': 'Password reset link sent',
+        'session_expired': 'Session expired',
         
         # Languages
         'arabic': 'Arabic',
         'english': 'English',
+        'french': 'French',
         'language': 'Language',
         'change_language': 'Change Language',
         
@@ -244,6 +277,30 @@ DEFAULT_TRANSLATIONS = {
         'workspace_created': 'Workspace Created',
         'workspace_deleted': 'Workspace Deleted',
         'workspace_updated': 'Workspace Updated',
+        
+        # Navigation
+        'navigation': 'Navigation',
+        'menu': 'Menu',
+        'toggle_navigation': 'Toggle Navigation',
+        
+        # Errors
+        'page_not_found': 'Page Not Found',
+        'server_error': 'Server Error',
+        'bad_request': 'Bad Request',
+        'unauthorized': 'Unauthorized',
+        'forbidden': 'Forbidden',
+        
+        # Common
+        'or': 'or',
+        'and': 'and',
+        'with': 'with',
+        'from': 'from',
+        'to': 'to',
+        'for': 'for',
+        'of': 'of',
+        'in': 'in',
+        'on': 'on',
+        'at': 'at',
     }
 }
 
@@ -262,7 +319,7 @@ def get_texts(lang: str = 'ar') -> Dict[str, str]:
     Returns:
         Dict: Translation dictionary
     """
-    if lang not in DEFAULT_TRANSLATIONS:
+    if not lang or lang not in DEFAULT_TRANSLATIONS:
         lang = 'ar'  # Default to Arabic
     return DEFAULT_TRANSLATIONS[lang]
 
@@ -306,6 +363,33 @@ def get_language_direction(lang: str = 'ar') -> str:
     return 'rtl' if lang in rtl_languages else 'ltr'
 
 
+def get_supported_languages() -> Dict[str, str]:
+    """
+    Get supported languages with their names.
+    
+    Returns:
+        Dict: Language code -> Language name
+    """
+    return {
+        'ar': 'العربية',
+        'en': 'English',
+        'fr': 'Français',
+    }
+
+
+def is_rtl_language(lang: str) -> bool:
+    """
+    Check if a language is RTL.
+    
+    Args:
+        lang: Language code
+    
+    Returns:
+        bool: True if RTL
+    """
+    return get_language_direction(lang) == 'rtl'
+
+
 # ============================================================
 # CUSTOM FILTERS
 # ============================================================
@@ -333,7 +417,7 @@ def escapejs(value: Any) -> Markup:
     return Markup(escaped)
 
 
-def tojson_safe(value: Any) -> Markup:
+def tojson_safe(value: Any, indent: Optional[int] = None) -> Markup:
     """
     Convert to JSON safely for HTML.
     
@@ -344,15 +428,21 @@ def tojson_safe(value: Any) -> Markup:
         return Markup("null")
     
     try:
-        json_str = json.dumps(value, ensure_ascii=False, default=str)
+        if indent is not None:
+            json_str = json.dumps(value, ensure_ascii=False, indent=indent, default=str)
+        else:
+            json_str = json.dumps(value, ensure_ascii=False, default=str)
         return Markup(json_str)
     except Exception:
         return Markup("null")
 
 
-def time_ago(value: Any) -> str:
+def time_ago(value: Any, lang: str = 'ar') -> str:
     """
     Display time as "X minutes ago" or "X days ago".
+    
+    Example:
+        {{ my_date|time_ago }}
     """
     if value is None:
         return ""
@@ -376,16 +466,19 @@ def time_ago(value: Any) -> str:
         seconds = diff.total_seconds()
         
         if seconds < 60:
-            return "الآن" if get_texts('ar') else "Now"
+            return t('now', lang)
         elif seconds < 3600:
             minutes = int(seconds / 60)
-            return f"منذ {minutes} دقيقة" if get_texts('ar') else f"{minutes} minutes ago"
+            return t('minutes_ago', lang, minutes=minutes)
         elif seconds < 86400:
             hours = int(seconds / 3600)
-            return f"منذ {hours} ساعة" if get_texts('ar') else f"{hours} hours ago"
+            return t('hours_ago', lang, hours=hours)
         elif seconds < 604800:
             days = int(seconds / 86400)
-            return f"منذ {days} يوم" if get_texts('ar') else f"{days} days ago"
+            return t('days_ago', lang, days=days)
+        elif seconds < 2592000:  # 30 days
+            weeks = int(seconds / 604800)
+            return t('weeks_ago', lang, weeks=weeks)
         else:
             return dt.strftime("%Y-%m-%d")
     except Exception:
@@ -393,7 +486,12 @@ def time_ago(value: Any) -> str:
 
 
 def format_size(value: Any) -> str:
-    """Format file size in human readable format."""
+    """
+    Format file size in human readable format.
+    
+    Example:
+        {{ file_size|format_size }}
+    """
     if value is None:
         return "0 B"
     
@@ -409,29 +507,73 @@ def format_size(value: Any) -> str:
 
 
 def file_icon(value: str) -> str:
-    """Get an icon for a file type."""
+    """
+    Get an icon for a file type.
+    
+    Example:
+        {{ file_format|file_icon }}
+    """
     if value is None:
         return "📄"
     
     ext = str(value).lower()
     
     icons = {
+        # Documents
         'pdf': '📕', 'doc': '📄', 'docx': '📄', 'txt': '📝', 'rtf': '📝',
+        'odt': '📄', 'md': '📝', 'rst': '📝',
+        
+        # Spreadsheets
         'xls': '📊', 'xlsx': '📊', 'xlsm': '📊', 'xlsb': '📊', 'ods': '📊',
         'csv': '📋', 'tsv': '📋',
+        
+        # Presentations
         'ppt': '📊', 'pptx': '📊', 'odp': '📊',
+        
+        # Code & Data
         'json': '📄', 'xml': '📰', 'html': '🌐', 'htm': '🌐',
         'css': '🎨', 'js': '🟡', 'py': '🐍', 'java': '☕',
         'c': '⚙️', 'cpp': '⚙️', 'go': '🐹', 'rs': '🦀',
-        'php': '🐘', 'sql': '🗄️',
-        'parquet': '📦', 'feather': '🪶',
+        'php': '🐘', 'sql': '🗄️', 'yaml': '📄', 'yml': '📄',
+        'parquet': '📦', 'feather': '🪶', 'arrow': '🏹',
+        
+        # Images
         'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
-        'webp': '🖼️', 'svg': '🖼️', 'ico': '🖼️',
+        'webp': '🖼️', 'svg': '🖼️', 'ico': '🖼️', 'bmp': '🖼️',
+        'tiff': '🖼️', 'heic': '🖼️', 'raw': '🖼️',
+        
+        # Archives
         'zip': '📦', 'rar': '📦', '7z': '📦', 'tar': '📦', 'gz': '📦',
-        'mp3': '🎵', 'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬',
+        'bz2': '📦', 'xz': '📦',
+        
+        # Media
+        'mp3': '🎵', 'wav': '🎵', 'flac': '🎵',
+        'mp4': '🎬', 'avi': '🎬', 'mkv': '🎬', 'mov': '🎬',
+        
+        # Other
+        'exe': '⚙️', 'msi': '⚙️', 'dmg': '💿', 'iso': '💿',
     }
     
     return icons.get(ext, '📄')
+
+
+def truncate_text(value: Any, length: int = 100, suffix: str = '...') -> str:
+    """
+    Truncate text to a specific length.
+    
+    Example:
+        {{ long_text|truncate_text(50) }}
+    """
+    if value is None:
+        return ""
+    
+    try:
+        text = str(value)
+        if len(text) <= length:
+            return text
+        return text[:length - len(suffix)] + suffix
+    except Exception:
+        return str(value)
 
 
 def translate_filter(text: str, lang: str = 'ar') -> str:
@@ -440,35 +582,126 @@ def translate_filter(text: str, lang: str = 'ar') -> str:
 
 
 # ============================================================
+# CUSTOM TESTS
+# ============================================================
+
+def is_image(value: str) -> bool:
+    """Check if a file is an image."""
+    if not value:
+        return False
+    ext = str(value).lower()
+    image_extensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'heic'}
+    return ext in image_extensions
+
+
+def is_video(value: str) -> bool:
+    """Check if a file is a video."""
+    if not value:
+        return False
+    ext = str(value).lower()
+    video_extensions = {'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm'}
+    return ext in video_extensions
+
+
+def is_audio(value: str) -> bool:
+    """Check if a file is an audio file."""
+    if not value:
+        return False
+    ext = str(value).lower()
+    audio_extensions = {'mp3', 'wav', 'flac', 'aac', 'ogg', 'wma'}
+    return ext in audio_extensions
+
+
+def is_document(value: str) -> bool:
+    """Check if a file is a document."""
+    if not value:
+        return False
+    ext = str(value).lower()
+    document_extensions = {'pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'md', 'rst'}
+    return ext in document_extensions
+
+
+def is_spreadsheet(value: str) -> bool:
+    """Check if a file is a spreadsheet."""
+    if not value:
+        return False
+    ext = str(value).lower()
+    spreadsheet_extensions = {'xls', 'xlsx', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv'}
+    return ext in spreadsheet_extensions
+
+
+# ============================================================
 # TEMPLATE CONFIGURATION
 # ============================================================
 
 class CustomTemplates(Jinja2Templates):
-    """Custom Jinja2 templates with additional filters and functions."""
+    """
+    Custom Jinja2 templates with additional filters, functions, and tests.
+    """
     
     def __init__(self, directory: str, auto_reload: bool = True):
+        """
+        Initialize custom templates.
+        
+        Args:
+            directory: Templates directory path
+            auto_reload: Auto reload templates in development
+        """
         super().__init__(directory=directory, auto_reload=auto_reload)
         
-        # Add custom filters
+        self._add_filters()
+        self._add_globals()
+        self._add_tests()
+        
+        logger.info("✅ Custom templates initialized with full l10n support")
+    
+    def _add_filters(self):
+        """Add custom filters to the environment."""
+        # Core filters
         self.env.filters['escapejs'] = escapejs
         self.env.filters['tojson_safe'] = tojson_safe
         self.env.filters['time_ago'] = time_ago
         self.env.filters['format_size'] = format_size
         self.env.filters['file_icon'] = file_icon
-        self.env.filters['json'] = lambda v: json.dumps(v, ensure_ascii=False, default=str)
-        self.env.filters['pretty_json'] = lambda v: json.dumps(v, ensure_ascii=False, indent=2, default=str)
+        self.env.filters['truncate_text'] = truncate_text
         self.env.filters['t'] = translate_filter
         self.env.filters['translate'] = translate_filter
         
-        # Add global functions
-        self.env.globals['now'] = datetime.now
-        self.env.globals['get_texts'] = get_texts
-        self.env.globals['t'] = t
-        self.env.globals['translate'] = t
-        self.env.globals['get_language_direction'] = get_language_direction
-        self.env.globals['json_dumps'] = lambda v: json.dumps(v, ensure_ascii=False, default=str)
-        
-        logger.info("✅ Custom templates initialized with translation support")
+        # JSON filters
+        self.env.filters['json'] = lambda v: json.dumps(v, ensure_ascii=False, default=str)
+        self.env.filters['pretty_json'] = lambda v: json.dumps(v, ensure_ascii=False, indent=2, default=str)
+    
+    def _add_globals(self):
+        """Add global functions and variables to the environment."""
+        self.env.globals.update({
+            # Time
+            'now': datetime.now,
+            'today': lambda: datetime.now().date(),
+            
+            # Translation
+            'get_texts': get_texts,
+            't': t,
+            'translate': t,
+            'get_language_direction': get_language_direction,
+            'get_supported_languages': get_supported_languages,
+            'is_rtl_language': is_rtl_language,
+            
+            # JSON
+            'json_dumps': lambda v, **kwargs: json.dumps(v, ensure_ascii=False, **kwargs),
+            
+            # Helpers
+            'range': lambda start, end: range(start, end),
+            'dict_get': lambda d, key, default=None: d.get(key, default) if d else default,
+            'list_get': lambda l, index, default=None: l[index] if l and 0 <= index < len(l) else default,
+        })
+    
+    def _add_tests(self):
+        """Add custom tests to the environment."""
+        self.env.tests['image'] = is_image
+        self.env.tests['video'] = is_video
+        self.env.tests['audio'] = is_audio
+        self.env.tests['document'] = is_document
+        self.env.tests['spreadsheet'] = is_spreadsheet
     
     def TemplateResponse(
         self,
@@ -493,38 +726,58 @@ class CustomTemplates(Jinja2Templates):
         Returns:
             TemplateResponse: Rendered template response
         """
-        # Get language from request or context
-        lang = context.get('lang', 'ar')
+        # Get language from various sources
+        lang = context.get('lang')
         
-        # Try to get from cookie
-        if hasattr(request, 'cookies') and 'lang' in request.cookies:
-            cookie_lang = request.cookies.get('lang')
-            if cookie_lang in DEFAULT_TRANSLATIONS:
-                lang = cookie_lang
+        # Try from request state
+        if not lang and hasattr(request.state, 'lang'):
+            lang = request.state.lang
         
-        # Try to get from user session
-        if hasattr(request, 'state') and hasattr(request.state, 'user'):
+        # Try from cookie
+        if not lang and hasattr(request, 'cookies'):
+            lang = request.cookies.get('lang')
+        
+        # Try from user in request state
+        if not lang and hasattr(request.state, 'user'):
             user = request.state.user
-            if user and hasattr(user, 'default_lang') and user.default_lang in DEFAULT_TRANSLATIONS:
+            if user and hasattr(user, 'default_lang') and user.default_lang:
                 lang = user.default_lang
         
-        # Get translations
+        # Default
+        if not lang or lang not in DEFAULT_TRANSLATIONS:
+            lang = 'ar'
+        
+        # Get translations and direction
         translations = get_texts(lang)
         direction = get_language_direction(lang)
         
+        # Get user from request state
+        user = getattr(request.state, 'user', None)
+        
+        # Build default context
         default_context = {
             'request': request,
             'now': datetime.now(),
             'lang': lang,
             'direction': direction,
+            'translations': translations,
+            'user': user,
+            'is_authenticated': user is not None and getattr(user, 'is_active', False),
             'get_texts': get_texts,
             't': t,
             'translate': t,
-            'translations': translations,
+            'get_language_direction': get_language_direction,
+            'get_supported_languages': get_supported_languages,
+            'is_rtl_language': is_rtl_language,
         }
         
         # Merge with provided context (provided context takes precedence)
         merged_context = {**default_context, **context}
+        
+        # Store language in request state for future use
+        request.state.lang = lang
+        request.state.direction = direction
+        request.state.translations = translations
         
         return super().TemplateResponse(
             request=request,
@@ -602,19 +855,73 @@ async def render_template(
     )
 
 
-async def set_language_cookie(response, lang: str) -> None:
+async def set_language_cookie(response: Response, lang: str, max_age: int = 60 * 60 * 24 * 30) -> None:
     """
     Set language cookie in response.
     
     Args:
         response: Response object
         lang: Language code
+        max_age: Cookie max age in seconds
     """
+    if lang not in DEFAULT_TRANSLATIONS:
+        lang = 'ar'
+    
     response.set_cookie(
         key="lang",
         value=lang,
-        max_age=60 * 60 * 24 * 30,  # 30 days
+        max_age=max_age,
         path="/",
         httponly=True,
         samesite="lax",
     )
+
+
+async def clear_language_cookie(response: Response) -> None:
+    """
+    Clear language cookie.
+    
+    Args:
+        response: Response object
+    """
+    response.delete_cookie(key="lang", path="/")
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    # Main instance
+    'templates',
+    'CustomTemplates',
+    'get_templates',
+    'render_template',
+    
+    # Translation
+    'get_texts',
+    't',
+    'get_language_direction',
+    'get_supported_languages',
+    'is_rtl_language',
+    'DEFAULT_TRANSLATIONS',
+    
+    # Filters
+    'escapejs',
+    'tojson_safe',
+    'time_ago',
+    'format_size',
+    'file_icon',
+    'truncate_text',
+    
+    # Tests
+    'is_image',
+    'is_video',
+    'is_audio',
+    'is_document',
+    'is_spreadsheet',
+    
+    # Helpers
+    'set_language_cookie',
+    'clear_language_cookie',
+]
