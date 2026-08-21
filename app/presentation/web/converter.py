@@ -620,7 +620,7 @@ async def download_converted(
     from app.core.config import settings
     path = Path(settings.OUTPUT_DIR) / str(current_user.id) / filename
     if not path.exists():
-        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
+        return RedirectResponse(url="/workspace", status_code=302)
     return FileResponse(str(path), filename=filename)
 
 
@@ -653,11 +653,11 @@ async def do_convert(
                    تحميل {result.output_filename}
                 </a>
             </div>""")
-        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
+        return RedirectResponse(url="/workspace", status_code=302)
     except Exception as e:
         if request.headers.get("HX-Request"):
             return HTMLResponse(
                 f'<div class="p-4 bg-red-900/40 border border-red-500/30 rounded-xl text-red-300">خطأ: {e}</div>',
                 status_code=400,
             )
-        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
+        return RedirectResponse(url="/workspace", status_code=302)
