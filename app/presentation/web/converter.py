@@ -141,153 +141,7 @@ def _friendly_error(raw: str) -> tuple[str, str]:
 
 
 # ============================================================
-# MAIN CONVERTER PAGE
-# ============================================================
-
-@router.get("/converter", response_class=HTMLResponse)
-async def converter_page(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    file_id: Optional[int] = Query(None),
-    uploaded: bool = Query(False),
-):
-    """
-    Main converter page.
-    """
-    try:
-        logger.info(f"🔄 Converter page accessed by user {current_user.id}, file_id: {file_id}")
-        
-        # Get files
-        file_repo = FileRepository(db)
-        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
-        
-        extracted_files = _extract_files(all_files)
-        
-        files = []
-        for f in extracted_files:
-            if hasattr(f, 'path') and f.path:
-                try:
-                    if Path(f.path).exists():
-                        files.append(f)
-                except Exception as e:
-                    logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
-        
-        # Get stats
-        stats = await get_user_stats(db, current_user.id)
-        
-        # Convert files to dicts
-        files_dict = files_to_dict_list(files)
-        logger.info(f"📁 Found {len(files_dict)} files")
-        
-        # Find selected file
-        selected_file = None
-        selected_file_id = file_id
-        
-        if file_id:
-            for f in files:
-                if f.id == file_id:
-                    selected_file = file_to_dict(f)
-                    selected_file_id = file_id
-                    logger.info(f"✅ Selected file: {selected_file['original_name']}")
-                    break
-            else:
-                # Try to get file directly if not in list
-                try:
-                    svc = FileService(db)
-                    f = await svc.get_file(file_id, current_user.id)
-                    if f:
-                        selected_file = file_to_dict(f)
-                        selected_file_id = file_id
-                        # Add to files list if not already there
-                        if not any(f.id == file_id for f in files):
-                            files.append(f)
-                            files_dict = files_to_dict_list(files)
-                        logger.info(f"✅ File fetched directly: {selected_file['original_name']}")
-                except Exception as e:
-                    logger.warning(f"File {file_id} not found: {e}")
-                    selected_file_id = None
-        
-        # Get translations
-        translations = get_texts(current_user.default_lang or 'ar')
-        
-        return templates.TemplateResponse(
-            request,
-            "converter/index.html",
-            {
-                "user": current_user,
-                "files": files_dict,
-                "export_formats": EXPORT_FORMATS,
-                "current_page": "converter",
-                "lang": current_user.default_lang,
-                "stats": stats,
-                "selected_file_id": selected_file_id,
-                "selected_file": selected_file,
-                "uploaded_success": uploaded,
-                "translations": translations,
-                "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
-            },
-        )
-    except Exception as e:
-        logger.error(f"❌ Error in converter_page: {e}")
-        import traceback
-        traceback.print_exc()
-        return HTMLResponse(
-            f"""
-            <div class="p-8 text-center">
-                <h2 class="text-xl font-bold text-red-500 mb-4">حدث خطأ في تحميل صفحة المحول</h2>
-                <p class="text-slate-400">{str(e)}</p>
-                <a href="/workspace" class="mt-4 inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg">العودة إلى مساحة العمل</a>
-            </div>
-            """,
-            status_code=500
-        )
-
-
-# ============================================================
-# CONVERTER FILES LIST (HTMX)
-# ============================================================
-
-@router.get("/converter/files-list", response_class=HTMLResponse)
-async def converter_files_list(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get files list partial for converter page (HTMX)."""
-    try:
-        file_repo = FileRepository(db)
-        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
-        
-        extracted_files = _extract_files(all_files)
-        
-        files = []
-        for f in extracted_files:
-            if hasattr(f, 'path') and f.path:
-                try:
-                    if Path(f.path).exists():
-                        files.append(f)
-                except Exception:
-                    pass
-        
-        files_dict = files_to_dict_list(files)
-        
-        return templates.TemplateResponse(
-            request,
-            "workspace/_files_panel.html",
-            {
-                "files": files_dict,
-                "total": len(files_dict),
-                "lang": current_user.default_lang,
-            },
-        )
-    except Exception as e:
-        logger.error(f"❌ Error in converter_files_list: {e}")
-        return HTMLResponse('<div class="text-red-500">فشل تحميل قائمة الملفات</div>', status_code=500)
-
-
-# ============================================================
-# CONVERTER PANEL (HTMX)
+# CONVERTER PANEL (HTMX) - يستخدم داخل مساحة العمل
 # ============================================================
 
 @router.get("/workspace/panel/convert", response_class=HTMLResponse)
@@ -355,6 +209,48 @@ async def converter_panel(
             """,
             status_code=500
         )
+
+
+# ============================================================
+# CONVERTER FILES LIST (HTMX)
+# ============================================================
+
+@router.get("/workspace/panel/convert/files", response_class=HTMLResponse)
+async def converter_files_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get files list for converter panel."""
+    try:
+        file_repo = FileRepository(db)
+        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+        
+        extracted_files = _extract_files(all_files)
+        
+        files = []
+        for f in extracted_files:
+            if hasattr(f, 'path') and f.path:
+                try:
+                    if Path(f.path).exists():
+                        files.append(f)
+                except Exception:
+                    pass
+        
+        files_dict = files_to_dict_list(files)
+        
+        return templates.TemplateResponse(
+            request,
+            "workspace/_files_panel.html",
+            {
+                "files": files_dict,
+                "total": len(files_dict),
+                "lang": current_user.default_lang,
+            },
+        )
+    except Exception as e:
+        logger.error(f"❌ Error in converter_files_list: {e}")
+        return HTMLResponse('<div class="text-red-500">فشل تحميل قائمة الملفات</div>', status_code=500)
 
 
 # ============================================================
@@ -724,12 +620,12 @@ async def download_converted(
     from app.core.config import settings
     path = Path(settings.OUTPUT_DIR) / str(current_user.id) / filename
     if not path.exists():
-        return RedirectResponse(url="/converter", status_code=302)
+        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
     return FileResponse(str(path), filename=filename)
 
 
 # ============================================================
-# LEGACY CONVERT POST
+# LEGACY CONVERT POST (للتوافق)
 # ============================================================
 
 @router.post("/converter/convert")
@@ -757,11 +653,11 @@ async def do_convert(
                    تحميل {result.output_filename}
                 </a>
             </div>""")
-        return RedirectResponse(url="/converter", status_code=302)
+        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
     except Exception as e:
         if request.headers.get("HX-Request"):
             return HTMLResponse(
                 f'<div class="p-4 bg-red-900/40 border border-red-500/30 rounded-xl text-red-300">خطأ: {e}</div>',
                 status_code=400,
             )
-        return RedirectResponse(url="/converter", status_code=302)
+        return RedirectResponse(url="/workspace?tab=convert", status_code=302)
