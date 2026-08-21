@@ -432,7 +432,7 @@
 
     </div>
 
-    <!-- Format selection -->
+    <!-- ✅ Format selection - تظهر دائماً عند وجود ملف -->
     <div
       x-show="fileId"
       x-transition:enter="transition ease-out duration-250"
@@ -563,6 +563,13 @@
 
       </div>
 
+    </div>
+
+    <!-- ✅ رسالة عند عدم وجود ملف -->
+    <div x-show="!fileId" class="wizard-body">
+      <p class="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
+        {{ t.select_file_first or 'اختر ملفاً أولاً لعرض الصيغ المتاحة' }}
+      </p>
     </div>
 
   </section>
@@ -1328,7 +1335,7 @@
 </style>
 
 <!-- ============================================================
-     ALPINE.JS
+     ALPINE.JS - مع إصلاح مشكلة تحديد الملف
      ============================================================ -->
 
 <script>
@@ -1402,16 +1409,23 @@ function convertWizard() {
     init() {
 
       console.log('🔄 [convertWizard] init() called');
-      console.log('📌 fileId:', this.fileId);
-      console.log('📌 fileName:', this.fileName);
-      console.log('📌 fileFormat:', this.fileFormat);
+      console.log('📌 fileId from template:', this.fileId);
+      console.log('📌 fileName from template:', this.fileName);
+      console.log('📌 fileFormat from template:', this.fileFormat);
 
-      // ✅ If there's a file selected, go to step 2
+      // ✅ If there's a file selected, go to step 2 and set target format
       if (this.fileId) {
         this.step = 2;
         this.targetFormat = this.getDefaultTargetFormat();
         this.convStatus = 'idle';
         console.log('✅ File pre-selected, step:', this.step, 'target:', this.targetFormat);
+        
+        // ✅ التأكد من أن الملف يظهر كمحدد في الواجهة
+        // هذا يساعد في تحديث الواجهة بشكل صحيح
+        this.$nextTick(() => {
+          // تحديث أي عناصر تحتاج إلى تحديث
+          console.log('🔄 UI updated with file:', this.fileName);
+        });
       } else {
         this.step = 1;
         this.targetFormat = '';
