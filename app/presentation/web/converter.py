@@ -6,30 +6,31 @@ import time
 import uuid
 import logging
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Request, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
-from app.core.templates import templates
+from fastapi import APIRouter, Depends, Request, Form, Query, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.infrastructure.database.models import User, OperationType, OperationStatus, File, OperationLog
+from app.core.templates import templates, get_texts
+from app.infrastructure.database.models import User, File, OperationLog
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.storage.local_storage import storage
 from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
+from app.application.files.service import FileService
 from app.presentation.web.files import files_to_dict_list, file_to_dict
-from app.core.templates import get_texts
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ── Helper function to safely extract files ─────────────────────────────────
+# ── Helper functions ──────────────────────────────────────────────
 
 def _extract_files(file_list) -> list:
     """Extract File objects from a list that may contain objects or lists."""
@@ -89,32 +90,6 @@ def _extract_files(file_list) -> list:
     return result
 
 
-# ── Friendly error classifier ────────────────────────────────────────────────
-
-def _friendly_error(raw: str) -> tuple[str, str]:
-    """Return (title, detail) friendly Arabic messages for common errors."""
-    r = raw.lower()
-    if "unsupported format" in r or "unsupported" in r:
-        return "صيغة غير مدعومة", "الصيغة المطلوبة غير مدعومة للتحويل. جرّب صيغة أخرى."
-    if "not found" in r or "no such file" in r:
-        return "الملف غير موجود", "لم يُعثر على الملف في المخزن. ربما تم حذفه."
-    if "permission" in r or "authorization" in r:
-        return "ليس لديك صلاحية", "هذا الملف لا ينتمي لحسابك."
-    if "corrupt" in r or "invalid file" in r or "bad zip" in r or "zipfile" in r:
-        return "الملف تالف أو غير صالح", "الملف الأصلي يبدو تالفًا أو غير مكتمل. حاول رفعه من جديد."
-    if "memory" in r or "out of memory" in r:
-        return "الملف كبير جداً", "الملف يتجاوز الذاكرة المتاحة. حاول بملف أصغر أو قسّمه."
-    if "sheet" in r:
-        return "ورقة عمل غير موجودة", "اسم ورقة العمل المدخل غير صحيح. تحقق من الاسم وأعد المحاولة."
-    if "column" in r or "schema" in r or "dtype" in r:
-        return "خطأ في البيانات", "البيانات لا تتوافق مع الصيغة المستهدفة. تحقق من هيكل الملف."
-    if "timeout" in r:
-        return "انتهت المهلة الزمنية", "استغرقت العملية وقتاً طويلاً جداً. حاول بملف أصغر."
-    return "خطأ في التحويل", raw[:200] if raw else "حدث خطأ غير متوقع."
-
-
-# ── Helper function to get user stats ──────────────────────────────────────
-
 async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
     """Get user statistics directly from database."""
     try:
@@ -133,90 +108,145 @@ async def get_user_stats(db: AsyncSession, user_id: int) -> dict:
         else:
             total_size_human = f"{total_bytes / (1024 * 1024 * 1024):.2f} GB"
         
-        ops_query = select(func.count()).select_from(OperationLog).where(OperationLog.user_id == user_id)
-        total_operations = await db.scalar(ops_query) or 0
-        
-        fav_query = select(File).where(File.owner_id == user_id, File.is_favorite == True).order_by(File.created_at.desc()).limit(10)
-        favorites = await db.execute(fav_query)
-        favorites_list = favorites.scalars().all()
-        
-        recent_query = select(File).where(File.owner_id == user_id).order_by(File.created_at.desc()).limit(5)
-        recent = await db.execute(recent_query)
-        recent_files = recent.scalars().all()
-        
         return {
             "total_files": total_files,
             "total_size_human": total_size_human,
-            "total_operations": total_operations,
-            "favorites": favorites_list,
-            "recent_files": recent_files,
         }
     except Exception as e:
         logger.error(f"Error getting user stats: {e}")
         return {
             "total_files": 0,
             "total_size_human": "0 B",
-            "total_operations": 0,
-            "favorites": [],
-            "recent_files": []
         }
 
 
-# ── Pages ────────────────────────────────────────────────────────────────────
+def _friendly_error(raw: str) -> tuple[str, str]:
+    """Return (title, detail) friendly Arabic messages for common errors."""
+    r = raw.lower()
+    if "unsupported format" in r or "unsupported" in r:
+        return "صيغة غير مدعومة", "الصيغة المطلوبة غير مدعومة للتحويل. جرّب صيغة أخرى."
+    if "not found" in r or "no such file" in r:
+        return "الملف غير موجود", "لم يُعثر على الملف في المخزن. ربما تم حذفه."
+    if "permission" in r or "authorization" in r:
+        return "ليس لديك صلاحية", "هذا الملف لا ينتمي لحسابك."
+    if "corrupt" in r or "invalid file" in r:
+        return "الملف تالف أو غير صالح", "الملف الأصلي يبدو تالفًا أو غير مكتمل."
+    if "memory" in r or "out of memory" in r:
+        return "الملف كبير جداً", "الملف يتجاوز الذاكرة المتاحة."
+    if "sheet" in r:
+        return "ورقة عمل غير موجودة", "اسم ورقة العمل المدخل غير صحيح."
+    if "timeout" in r:
+        return "انتهت المهلة الزمنية", "استغرقت العملية وقتاً طويلاً."
+    return "خطأ في التحويل", raw[:200] if raw else "حدث خطأ غير متوقع."
+
+
+# ============================================================
+# MAIN CONVERTER PAGE
+# ============================================================
 
 @router.get("/converter", response_class=HTMLResponse)
 async def converter_page(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    file_id: int = Query(None),
+    file_id: Optional[int] = Query(None),
     uploaded: bool = Query(False),
 ):
-    file_repo = FileRepository(db)
-    all_files = await file_repo.get_by_owner(current_user.id, limit=100)
-    
-    extracted_files = _extract_files(all_files)
-    
-    files = []
-    for f in extracted_files:
-        if hasattr(f, 'path') and f.path:
-            try:
-                if Path(f.path).exists():
-                    files.append(f)
-            except Exception as e:
-                logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
-    
-    stats = await get_user_stats(db, current_user.id)
-    files_dict = files_to_dict_list(files)
-    
-    selected_file = None
-    if file_id:
-        for f in files:
-            if f.id == file_id:
-                selected_file = file_to_dict(f)
-                break
-    
-    # Get translations
-    translations = get_texts(current_user.default_lang or 'ar')
-    
-    return templates.TemplateResponse(
-        request,
-        "workspace/index.html",
-        {
-            "user": current_user,
-            "files": files_dict,
-            "export_formats": EXPORT_FORMATS,
-            "current_page": "converter",
-            "lang": current_user.default_lang,
-            "stats": stats,
-            "selected_file_id": file_id,
-            "selected_file": selected_file,
-            "uploaded_success": uploaded,
-            "translations": translations,
-            "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
-        },
-    )
+    """
+    Main converter page.
+    """
+    try:
+        logger.info(f"🔄 Converter page accessed by user {current_user.id}, file_id: {file_id}")
+        
+        # Get files
+        file_repo = FileRepository(db)
+        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+        
+        extracted_files = _extract_files(all_files)
+        
+        files = []
+        for f in extracted_files:
+            if hasattr(f, 'path') and f.path:
+                try:
+                    if Path(f.path).exists():
+                        files.append(f)
+                except Exception as e:
+                    logger.warning(f"Error checking file {getattr(f, 'id', 'unknown')}: {e}")
+        
+        # Get stats
+        stats = await get_user_stats(db, current_user.id)
+        
+        # Convert files to dicts
+        files_dict = files_to_dict_list(files)
+        logger.info(f"📁 Found {len(files_dict)} files")
+        
+        # Find selected file
+        selected_file = None
+        selected_file_id = file_id
+        
+        if file_id:
+            for f in files:
+                if f.id == file_id:
+                    selected_file = file_to_dict(f)
+                    selected_file_id = file_id
+                    logger.info(f"✅ Selected file: {selected_file['original_name']}")
+                    break
+            else:
+                # Try to get file directly if not in list
+                try:
+                    svc = FileService(db)
+                    f = await svc.get_file(file_id, current_user.id)
+                    if f:
+                        selected_file = file_to_dict(f)
+                        selected_file_id = file_id
+                        # Add to files list if not already there
+                        if not any(f.id == file_id for f in files):
+                            files.append(f)
+                            files_dict = files_to_dict_list(files)
+                        logger.info(f"✅ File fetched directly: {selected_file['original_name']}")
+                except Exception as e:
+                    logger.warning(f"File {file_id} not found: {e}")
+                    selected_file_id = None
+        
+        # Get translations
+        translations = get_texts(current_user.default_lang or 'ar')
+        
+        return templates.TemplateResponse(
+            request,
+            "converter/index.html",
+            {
+                "user": current_user,
+                "files": files_dict,
+                "export_formats": EXPORT_FORMATS,
+                "current_page": "converter",
+                "lang": current_user.default_lang,
+                "stats": stats,
+                "selected_file_id": selected_file_id,
+                "selected_file": selected_file,
+                "uploaded_success": uploaded,
+                "translations": translations,
+                "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
+            },
+        )
+    except Exception as e:
+        logger.error(f"❌ Error in converter_page: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(
+            f"""
+            <div class="p-8 text-center">
+                <h2 class="text-xl font-bold text-red-500 mb-4">حدث خطأ في تحميل صفحة المحول</h2>
+                <p class="text-slate-400">{str(e)}</p>
+                <a href="/workspace" class="mt-4 inline-block px-4 py-2 bg-indigo-600 text-white rounded-lg">العودة إلى مساحة العمل</a>
+            </div>
+            """,
+            status_code=500
+        )
 
+
+# ============================================================
+# CONVERTER FILES LIST (HTMX)
+# ============================================================
 
 @router.get("/converter/files-list", response_class=HTMLResponse)
 async def converter_files_list(
@@ -225,34 +255,111 @@ async def converter_files_list(
     current_user: User = Depends(get_current_user),
 ):
     """Get files list partial for converter page (HTMX)."""
-    file_repo = FileRepository(db)
-    all_files = await file_repo.get_by_owner(current_user.id, limit=100)
-    
-    extracted_files = _extract_files(all_files)
-    
-    files = []
-    for f in extracted_files:
-        if hasattr(f, 'path') and f.path:
-            try:
-                if Path(f.path).exists():
-                    files.append(f)
-            except Exception:
-                pass
-    
-    files_dict = files_to_dict_list(files)
-    
-    return templates.TemplateResponse(
-        request,
-        "workspace/_files_panel.html",
-        {
-            "files": files_dict,
-            "total": len(files_dict),
-            "lang": current_user.default_lang,
-        },
-    )
+    try:
+        file_repo = FileRepository(db)
+        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+        
+        extracted_files = _extract_files(all_files)
+        
+        files = []
+        for f in extracted_files:
+            if hasattr(f, 'path') and f.path:
+                try:
+                    if Path(f.path).exists():
+                        files.append(f)
+                except Exception:
+                    pass
+        
+        files_dict = files_to_dict_list(files)
+        
+        return templates.TemplateResponse(
+            request,
+            "workspace/_files_panel.html",
+            {
+                "files": files_dict,
+                "total": len(files_dict),
+                "lang": current_user.default_lang,
+            },
+        )
+    except Exception as e:
+        logger.error(f"❌ Error in converter_files_list: {e}")
+        return HTMLResponse('<div class="text-red-500">فشل تحميل قائمة الملفات</div>', status_code=500)
 
 
-# ── Sheet names endpoint ─────────────────────────────────────────────────────
+# ============================================================
+# CONVERTER PANEL (HTMX)
+# ============================================================
+
+@router.get("/workspace/panel/convert", response_class=HTMLResponse)
+async def converter_panel(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    file_id: Optional[int] = Query(None),
+):
+    """Get converter panel partial for workspace (HTMX)."""
+    try:
+        logger.info(f"🔄 Converter panel requested, file_id: {file_id}")
+        
+        file_repo = FileRepository(db)
+        all_files = await file_repo.get_by_owner(current_user.id, limit=100)
+        
+        extracted_files = _extract_files(all_files)
+        
+        files = []
+        for f in extracted_files:
+            if hasattr(f, 'path') and f.path:
+                try:
+                    if Path(f.path).exists():
+                        files.append(f)
+                except Exception:
+                    pass
+        
+        files_dict = files_to_dict_list(files)
+        
+        selected_file = None
+        selected_file_id = file_id
+        
+        if file_id:
+            for f in files:
+                if f.id == file_id:
+                    selected_file = file_to_dict(f)
+                    selected_file_id = file_id
+                    break
+        
+        # Get translations
+        translations = get_texts(current_user.default_lang or 'ar')
+        
+        return templates.TemplateResponse(
+            request,
+            "workspace/_panel_convert.html",
+            {
+                "files": files_dict,
+                "export_formats": EXPORT_FORMATS,
+                "lang": current_user.default_lang,
+                "selected_file_id": selected_file_id,
+                "selected_file": selected_file,
+                "translations": translations,
+                "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
+            },
+        )
+    except Exception as e:
+        logger.error(f"❌ Error in converter_panel: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(
+            f"""
+            <div class="p-4 text-center">
+                <p class="text-red-500">خطأ في تحميل لوحة التحويل: {str(e)}</p>
+            </div>
+            """,
+            status_code=500
+        )
+
+
+# ============================================================
+# OTHER ENDPOINTS (SHEETS, PREVIEW, CONVERT, DOWNLOAD)
+# ============================================================
 
 @router.get("/converter/sheets/{file_id}")
 async def get_file_sheets(
@@ -260,7 +367,7 @@ async def get_file_sheets(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from fastapi.responses import JSONResponse
+    """Return the list of worksheet names for an Excel file (JSON)."""
     file_repo = FileRepository(db)
     f = await file_repo.get_by_id(file_id)
     if not f or f.owner_id != current_user.id:
@@ -274,8 +381,6 @@ async def get_file_sheets(
         sheets = []
     return JSONResponse({"sheets": sheets})
 
-
-# ── Preview endpoint (HTMX fragment) ────────────────────────────────────────
 
 @router.get("/converter/preview/{file_id}", response_class=HTMLResponse)
 async def preview_file(
@@ -363,7 +468,9 @@ async def preview_file(
     </div>""")
 
 
-# ── SSE conversion stream ────────────────────────────────────────────────────
+# ============================================================
+# CONVERT SSE
+# ============================================================
 
 @router.get("/converter/convert-sse")
 async def convert_sse(
@@ -474,7 +581,7 @@ async def convert_sse(
             await op_repo.mark_complete(op, OperationStatus.FAILED, error="timeout reading file",
                                         duration_ms=duration_ms)
             yield _sse("done", {"ok": False, "title": "انتهت المهلة الزمنية",
-                                "detail": "استغرقت قراءة الملف وقتاً طويلاً جداً. حاول بملف أصغر."})
+                                "detail": "استغرقت قراءة الملف وقتاً طويلاً. حاول بملف أصغر."})
             return
         except Exception as exc:
             t, d = _friendly_error(str(exc))
@@ -563,7 +670,7 @@ async def convert_sse(
             duration_ms = int((time.time() - t0) * 1000)
             await op_repo.mark_complete(op, OperationStatus.FAILED, error=str(exc), duration_ms=duration_ms)
             yield _sse("done", {"ok": False, "title": "انتهت المهلة الزمنية",
-                                "detail": "استغرق التحويل وقتاً طويلاً جداً. حاول بملف أصغر أو صيغة أخرى."})
+                                "detail": "استغرق التحويل وقتاً طويلاً. حاول بملف أصغر."})
             return
         except Exception as exc:
             t, d = _friendly_error(str(exc))
@@ -604,7 +711,26 @@ async def convert_sse(
     )
 
 
-# ── Legacy POST (non-JS fallback) ────────────────────────────────────────────
+# ============================================================
+# DOWNLOAD CONVERTED FILE
+# ============================================================
+
+@router.get("/converter/download/{filename}")
+async def download_converted(
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.core.config import settings
+    path = Path(settings.OUTPUT_DIR) / str(current_user.id) / filename
+    if not path.exists():
+        return RedirectResponse(url="/converter", status_code=302)
+    return FileResponse(str(path), filename=filename)
+
+
+# ============================================================
+# LEGACY CONVERT POST
+# ============================================================
 
 @router.post("/converter/convert")
 async def do_convert(
@@ -639,18 +765,3 @@ async def do_convert(
                 status_code=400,
             )
         return RedirectResponse(url="/converter", status_code=302)
-
-
-# ── Download ─────────────────────────────────────────────────────────────────
-
-@router.get("/converter/download/{filename}")
-async def download_converted(
-    filename: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    from app.core.config import settings
-    path = Path(settings.OUTPUT_DIR) / str(current_user.id) / filename
-    if not path.exists():
-        return RedirectResponse(url="/converter", status_code=302)
-    return FileResponse(str(path), filename=filename)
