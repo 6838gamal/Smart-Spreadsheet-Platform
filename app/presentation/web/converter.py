@@ -16,7 +16,7 @@ from sqlalchemy import select, func
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.templates import templates, get_texts
-from app.infrastructure.database.models import User, File, OperationLog
+from app.infrastructure.database.models import User, File, OperationLog, OperationType, OperationStatus
 from app.infrastructure.repositories.file_repository import FileRepository
 from app.infrastructure.repositories.operation_repository import OperationRepository
 from app.infrastructure.storage.local_storage import storage
