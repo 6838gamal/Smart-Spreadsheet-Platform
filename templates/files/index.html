@@ -230,28 +230,28 @@
       <!-- Actions -->
       <div class="flex gap-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50">
         <!-- عرض -->
-        <a
-          href="/files/{{ f.id }}"
+        <button
+          @click="viewFile({{ f.id }})"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
         >
           {{ t.view or 'عرض' }}
-        </a>
+        </button>
 
         <!-- تحميل -->
-        <a
-          href="/files/{{ f.id }}/download"
+        <button
+          @click="downloadFile({{ f.id }})"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors font-medium"
         >
           {{ t.download or 'تحميل' }}
-        </a>
+        </button>
 
-        <!-- تحويل - مسار workspace -->
-        <a
-          href="/workspace?file_id={{ f.id }}"
+        <!-- تحويل - استخدام Alpine.js لتحديث الواجهة بدون إعادة تحميل -->
+        <button
+          @click="goToConverter({{ f.id }})"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors font-medium"
         >
           {{ t.convert or 'تحويل' }}
-        </a>
+        </button>
 
         <!-- حذف -->
         <button
@@ -415,7 +415,7 @@ function filesPage() {
         
         await this.updateStats();
         
-        // Check if redirect is needed (single file uploaded)
+        // ✅ Check if redirect is needed (single file uploaded)
         const hasRedirect = result.html && result.html.includes('window.location.href');
         
         if (hasRedirect) {
@@ -517,20 +517,39 @@ function filesPage() {
     },
 
     // ============================================================
-    // FILE ACTIONS
+    // FILE ACTIONS - محسنة
     // ============================================================
 
-    viewFile(fileId, fileUrl) {
-      if (fileUrl) {
-        window.open(fileUrl, '_blank');
-      } else {
-        window.open(`/files/${fileId}/download`, '_blank');
-      }
+    // عرض الملف - يفتح في صفحة جديدة
+    viewFile(fileId) {
+      window.open(`/files/${fileId}`, '_blank');
     },
 
+    // تحميل الملف - فتح رابط التحميل
+    downloadFile(fileId) {
+      window.open(`/files/${fileId}/download`, '_blank');
+    },
+
+    // ✅ التحويل - استخدام حدث مخصص بدلاً من إعادة تحميل الصفحة
     goToConverter(fileId) {
       console.log('🔄 Going to workspace with file_id:', fileId);
-      window.location.href = `/workspace?file_id=${fileId}`;
+      
+      // إظهار مؤشر تحميل
+      this.showResult('🔄 جاري التوجيه إلى المحول...', 'info');
+      
+      // ✅ استخدام حدث HTMX لتحميل المحتوى بدون إعادة تحميل الصفحة
+      if (typeof htmx !== 'undefined') {
+        // إرسال حدث لتحديث الواجهة في مساحة العمل
+        window.dispatchEvent(new CustomEvent('navigate-to-converter', { 
+          detail: { fileId: fileId }
+        }));
+        
+        // ✅ الانتقال إلى مساحة العمل مع الحفاظ على الحالة
+        window.location.href = `/workspace?tab=convert&file_id=${fileId}`;
+      } else {
+        // Fallback
+        window.location.href = `/workspace?file_id=${fileId}`;
+      }
     },
 
     async deleteFile(fileId) {
@@ -547,17 +566,42 @@ function filesPage() {
         });
 
         if (response.ok) {
-          window.location.reload();
+          // ✅ إزالة البطاقة من الواجهة مباشرة بدون إعادة تحميل
+          const card = document.querySelector(`[data-file-id="${fileId}"]`);
+          if (card) {
+            // إضافة تأثير اختفاء
+            card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+              card.remove();
+              this.updateStats();
+              // تحديث العدد في الواجهة
+              this.totalFiles = document.querySelectorAll('[data-file-id]').length;
+            }, 300);
+          }
+          this.showResult('✅ تم حذف الملف بنجاح', 'success');
         } else {
           throw new Error('Delete failed');
         }
       } catch (error) {
         console.error('Delete error:', error);
-        alert(this.t?.delete_error || 'خطأ في حذف الملف');
+        this.showResult('❌ فشل حذف الملف', 'error');
       }
     }
   };
 }
+</script>
+
+<!-- استماع للأحداث من أجزاء أخرى من التطبيق -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // الاستماع لحدث الانتقال إلى المحول
+  window.addEventListener('navigate-to-converter', function(e) {
+    console.log('📡 Navigate to converter event received:', e.detail);
+    // يمكن إضافة منطق إضافي هنا
+  });
+});
 </script>
 
 {% endblock %}
