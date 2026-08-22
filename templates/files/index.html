@@ -1,4 +1,4 @@
-<!-- files/index.html -->
+<!-- templates/files/index.html -->
 
 {% extends "base.html" %}
 
@@ -128,7 +128,7 @@
   </div>
 
   <!-- =========================================================
-       URL IMPORT SECTION - استيراد من رابط
+       URL IMPORT SECTION - استيراد من رابط مع شريط تقدم
   ========================================================== -->
 
   <div class="card p-6 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-200/50 dark:border-indigo-800/30">
@@ -156,6 +156,7 @@
         placeholder="{{ t.enter_file_url or 'https://example.com/file.pdf' }}"
         class="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
         @keydown.enter="importFromUrl()"
+        :disabled="importingUrl"
       />
       <button
         @click="importFromUrl()"
@@ -177,7 +178,73 @@
       </button>
     </div>
 
-    <!-- URL Import Result -->
+    <!-- ✅ شريط التقدم وحالة العملية -->
+    <div x-show="importingUrl || importStatus" x-cloak class="mt-4 space-y-3">
+      
+      <!-- شريط التقدم -->
+      <div>
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+          <span x-text="importProgressLabel"></span>
+          <span x-text="importProgress + '%'"></span>
+        </div>
+        <div class="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+          <div 
+            class="h-full rounded-full transition-all duration-500 ease-out"
+            :class="importStatus === 'error' ? 'bg-red-500' : importStatus === 'success' ? 'bg-emerald-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'"
+            :style="'width:' + importProgress + '%'"
+          ></div>
+        </div>
+      </div>
+
+      <!-- مراحل العملية -->
+      <div class="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full" 
+                :class="importStage === 'validating' ? 'bg-indigo-500 animate-pulse' : importStage === 'done' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
+          <span :class="importStage === 'validating' ? 'text-indigo-600 dark:text-indigo-400 font-medium' : ''">تحقق</span>
+        </div>
+        <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full" 
+                :class="importStage === 'downloading' ? 'bg-indigo-500 animate-pulse' : importStage === 'done' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
+          <span :class="importStage === 'downloading' ? 'text-indigo-600 dark:text-indigo-400 font-medium' : ''">تحميل</span>
+        </div>
+        <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full" 
+                :class="importStage === 'processing' ? 'bg-indigo-500 animate-pulse' : importStage === 'done' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
+          <span :class="importStage === 'processing' ? 'text-indigo-600 dark:text-indigo-400 font-medium' : ''">معالجة</span>
+        </div>
+        <div class="flex-1 h-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full" 
+                :class="importStage === 'saving' ? 'bg-indigo-500 animate-pulse' : importStage === 'done' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'"></span>
+          <span :class="importStage === 'saving' ? 'text-indigo-600 dark:text-indigo-400 font-medium' : ''">حفظ</span>
+        </div>
+      </div>
+
+      <!-- رسالة الحالة -->
+      <div 
+        class="p-3 rounded-lg text-sm border"
+        :class="importStatus === 'success' ? 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : importStatus === 'error' ? 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'border-indigo-200 dark:border-indigo-700/40 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'"
+      >
+        <div class="flex items-center gap-2">
+          <span x-show="importStatus === 'success'" class="text-lg">✅</span>
+          <span x-show="importStatus === 'error'" class="text-lg">❌</span>
+          <span x-show="!importStatus || importStatus === 'progress'" class="text-lg">⏳</span>
+          <span x-text="importMessage"></span>
+        </div>
+        <!-- تفاصيل إضافية في حالة النجاح -->
+        <div x-show="importStatus === 'success' && importedFile" x-cloak class="mt-2 text-xs text-emerald-600 dark:text-emerald-300">
+          <span class="font-medium">{{ t.file_name or 'اسم الملف' }}:</span> <span x-text="importedFile.filename"></span>
+          <span class="mx-2">•</span>
+          <span class="font-medium">{{ t.file_format or 'الصيغة' }}:</span> <span x-text="importedFile.format || 'غير معروف'"></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- URL Import Result (للتوسع) -->
     <div id="url-import-result" class="mt-3"></div>
   </div>
 
@@ -377,9 +444,18 @@ function filesPage() {
     // URL Import state
     fileUrl: '',
     importingUrl: false,
+    importProgress: 0,
+    importStage: 'validating', // validating | downloading | processing | saving | done
+    importStatus: '', // progress | success | error
+    importMessage: '',
+    importedFile: null,
+    _navigating: false, // ✅ منع الحلقات في التنقل
 
     async init() {
       this.t = window._translations || {};
+      
+      // Reset import state on page load
+      this.resetImportState();
       
       // Listen for storage events
       window.addEventListener('storage', (e) => {
@@ -398,7 +474,27 @@ function filesPage() {
         this.dragging = false;
         this.uploading = false;
         this.uploadProgress = 0;
+        this.resetImportState();
       });
+    },
+
+    resetImportState() {
+      this.importProgress = 0;
+      this.importStage = 'validating';
+      this.importStatus = '';
+      this.importMessage = '';
+      this.importedFile = null;
+    },
+
+    get importProgressLabel() {
+      const labels = {
+        'validating': '🔄 جاري التحقق من الرابط...',
+        'downloading': '⬇️ جاري تحميل الملف...',
+        'processing': '⚙️ جاري معالجة الملف...',
+        'saving': '💾 جاري حفظ الملف...',
+        'done': this.importStatus === 'success' ? '✅ تم الاستيراد بنجاح' : '❌ فشل الاستيراد'
+      };
+      return labels[this.importStage] || '⏳ جاري العمل...';
     },
 
     async updateStats() {
@@ -417,13 +513,13 @@ function filesPage() {
     },
 
     // ============================================================
-    // URL IMPORT
+    // URL IMPORT WITH PROGRESS
     // ============================================================
 
     async importFromUrl() {
       const url = this.fileUrl?.trim();
       if (!url) {
-        this.showUrlResult('❌ الرجاء إدخال رابط صحيح', 'error');
+        this.showImportResult('❌ الرجاء إدخال رابط صحيح', 'error');
         return;
       }
 
@@ -431,22 +527,62 @@ function filesPage() {
       try {
         new URL(url);
       } catch {
-        this.showUrlResult('❌ الرابط غير صالح. تأكد من صحة الرابط', 'error');
+        this.showImportResult('❌ الرابط غير صالح. تأكد من صحة الرابط', 'error');
         return;
       }
 
+      // Reset and start
+      this.resetImportState();
       this.importingUrl = true;
-      this.showUrlResult('⏳ جاري سحب الملف من الرابط...', 'info');
+      this.importStatus = 'progress';
+      this.importMessage = '🔄 جاري التحقق من الرابط...';
+      this.importStage = 'validating';
+      this.importProgress = 10;
+
+      // Simulate progress stages
+      const progressTimer = setInterval(() => {
+        if (this.importStage === 'validating' && this.importProgress < 25) {
+          this.importProgress += 2;
+        } else if (this.importStage === 'validating' && this.importProgress >= 25) {
+          this.importStage = 'downloading';
+          this.importMessage = '⬇️ جاري تحميل الملف...';
+        }
+        
+        if (this.importStage === 'downloading' && this.importProgress < 60) {
+          this.importProgress += 3;
+        } else if (this.importStage === 'downloading' && this.importProgress >= 60) {
+          this.importStage = 'processing';
+          this.importMessage = '⚙️ جاري معالجة الملف...';
+        }
+        
+        if (this.importStage === 'processing' && this.importProgress < 80) {
+          this.importProgress += 2;
+        } else if (this.importStage === 'processing' && this.importProgress >= 80) {
+          this.importStage = 'saving';
+          this.importMessage = '💾 جاري حفظ الملف...';
+        }
+        
+        if (this.importStage === 'saving' && this.importProgress < 95) {
+          this.importProgress += 1;
+        }
+      }, 300);
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+
         const response = await fetch('/files/import-url', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
           },
-          body: JSON.stringify({ url: url })
+          body: JSON.stringify({ url: url }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+        clearInterval(progressTimer);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -456,49 +592,63 @@ function filesPage() {
         const data = await response.json();
         
         if (data.success) {
-          this.showUrlResult(`✅ تم سحب الملف بنجاح: ${data.filename || 'غير معروف'}`, 'success');
+          this.importProgress = 100;
+          this.importStage = 'done';
+          this.importStatus = 'success';
+          this.importMessage = `✅ تم سحب الملف بنجاح: ${data.filename || 'غير معروف'}`;
+          this.importedFile = {
+            filename: data.filename,
+            format: data.format,
+            file_id: data.file_id
+          };
           
           // Update stats
           this.totalFiles += 1;
           
-          // Reload after short delay to show new file
+          // Reload after short delay
           setTimeout(() => {
             window.location.reload();
-          }, 1000);
+          }, 1500);
         } else {
           throw new Error(data.error || 'حدث خطأ أثناء سحب الملف');
         }
       } catch (error) {
-        console.error('URL Import error:', error);
-        this.showUrlResult(`❌ ${error.message}`, 'error');
+        clearInterval(progressTimer);
+        if (error.name === 'AbortError') {
+          this.showImportResult('⏰ انتهت المهلة الزمنية. حاول مرة أخرى', 'error');
+        } else {
+          console.error('URL Import error:', error);
+          this.showImportResult(`❌ ${error.message}`, 'error');
+        }
       } finally {
         this.importingUrl = false;
         this.fileUrl = '';
       }
     },
 
-    showUrlResult(message, type = 'info') {
+    showImportResult(message, type = 'info') {
+      this.importStatus = type;
+      this.importMessage = message;
+      
+      if (type === 'error') {
+        this.importStage = 'done';
+        this.importProgress = 100;
+        // تغيير لون شريط التقدم إلى الأحمر
+      }
+      
+      // Update the result box for backward compatibility
       const resultBox = document.getElementById('url-import-result');
-      if (!resultBox) return;
-
-      const colors = {
-        success: 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
-        error: 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
-        info: 'border-blue-200 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-      };
-
-      resultBox.innerHTML = `
-        <div class="p-3 rounded-xl border ${colors[type] || colors.info} text-sm">
-          ${message}
-        </div>
-      `;
-
-      if (type !== 'error') {
-        setTimeout(() => {
-          if (resultBox.querySelector('.p-3')) {
-            resultBox.innerHTML = '';
-          }
-        }, 5000);
+      if (resultBox) {
+        const colors = {
+          success: 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
+          error: 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
+          info: 'border-blue-200 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+        };
+        resultBox.innerHTML = `
+          <div class="p-3 rounded-xl border ${colors[type] || colors.info} text-sm">
+            ${message}
+          </div>
+        `;
       }
     },
 
@@ -661,7 +811,7 @@ function filesPage() {
     },
 
     // ============================================================
-    // FILE ACTIONS
+    // FILE ACTIONS - محسنة لمنع الحلقات
     // ============================================================
 
     viewFile(fileId) {
@@ -675,15 +825,36 @@ function filesPage() {
     goToConverter(fileId) {
       console.log('🔄 Going to workspace with file_id:', fileId);
       
+      // ✅ منع الطلبات المتكررة
+      if (this._navigating) {
+        console.log('⏳ Navigation already in progress, skipping...');
+        return;
+      }
+      this._navigating = true;
+      
       this.showResult('🔄 جاري التوجيه إلى المحول...', 'info');
       
-      if (typeof htmx !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('navigate-to-converter', { 
-          detail: { fileId: fileId }
-        }));
-        window.location.href = `/workspace?tab=convert&file_id=${fileId}`;
-      } else {
+      // ✅ مهلة لمنع الحلقات
+      const timeoutId = setTimeout(() => {
+        console.warn('⏰ Navigation timeout, redirecting anyway...');
         window.location.href = `/workspace?file_id=${fileId}`;
+        this._navigating = false;
+      }, 5000);
+      
+      try {
+        if (typeof htmx !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('navigate-to-converter', { 
+            detail: { fileId: fileId }
+          }));
+          window.location.href = `/workspace?tab=convert&file_id=${fileId}`;
+        } else {
+          window.location.href = `/workspace?file_id=${fileId}`;
+        }
+      } catch (error) {
+        console.error('❌ Navigation error:', error);
+        this.showResult('❌ فشل التوجيه إلى المحول', 'error');
+        this._navigating = false;
+        clearTimeout(timeoutId);
       }
     },
 
