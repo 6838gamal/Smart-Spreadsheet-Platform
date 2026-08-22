@@ -174,12 +174,19 @@ async def converter_panel(
         selected_file = None
         selected_file_id = file_id
         
+        # ✅ إذا كان هناك file_id في الـ URL، حاول العثور عليه
         if file_id:
             for f in files:
                 if f.id == file_id:
                     selected_file = file_to_dict(f)
                     selected_file_id = file_id
                     break
+        
+        # ✅ إذا لم يتم العثور على الملف ولكن هناك ملفات، اختر الأول
+        if not selected_file_id and files:
+            selected_file_id = files[0].id
+            selected_file = file_to_dict(files[0])
+            logger.info(f"ℹ️ No file_id provided, using first file: {selected_file_id}")
         
         # Get translations
         translations = get_texts(current_user.default_lang or 'ar')
