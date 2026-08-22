@@ -20,6 +20,29 @@
 <div class="space-y-5" x-data="fileDetailPage()" x-init="init()">
 
   <!-- =========================================================
+       FILE EXISTS WARNING - تحذير الملف غير موجود
+  ========================================================== -->
+
+  {% if not file_exists_on_server %}
+  <div class="card p-4 border-red-200 dark:border-red-800/30 bg-red-50/50 dark:bg-red-900/10">
+    <div class="flex flex-wrap items-center gap-3 text-red-600 dark:text-red-400">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+      <div class="flex-1">
+        <p class="font-medium text-sm">{{ t.file_not_found_on_server or '⚠️ الملف غير موجود على الخادم' }}</p>
+        <p class="text-xs text-red-500 dark:text-red-300/70">
+          {{ t.file_maybe_deleted or 'قد يكون الملف قد تم حذفه أو نقله. حاول إعادة رفع الملف.' }}
+        </p>
+      </div>
+      <a href="/files" class="btn-secondary text-sm px-3 py-1.5 flex-shrink-0">
+        {{ t.back_to_files or 'العودة إلى الملفات' }}
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- =========================================================
        FILE INFO BAR
   ========================================================== -->
 
@@ -68,7 +91,8 @@
           <span>·</span>
           <span>☁️ {{ t.stored_in_cloud or 'مخزن في السحابة' }}</span>
           <span>·</span>
-          <span>{{ file.created_at|datetime('%Y-%m-%d') if file.created_at else '-' }}</span>
+          <!-- ✅ استخدام strftime بدلاً من datetime filter -->
+          <span>{{ file.created_at.strftime('%Y-%m-%d') if file.created_at else '-' }}</span>
           {% if file.is_favorite %}
           <span>·</span>
           <span class="text-yellow-400">★ {{ t.favorite or 'مفضلة' }}</span>
@@ -404,7 +428,7 @@
   </div>
 
   <!-- =========================================================
-       FILE METADATA (عرض معلومات إضافية)
+       FILE METADATA - معلومات إضافية
   ========================================================== -->
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -432,14 +456,19 @@
           <dt class="text-slate-500 dark:text-slate-400">{{ t.mime_type or 'نوع MIME' }}</dt>
           <dd class="text-slate-800 dark:text-slate-200 text-xs">{{ file.mime_type or '-' }}</dd>
         </div>
-        <div class="flex justify-between">
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
           <dt class="text-slate-500 dark:text-slate-400">{{ t.storage_backend or 'مزود التخزين' }}</dt>
           <dd class="text-slate-800 dark:text-slate-200 font-medium">☁️ {{ file.storage_backend or 'Supabase' }}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.created_at or 'تاريخ الإنشاء' }}</dt>
+          <!-- ✅ استخدام strftime بدلاً من datetime filter -->
+          <dd class="text-slate-800 dark:text-slate-200">{{ file.created_at.strftime('%Y-%m-%d %H:%M') if file.created_at else '-' }}</dd>
         </div>
       </dl>
     </div>
 
-    <!-- معلومات إضافية -->
+    <!-- معلومات إضافية من الـ meta -->
     {% if file.meta %}
     <div class="card p-5">
       <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
@@ -477,7 +506,7 @@
         </div>
         {% endif %}
         {% if file.meta.word_count %}
-        <div class="flex justify-between">
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
           <dt class="text-slate-500 dark:text-slate-400">{{ t.word_count or 'عدد الكلمات' }}</dt>
           <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ "{:,}".format(file.meta.word_count) }}</dd>
         </div>
@@ -486,6 +515,16 @@
         <div class="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-2 mt-2">
           <dt class="text-slate-500 dark:text-slate-400">{{ t.imported_from_url or 'مستورد من رابط' }}</dt>
           <dd class="text-emerald-500">✅</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.source_url %}
+        <div class="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-2 mt-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.source_url or 'رابط المصدر' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 text-xs truncate max-w-[150px]" title="{{ file.meta.source_url }}">
+            <a href="{{ file.meta.source_url }}" target="_blank" class="text-indigo-500 hover:text-indigo-600 underline">
+              {{ file.meta.source_url|truncate(40, true) }}
+            </a>
+          </dd>
         </div>
         {% endif %}
       </dl>
