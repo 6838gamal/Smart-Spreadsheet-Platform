@@ -3,9 +3,13 @@ Application configuration management via pydantic-settings.
 All settings can be overridden via environment variables or .env file.
 """
 
+import logging
 from functools import lru_cache
 from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# إعداد الـ logger
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -23,8 +27,6 @@ class Settings(BaseSettings):
     PORT: int = 5000
 
     # Public URL — used for server-side keep-alive self-ping.
-    # Set APP_URL explicitly, or leave empty to auto-detect from the host
-    # environment (Replit, Render, Railway, Fly.io, Heroku, or localhost).
     APP_URL: str = ""
 
     @property
@@ -71,25 +73,17 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # Database — PostgreSQL only.
-    # Must be set via the DATABASE_URL environment variable (or POSTGRES_URL as alias).
-    # No SQLite fallback: the app will refuse to start if neither is provided.
     POSTGRES_URL: str = ""
     DATABASE_URL: str = ""
 
     @property
     def _raw_db_url(self) -> str:
-        """Return the active PostgreSQL URL. POSTGRES_URL takes priority over DATABASE_URL.
-
-        Only postgresql:// and postgres:// schemes are accepted.
-        Raises RuntimeError on startup if the URL is missing or uses any other scheme.
-        """
+        """Return the active PostgreSQL URL."""
         url = (self.POSTGRES_URL or self.DATABASE_URL).strip()
         if not url:
             raise RuntimeError(
                 "DATABASE_URL is not set. "
-                "Add a PostgreSQL connection string to your environment variables. "
-                "Accepted formats: postgresql://user:pass@host:5432/dbname  "
-                "or postgres://user:pass@host:5432/dbname"
+                "Add a PostgreSQL connection string to your environment variables."
             )
         _lower = url.lower()
         _pg_prefixes = ("postgresql://", "postgres://", "postgresql+asyncpg://", "postgres+asyncpg://")
@@ -106,10 +100,8 @@ class Settings(BaseSettings):
         """Return the DATABASE_URL normalised for SQLAlchemy asyncpg driver."""
         from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
         url = self._raw_db_url
-        # Rewrite postgresql:// / postgres:// to the asyncpg dialect
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-        # asyncpg does not accept sslmode query param — strip it
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         params.pop("sslmode", None)
@@ -119,35 +111,40 @@ class Settings(BaseSettings):
 
     @property
     def use_ssl(self) -> bool:
-        """Whether to use SSL for the database connection.
-
-        Rules:
-        - sslmode=disable: never (explicit opt-out).
-        - All other PostgreSQL URLs: yes (Render / Supabase / Railway / Replit all support it).
-        """
+        """Whether to use SSL for the database connection."""
         url = self._raw_db_url
         if "sslmode=disable" in url:
             return False
         return True
 
-    # File metadata is stored in PostgreSQL. Binary objects are stored in
-    # Supabase Storage. Local files are only temporary processing artifacts.
-    FILE_STORAGE_BACKEND: Literal["supabase"] = "supabase"
+    # ============================================================
+    # FILE STORAGE - التخزين
+    # ============================================================
+    
+    # ✅ نوع التخزين: "supabase" أو "local"
+    FILE_STORAGE_BACKEND: Literal["supabase", "local"] = "supabase"
+    
+    # مجلدات التخزين
     UPLOAD_DIR: str = "uploads"
     OUTPUT_DIR: str = "outputs"
-    # ✅ إضافة STORAGE_DIR للتخزين المحلي
     STORAGE_DIR: str = "./storage"
     MAX_FILE_SIZE_MB: int = 500
     MAX_FILE_SIZE_BYTES: int = 500 * 1024 * 1024
 
-    # Supabase Storage
+    # ============================================================
+    # SUPABASE STORAGE
+    # ============================================================
+    
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_STORAGE_BUCKET: str = "files"
     SUPABASE_STORAGE_CACHE_DIR: str = ".storage-tmp"
     SUPABASE_STORAGE_TIMEOUT_SECONDS: int = 120
 
-    # Allowed file extensions
+    # ============================================================
+    # ALLOWED FILE EXTENSIONS
+    # ============================================================
+    
     ALLOWED_IMPORT_EXTENSIONS: list[str] = [
         # Spreadsheets
         "xlsx", "xls", "xlsm", "xlsb", "ods",
@@ -168,28 +165,22 @@ class Settings(BaseSettings):
     ]
 
     # Processing
-    CHUNK_SIZE: int = 50_000       # rows per chunk for large files
-    MAX_PREVIEW_ROWS: int = 1_000  # rows to show in preview
-    STREAMING_THRESHOLD_MB: int = 50  # files above this use streaming
+    CHUNK_SIZE: int = 50_000
+    MAX_PREVIEW_ROWS: int = 1_000
+    STREAMING_THRESHOLD_MB: int = 50
 
-    # ── External APIs ─────────────────────────────────────────────────────────
-    # Set to true to re-enable all third-party HTTP calls (Google OAuth,
-    # OpenAI, Hugging Face).  While false every outbound call returns a
-    # clear 503 / disabled error — the database and all local features
-    # continue to work normally.
+    # External APIs
     EXTERNAL_APIS_ENABLED: bool = False
 
-    # Google OAuth (for regular-user login)
+    # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
-    # OpenAI — optional; enables generative answers in the chat Q&A feature.
-    # Set OPENAI_API_KEY as a Replit Secret to activate LLM-powered responses.
+    # OpenAI
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"   # swap to "gpt-4o" for higher quality
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # Hugging Face — optional; enables HF Inference API for Q&A, summarization, extraction.
-    # Set HUGGINGFACE_TOKEN as a Replit Secret to activate HF-powered features.
+    # Hugging Face
     HUGGINGFACE_TOKEN: str = ""
 
     # Locale defaults
@@ -208,3 +199,36 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# ============================================================
+# ✅ التحقق من إعدادات التخزين عند بدء التشغيل
+# ============================================================
+
+def _check_storage_config():
+    """Check storage configuration and log warnings."""
+    # التحقق من إعدادات Supabase
+    if settings.FILE_STORAGE_BACKEND == "supabase":
+        if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+            logger.error("=" * 70)
+            logger.error("⚠️⚠️⚠️  WARNING: SUPABASE STORAGE NOT CONFIGURED  ⚠️⚠️⚠️")
+            logger.error("=" * 70)
+            logger.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not set!")
+            logger.error("Files will be stored LOCALLY and will be LOST on server restart!")
+            logger.error("")
+            logger.error("Please add these environment variables in your hosting platform:")
+            logger.error("  - SUPABASE_URL: https://your-project.supabase.co")
+            logger.error("  - SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIs...")
+            logger.error("  - SUPABASE_STORAGE_BUCKET: files")
+            logger.error("=" * 70)
+        else:
+            logger.info(f"✅ Supabase Storage configured: {settings.SUPABASE_URL[:30]}...")
+            logger.info(f"   Bucket: {settings.SUPABASE_STORAGE_BUCKET}")
+            logger.info(f"   Backend: {settings.FILE_STORAGE_BACKEND}")
+    else:
+        logger.warning("=" * 50)
+        logger.warning("📁 Using LOCAL storage backend")
+        logger.warning("⚠️ Files will be LOST on server restart!")
+        logger.warning("=" * 50)
+
+# ✅ تشغيل الفحص عند تحميل الملف
+_check_storage_config()
