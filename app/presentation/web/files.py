@@ -284,60 +284,88 @@ async def import_from_url(
             content = response.content
             content_type = response.headers.get('content-type', 'application/octet-stream')
             
-            # Extract filename from URL or headers
-            filename = url.split('/')[-1].split('?')[0]
-            if not filename or '.' not in filename:
-                # Try to get from Content-Disposition header
-                content_disposition = response.headers.get('content-disposition')
-                if content_disposition and 'filename=' in content_disposition:
-                    match = re.search(r'filename="?([^"]+)"?', content_disposition)
-                    if match:
-                        filename = match.group(1)
-                
-                if not filename or '.' not in filename:
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}"
-                    if 'application/pdf' in content_type:
-                        filename += '.pdf'
-                    elif 'spreadsheet' in content_type or 'excel' in content_type:
-                        filename += '.xlsx'
-                    elif 'csv' in content_type:
-                        filename += '.csv'
-                    elif 'json' in content_type:
-                        filename += '.json'
-                    elif 'text/plain' in content_type:
-                        filename += '.txt'
-                    elif 'image' in content_type:
-                        ext = content_type.split('/')[-1].split('+')[0]
-                        filename += f'.{ext}'
-                    else:
-                        filename += '.bin'
+            # ✅ استخراج اسم الملف بشكل صحيح
+            filename = None
             
-            # ✅ الطريقة الصحيحة: استخدام SpooledTemporaryFile
+            # 1. محاولة من Content-Disposition
+            content_disposition = response.headers.get('content-disposition')
+            if content_disposition and 'filename=' in content_disposition:
+                match = re.search(r'filename="?([^"]+)"?', content_disposition)
+                if match:
+                    filename = match.group(1)
+                    # تنظيف اسم الملف
+                    filename = filename.split('?')[0]
+                    filename = filename.split('#')[0]
+            
+            # 2. محاولة من URL
+            if not filename:
+                path = urlparse(url).path
+                filename = path.split('/')[-1]
+                if filename:
+                    filename = filename.split('?')[0]
+                    filename = filename.split('#')[0]
+            
+            # 3. إنشاء اسم افتراضي
+            if not filename:
+                if 'application/pdf' in content_type:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.pdf"
+                elif 'spreadsheet' in content_type or 'excel' in content_type:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.xlsx"
+                elif 'csv' in content_type:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.csv"
+                elif 'json' in content_type:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.json"
+                elif 'text/plain' in content_type:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.txt"
+                elif 'image' in content_type:
+                    ext = content_type.split('/')[-1].split('+')[0]
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.{ext}"
+                else:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.bin"
+            
+            # ✅ تنظيف اسم الملف
+            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            if len(filename) > 200:
+                name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+                filename = name[:180] + '.' + ext if ext else name[:200]
+            
+            # ✅ التحقق من نوع الملف الفعلي
+            if content.startswith(b'%PDF'):
+                content_type = 'application/pdf'
+                if not filename.endswith('.pdf'):
+                    filename = filename.rsplit('.', 1)[0] + '.pdf'
+            elif content.startswith(b'\x89PNG'):
+                content_type = 'image/png'
+                if not filename.endswith('.png'):
+                    filename = filename.rsplit('.', 1)[0] + '.png'
+            elif content.startswith(b'\xff\xd8\xff'):
+                content_type = 'image/jpeg'
+                if not filename.endswith('.jpg') and not filename.endswith('.jpeg'):
+                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
+            # ✅ إنشاء UploadFile
             from tempfile import SpooledTemporaryFile
             
-            # إنشاء ملف مؤقت
-            temp_file = SpooledTemporaryFile(max_size=1024*1024)  # 1MB in memory, rest to disk
+            temp_file = SpooledTemporaryFile(max_size=1024*1024)
             temp_file.write(content)
             temp_file.seek(0)
             
-            # ✅ إنشاء UploadFile مع headers
             upload_file = UploadFile(
                 filename=filename,
                 file=temp_file,
                 headers={"content-type": content_type}
             )
             
-            # Upload to storage using existing service
+            # Upload to storage
             svc = FileService(db)
             db_file = await svc.upload(upload_file, current_user.id)
             
-            # Close temp file
             temp_file.close()
             
             # Add source URL to metadata
             if db_file.meta is None:
                 db_file.meta = {}
-            db_file.meta['source_url'] = url
+            db_file.meta['source_url'] = url[:500]
             db_file.meta['imported_from_url'] = True
             db_file.meta['imported_at'] = datetime.utcnow().isoformat()
             db.add(db_file)
@@ -376,7 +404,7 @@ async def import_from_url(
 
 
 # ============================================================
-# FILE DETAIL
+# باقي المسارات (file_detail, download_file, etc.)
 # ============================================================
 
 @router.get("/files/{file_id}", response_class=HTMLResponse)
