@@ -274,6 +274,8 @@ class FileService:
         """
         Get file content - tries cache first, then the configured storage backend.
         
+        ✅ محسنة: لا تستدعي get_file لتجنب الحلقات اللانهائية
+        
         Args:
             file_id: File ID
             user_id: User ID for authorization
@@ -281,21 +283,49 @@ class FileService:
         Returns:
             Optional[bytes]: File content if found
         """
-        # Get file metadata
-        f = await self.get_file(file_id, user_id)
+        # ✅ Get file metadata مباشرة من الـ repository لتجنب الحلقات
+        f = await self.file_repo.get_by_id(file_id)
+        if not f:
+            logger.warning(f"⚠️ File {file_id} not found in database")
+            return None
         
-        # Try to get from cache first
+        # ✅ التحقق من الصلاحية
+        if f.owner_id != user_id:
+            logger.warning(f"⚠️ User {user_id} not authorized for file {file_id}")
+            return None
+        
+        # ✅ Try to get from cache first
         cached_content = await self._get_from_cache(file_id)
         if cached_content:
-            logger.info(f"File {file_id} served from cache")
+            logger.info(f"✅ File {file_id} served from cache")
             return cached_content
         
-        # Try to get from Supabase/object storage
-        content = await self._get_from_storage(f)
-        if content:
-            # Cache for future requests
-            await self._set_cache(file_id, content)
-            return content
+        # ✅ التحقق من وجود الملف قبل المحاولة - مع منع الحلقات
+        file_exists = False
+        try:
+            if hasattr(self.storage, 'file_exists'):
+                file_exists = self.storage.file_exists(f.path)
+            else:
+                # Fallback: check if path exists
+                file_exists = Path(f.path).exists() if f.path else False
+        except Exception as e:
+            logger.warning(f"⚠️ Could not check file existence for {file_id}: {e}")
+            return None
+        
+        if not file_exists:
+            logger.warning(f"⚠️ File {file_id} ({f.original_name}) not found in storage at: {f.path}")
+            return None
+        
+        # ✅ Try to get from Supabase/object storage
+        try:
+            content = await self._get_from_storage(f)
+            if content:
+                # Cache for future requests
+                await self._set_cache(file_id, content)
+                logger.info(f"✅ File {file_id} loaded from storage ({len(content)} bytes)")
+                return content
+        except Exception as e:
+            logger.error(f"❌ Failed to get file content from storage: {e}")
         
         logger.warning(f"File {file_id} content not found (path: {f.path})")
         return None
@@ -303,6 +333,8 @@ class FileService:
     async def stream_file(self, file_id: int, user_id: int, start: int = 0, end: Optional[int] = None):
         """
         Stream file content - supports range requests.
+        
+        ✅ محسنة: لا تستدعي get_file لتجنب الحلقات
         
         Args:
             file_id: File ID
@@ -316,32 +348,60 @@ class FileService:
         Raises:
             NotFoundError: If file not found on server
         """
-        f = await self.get_file(file_id, user_id)
+        # ✅ Get file metadata مباشرة من الـ repository
+        f = await self.file_repo.get_by_id(file_id)
+        if not f:
+            raise NotFoundError(f"File {file_id} not found")
+        if f.owner_id != user_id:
+            raise AuthorizationError("Not authorized")
         
-        # Try to get from storage
-        if hasattr(self.storage, 'file_exists') and not self.storage.file_exists(f.path):
-            # Try to get content from cache
-            content = await self.get_file_content(file_id, user_id)
-            if content:
-                yield content[start:end]
-                return
+        # ✅ Try to get content from cache first
+        content = await self.get_file_content(file_id, user_id)
+        if content:
+            logger.info(f"✅ Streaming file {file_id} from cache/content")
+            yield content[start:end]
+            return
+        
+        # ✅ Check file existence
+        file_exists = False
+        try:
+            if hasattr(self.storage, 'file_exists'):
+                file_exists = self.storage.file_exists(f.path)
+        except Exception:
+            pass
+        
+        if not file_exists:
+            logger.warning(f"⚠️ File {file_id} not found in storage")
             raise NotFoundError("File content not found in storage")
         
-        read_path = await self.storage.get_read_path(f.path, user_id)
-        if not Path(read_path).exists():
+        # ✅ Get read path
+        try:
+            read_path = await self.storage.get_read_path(f.path, user_id)
+        except Exception as e:
+            logger.error(f"❌ Failed to get read path: {e}")
             raise NotFoundError("File content not found")
         
+        if not Path(read_path).exists():
+            logger.warning(f"⚠️ Read path does not exist: {read_path}")
+            raise NotFoundError("File content not found")
+        
+        # ✅ Stream with proper chunking - NO Content-Length header
         chunk_size = 8192
-        async with aiofiles.open(read_path, 'rb') as fp:
-            await fp.seek(start)
-            bytes_remaining = (end or f.size_bytes) - start
-            
-            while bytes_remaining > 0:
-                chunk = await fp.read(min(chunk_size, bytes_remaining))
-                if not chunk:
-                    break
-                bytes_remaining -= len(chunk)
-                yield chunk
+        bytes_to_read = (end or f.size_bytes) - start
+        
+        try:
+            async with aiofiles.open(read_path, 'rb') as fp:
+                await fp.seek(start)
+                while bytes_to_read > 0:
+                    chunk = await fp.read(min(chunk_size, bytes_to_read))
+                    if not chunk:
+                        break
+                    bytes_to_read -= len(chunk)
+                    yield chunk
+            logger.info(f"✅ Streamed file {file_id} ({f.size_bytes} bytes)")
+        except Exception as e:
+            logger.error(f"❌ Error streaming file {file_id}: {e}")
+            raise
 
     async def list_files(
         self,
@@ -827,4 +887,4 @@ class FileService:
                 return await fp.read()
         except Exception as e:
             logger.error(f"Failed to read file from storage {file.path}: {e}")
-            return Noneض
+            return None
