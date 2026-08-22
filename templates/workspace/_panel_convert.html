@@ -4,6 +4,11 @@
 
 {% set t = get_texts(lang if lang else 'ar') %}
 
+{# ✅ التأكد من وجود files #}
+{% if not files %}
+  {% set files = [] %}
+{% endif %}
+
 {# تعريف export_formats إذا لم يكن موجوداً #}
 {% if not export_formats %}
   {% set export_formats = ['xlsx', 'csv', 'pdf', 'docx', 'json', 'xml', 'html', 'parquet', 'feather'] %}
@@ -92,7 +97,7 @@
   </div>
 
   <!-- =========================================================
-       STEP 1 — SOURCE FILE (مع قائمة منسدلة قابلة للتمرير)
+       STEP 1 — SOURCE FILE
        ========================================================= -->
 
   <section class="wizard-card">
@@ -205,7 +210,7 @@
 
     </button>
 
-    <!-- ✅ Body - قائمة الملفات مع تمرير -->
+    <!-- ✅ Body - قائمة الملفات -->
     <div
       x-show="step === 1"
       x-transition:enter="transition ease-out duration-200"
@@ -214,9 +219,14 @@
       class="wizard-body"
     >
 
+      {# ✅ Debug: عرض عدد الملفات #}
+      <div class="text-xs text-slate-400 dark:text-slate-500 text-center mb-2">
+        {{ files|length }} ملف متاح
+      </div>
+
       {% if files and files|length > 0 %}
 
-      <!-- ✅ قائمة قابلة للتمرير مع ارتفاع محدد -->
+      <!-- ✅ قائمة قابلة للتمرير -->
       <div class="space-y-1.5 max-h-64 overflow-y-auto pe-1 custom-scrollbar">
 
         {% for f in files %}
@@ -295,11 +305,6 @@
 
         {% endfor %}
 
-      </div>
-
-      <!-- ✅ عدد الملفات المعروضة -->
-      <div class="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">
-        {{ files|length }} ملف متاح
       </div>
 
       {% else %}
