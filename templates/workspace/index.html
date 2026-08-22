@@ -691,9 +691,13 @@ function workspace() {
         'transition-opacity'
       );
 
+      // ✅ إضافة معلمة لتجنب الكاش
+      const cacheBuster = `_=${Date.now()}`;
+      const finalUrl = url.includes('?') ? `${url}&${cacheBuster}` : `${url}?${cacheBuster}`;
+
       htmx.ajax(
         'GET',
-        url,
+        finalUrl,
         {
           target: '#workspace-panel',
           swap: 'innerHTML'
