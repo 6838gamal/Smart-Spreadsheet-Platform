@@ -495,27 +495,86 @@
 <script>
 function workspace() {
   return {
-    activeTab: '{{ open_panel }}',
-    selectedFileId: {{ open_file_id or 'null' }},
+    activeTab: '{{ open_panel or "home" }}',
+    selectedFileId: null,
     selectedFileName: '',
     filePanelOpen: true,
     fileSearch: '',
     isDeleting: false,
 
     init() {
+      // ✅ قراءة المعاملات من URL
+      const params = new URLSearchParams(window.location.search);
+      const urlFileId = params.get('file_id');
+      const urlTab = params.get('tab');
+      
+      console.log('🔍 URL params - file_id:', urlFileId, 'tab:', urlTab);
+      
+      // ✅ إذا كان هناك file_id في URL، استخدمه
+      if (urlFileId) {
+        this.selectedFileId = parseInt(urlFileId);
+        
+        // ✅ العثور على اسم الملف من القائمة
+        const fileCard = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
+        if (fileCard) {
+          this.selectedFileName = fileCard.dataset.fileName || '';
+          console.log('✅ Found file in DOM:', this.selectedFileName);
+        } else {
+          // ✅ إذا لم يتم العثور على الملف في DOM، حاول جلب معلوماته
+          this.fetchFileName(this.selectedFileId);
+        }
+        
+        // ✅ تحديد التبويب
+        if (urlTab && ['home', 'view', 'analyze', 'convert', 'clean', 'merge', 'analytics'].includes(urlTab)) {
+          this.activeTab = urlTab;
+        } else {
+          // ✅ افتراضياً، إذا كان هناك file_id نذهب إلى convert
+          this.activeTab = 'convert';
+        }
+        
+        console.log('✅ Selected file from URL:', this.selectedFileId, this.selectedFileName);
+        console.log('✅ Active tab:', this.activeTab);
+        
+        // ✅ تحميل اللوحة بعد تعيين القيم
+        this.$nextTick(() => {
+          this._loadPanel(this.activeTab, this.selectedFileId);
+        });
+        
+        return;
+      }
+      
+      // ✅ إذا كان هناك open_file_id من القالب
       {% if open_file_id %}
       const el = document.querySelector(
         `[data-file-id="{{ open_file_id }}"]`
       );
 
       if (el) {
-        this.selectedFileName =
-          el.dataset.fileName || '';
+        this.selectedFileName = el.dataset.fileName || '';
+        this.selectedFileId = {{ open_file_id }};
       }
       {% endif %}
 
-      if (this.activeTab !== 'home') {
-        this._loadPanel(this.activeTab);
+      // ✅ إذا كان هناك تبويب محدد
+      if (this.activeTab && this.activeTab !== 'home') {
+        this._loadPanel(this.activeTab, this.selectedFileId);
+      }
+    },
+
+
+    // ✅ دالة لجلب اسم الملف من السيرفر
+    async fetchFileName(fileId) {
+      try {
+        const response = await fetch(`/api/files/${fileId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.file) {
+            this.selectedFileName = data.file.original_name;
+            console.log('✅ Fetched file name:', this.selectedFileName);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching file name:', error);
       }
     },
 
@@ -529,6 +588,15 @@ function workspace() {
       }
 
       this.activeTab = tab;
+      
+      // ✅ تحديث URL
+      const url = new URL(window.location);
+      url.searchParams.set('tab', tab);
+      if (this.selectedFileId) {
+        url.searchParams.set('file_id', this.selectedFileId);
+      }
+      window.history.pushState({}, '', url);
+      
       this._loadPanel(tab);
     },
 
@@ -538,6 +606,12 @@ function workspace() {
       this.selectedFileName = name;
       this.activeTab = 'view';
 
+      // ✅ تحديث URL
+      const url = new URL(window.location);
+      url.searchParams.set('tab', 'view');
+      url.searchParams.set('file_id', id);
+      window.history.pushState({}, '', url);
+
       this._loadPanel('view');
     },
 
@@ -546,6 +620,12 @@ function workspace() {
       this.selectedFileId = null;
       this.selectedFileName = '';
       this.activeTab = 'home';
+
+      // ✅ تحديث URL
+      const url = new URL(window.location);
+      url.searchParams.set('tab', 'home');
+      url.searchParams.delete('file_id');
+      window.history.pushState({}, '', url);
 
       this._loadPanel('home');
     },
@@ -691,13 +771,9 @@ function workspace() {
         'transition-opacity'
       );
 
-      // ✅ إضافة معلمة لتجنب الكاش
-      const cacheBuster = `_=${Date.now()}`;
-      const finalUrl = url.includes('?') ? `${url}&${cacheBuster}` : `${url}?${cacheBuster}`;
-
       htmx.ajax(
         'GET',
-        finalUrl,
+        url,
         {
           target: '#workspace-panel',
           swap: 'innerHTML'
