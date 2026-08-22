@@ -222,36 +222,92 @@ class SupabaseStorageService(LocalStorageService):
         self.cache_dir = Path(getattr(settings, 'SUPABASE_STORAGE_CACHE_DIR', './cache'))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # ✅ التحقق من اتصال Supabase عن طريق اختبار رفع ملف صغير
+        # ✅ التحقق من اتصال Supabase
         self._test_connection()
         
-        logger.info(f"✅ Supabase Storage initialized with bucket: {self.bucket}")
+        if self.backend_name == "supabase":
+            logger.info(f"✅ Supabase Storage initialized with bucket: {self.bucket}")
 
     def _test_connection(self) -> None:
         """Test Supabase connection by uploading a small test file."""
         try:
             import httpx
+            
+            # ✅ استخدام ملف ثنائي و MIME type مدعوم
             test_content = b"test"
-            test_path = f"test/{uuid.uuid4().hex[:8]}.txt"
+            test_path = f"test/{uuid.uuid4().hex[:8]}.bin"
             
             url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
+            
+            # ✅ استخدام application/octet-stream بدلاً من text/plain
             response = httpx.post(
                 url,
-                headers={**self.headers, "Content-Type": "text/plain", "x-upsert": "true"},
+                headers={
+                    **self.headers, 
+                    "Content-Type": "application/octet-stream",
+                    "x-upsert": "true"
+                },
                 content=test_content,
                 timeout=30
             )
             
-            if response.status_code == 200:
+            if response.status_code in (200, 201):
                 # ✅ حذف ملف الاختبار
                 delete_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
                 httpx.delete(delete_url, headers=self.headers, timeout=30)
                 logger.info("✅ Supabase Storage connection test passed")
+                self.backend_name = "supabase"
             else:
-                logger.error(f"❌ Supabase Storage test failed: {response.status_code} - {response.text}")
-                self.backend_name = "local"
+                logger.error(f"❌ Supabase Storage test failed: {response.status_code} - {response.text[:200]}")
+                # ✅ إذا كان الخطأ 415 (MIME type not supported)، نحاول مرة أخرى بامتداد مختلف
+                if response.status_code == 415:
+                    logger.info("🔄 Retrying with different file extension...")
+                    self._test_connection_retry()
+                else:
+                    self.backend_name = "local"
         except Exception as e:
             logger.error(f"❌ Supabase Storage test error: {e}")
+            self.backend_name = "local"
+    
+    def _test_connection_retry(self) -> None:
+        """Retry connection test with different file types."""
+        try:
+            import httpx
+            
+            test_types = [
+                ("test.txt", "text/plain"),
+                ("test.pdf", "application/pdf"),
+                ("test.png", "image/png"),
+                ("test.json", "application/json"),
+            ]
+            
+            for filename, mime_type in test_types:
+                test_path = f"test/{uuid.uuid4().hex[:8]}_{filename}"
+                url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
+                
+                response = httpx.post(
+                    url,
+                    headers={
+                        **self.headers,
+                        "Content-Type": mime_type,
+                        "x-upsert": "true"
+                    },
+                    content=b"test content",
+                    timeout=30
+                )
+                
+                if response.status_code in (200, 201):
+                    # حذف ملف الاختبار
+                    delete_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
+                    httpx.delete(delete_url, headers=self.headers, timeout=30)
+                    logger.info(f"✅ Supabase Storage connection test passed with {mime_type}")
+                    self.backend_name = "supabase"
+                    return
+            
+            logger.error("❌ All connection retry attempts failed")
+            self.backend_name = "local"
+        except Exception as e:
+            logger.error(f"❌ Retry test error: {e}")
             self.backend_name = "local"
 
     async def save_upload(self, file: UploadFile, user_id: int) -> dict:
@@ -274,9 +330,9 @@ class SupabaseStorageService(LocalStorageService):
                     raise FileTooLargeError(size / (1024 * 1024), settings.MAX_FILE_SIZE_MB)
                 await f.write(chunk)
 
-        await self._upload_file(
-            cache_path, object_key, file.content_type or "application/octet-stream"
-        )
+        # ✅ استخدام MIME type مناسب
+        mime_type = file.content_type or "application/octet-stream"
+        await self._upload_file(cache_path, object_key, mime_type)
         cache_path.unlink(missing_ok=True)
         
         logger.info(f"✅ Uploaded to Supabase: {object_key} ({size} bytes)")
@@ -287,7 +343,7 @@ class SupabaseStorageService(LocalStorageService):
             original_name=file.filename or unique_name,
             size_bytes=size,
             format=ext,
-            mime_type=file.content_type or "application/octet-stream",
+            mime_type=mime_type,
             bucket=self.bucket,
             object_key=object_key,
             public_url=self.public_url(object_key),
@@ -308,7 +364,8 @@ class SupabaseStorageService(LocalStorageService):
         
         # Upload to Supabase
         try:
-            await self._upload_file(cache_path, path, content_type or "application/octet-stream")
+            mime_type = content_type or "application/octet-stream"
+            await self._upload_file(cache_path, path, mime_type)
             cache_path.unlink(missing_ok=True)
             
             return {
@@ -317,7 +374,7 @@ class SupabaseStorageService(LocalStorageService):
                 "original_name": Path(path).name,
                 "size_bytes": len(content),
                 "format": path.split('.')[-1].lower() if '.' in path else 'bin',
-                "mime_type": content_type or "application/octet-stream",
+                "mime_type": mime_type,
                 "bucket": self.bucket,
                 "object_key": path,
                 "public_url": self.public_url(path),
@@ -395,7 +452,7 @@ class SupabaseStorageService(LocalStorageService):
                 json={"prefixes": [object_key]},
                 timeout=settings.SUPABASE_STORAGE_TIMEOUT_SECONDS,
             )
-            if response.status_code == 200:
+            if response.status_code in (200, 204):
                 logger.info(f"🗑️ Deleted from Supabase: {object_key}")
                 (self.cache_dir / object_key).unlink(missing_ok=True)
                 return True
@@ -436,7 +493,16 @@ class SupabaseStorageService(LocalStorageService):
     async def _upload_file(self, path: Path, object_key: str, mime_type: str) -> None:
         """Upload file to Supabase Storage."""
         url = f"{self.base_url}/storage/v1/object/{self.bucket}/{object_key}"
-        headers = {**self.headers, "Content-Type": mime_type, "x-upsert": "true"}
+        
+        # ✅ التأكد من أن MIME type مدعوم
+        if mime_type == "text/plain":
+            mime_type = "application/octet-stream"
+            
+        headers = {
+            **self.headers,
+            "Content-Type": mime_type,
+            "x-upsert": "true"
+        }
         
         try:
             async with httpx.AsyncClient(timeout=settings.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
@@ -445,6 +511,18 @@ class SupabaseStorageService(LocalStorageService):
                 response = await client.post(url, headers=headers, content=content)
                 response.raise_for_status()
                 logger.info(f"✅ Uploaded to Supabase: {object_key}")
+        except httpx.HTTPStatusError as e:
+            # ✅ إذا كان خطأ MIME type، حاول مرة أخرى ب application/octet-stream
+            if e.response.status_code == 415:
+                logger.warning(f"⚠️ MIME type {mime_type} not supported, retrying with application/octet-stream")
+                headers["Content-Type"] = "application/octet-stream"
+                with path.open("rb") as f:
+                    content = f.read()
+                response = await client.post(url, headers=headers, content=content)
+                response.raise_for_status()
+                logger.info(f"✅ Uploaded to Supabase with fallback MIME type: {object_key}")
+            else:
+                raise
         except Exception as e:
             logger.error(f"❌ Upload to Supabase failed: {e}")
             raise
