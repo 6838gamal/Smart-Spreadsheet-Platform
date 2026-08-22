@@ -284,8 +284,9 @@ async def import_from_url(
             content = response.content
             content_type = response.headers.get('content-type', 'application/octet-stream')
             
-            # ✅ استخراج اسم الملف بشكل صحيح
+            # ✅ استخراج اسم الملف والامتداد بشكل صحيح
             filename = None
+            file_extension = None
             
             # 1. محاولة من Content-Disposition
             content_disposition = response.headers.get('content-disposition')
@@ -293,9 +294,10 @@ async def import_from_url(
                 match = re.search(r'filename="?([^"]+)"?', content_disposition)
                 if match:
                     filename = match.group(1)
-                    # تنظيف اسم الملف
                     filename = filename.split('?')[0]
                     filename = filename.split('#')[0]
+                    if '.' in filename:
+                        file_extension = filename.rsplit('.', 1)[-1].lower()
             
             # 2. محاولة من URL
             if not filename:
@@ -304,44 +306,90 @@ async def import_from_url(
                 if filename:
                     filename = filename.split('?')[0]
                     filename = filename.split('#')[0]
+                    if '.' in filename:
+                        file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 3. إنشاء اسم افتراضي
-            if not filename:
+            # 3. استخدام Content-Type
+            if not filename or filename == '':
                 if 'application/pdf' in content_type:
+                    file_extension = 'pdf'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.pdf"
                 elif 'spreadsheet' in content_type or 'excel' in content_type:
+                    file_extension = 'xlsx'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.xlsx"
                 elif 'csv' in content_type:
+                    file_extension = 'csv'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.csv"
                 elif 'json' in content_type:
+                    file_extension = 'json'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.json"
                 elif 'text/plain' in content_type:
+                    file_extension = 'txt'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.txt"
                 elif 'image' in content_type:
                     ext = content_type.split('/')[-1].split('+')[0]
+                    file_extension = ext
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.{ext}"
                 else:
+                    file_extension = 'bin'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.bin"
             
-            # ✅ تنظيف اسم الملف
+            # ✅ التحقق من الامتداد من Magic Bytes
+            if content.startswith(b'%PDF'):
+                file_extension = 'pdf'
+                if not filename.endswith('.pdf'):
+                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    filename = f"{name}.pdf"
+            elif content.startswith(b'\x89PNG'):
+                file_extension = 'png'
+                if not filename.endswith('.png'):
+                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    filename = f"{name}.png"
+            elif content.startswith(b'\xff\xd8\xff'):
+                file_extension = 'jpg'
+                if not filename.endswith('.jpg') and not filename.endswith('.jpeg'):
+                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    filename = f"{name}.jpg"
+            elif content.startswith(b'GIF8'):
+                file_extension = 'gif'
+                if not filename.endswith('.gif'):
+                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                    filename = f"{name}.gif"
+            elif content.startswith(b'PK\x03\x04'):
+                if 'word' in content_type or filename.endswith('.docx'):
+                    file_extension = 'docx'
+                    if not filename.endswith('.docx'):
+                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                        filename = f"{name}.docx"
+                elif 'excel' in content_type or filename.endswith('.xlsx'):
+                    file_extension = 'xlsx'
+                    if not filename.endswith('.xlsx'):
+                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                        filename = f"{name}.xlsx"
+                elif 'presentation' in content_type or filename.endswith('.pptx'):
+                    file_extension = 'pptx'
+                    if not filename.endswith('.pptx'):
+                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                        filename = f"{name}.pptx"
+                else:
+                    file_extension = 'zip'
+                    if not filename.endswith('.zip'):
+                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                        filename = f"{name}.zip"
+            
+            # ✅ تنظيف اسم الملف النهائي
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            filename = filename.strip()
             if len(filename) > 200:
                 name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
                 filename = name[:180] + '.' + ext if ext else name[:200]
             
-            # ✅ التحقق من نوع الملف الفعلي
-            if content.startswith(b'%PDF'):
-                content_type = 'application/pdf'
-                if not filename.endswith('.pdf'):
-                    filename = filename.rsplit('.', 1)[0] + '.pdf'
-            elif content.startswith(b'\x89PNG'):
-                content_type = 'image/png'
-                if not filename.endswith('.png'):
-                    filename = filename.rsplit('.', 1)[0] + '.png'
-            elif content.startswith(b'\xff\xd8\xff'):
-                content_type = 'image/jpeg'
-                if not filename.endswith('.jpg') and not filename.endswith('.jpeg'):
-                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+            # ✅ التأكد من وجود امتداد
+            if '.' not in filename:
+                ext = file_extension or 'bin'
+                filename = f"{filename}.{ext}"
+            
+            logger.info(f"📁 Extracted filename: {filename}, extension: {file_extension}, content_type: {content_type}")
             
             # ✅ إنشاء UploadFile
             from tempfile import SpooledTemporaryFile
@@ -380,7 +428,8 @@ async def import_from_url(
                 "success": True,
                 "file_id": db_file.id,
                 "filename": db_file.original_name,
-                "message": "File imported successfully from URL"
+                "format": db_file.format,
+                "message": f"File imported successfully from URL (format: {db_file.format})"
             })
             
     except httpx.TimeoutException:
@@ -404,7 +453,7 @@ async def import_from_url(
 
 
 # ============================================================
-# باقي المسارات (file_detail, download_file, etc.)
+# FILE DETAIL
 # ============================================================
 
 @router.get("/files/{file_id}", response_class=HTMLResponse)
