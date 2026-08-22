@@ -432,9 +432,9 @@
 
     </div>
 
-    <!-- Format selection -->
+    <!-- ✅ Format selection - تظهر دائماً عند وجود ملف -->
     <div
-      x-show="fileId"
+      x-show="fileId !== null && fileId !== undefined && fileId !== ''"
       x-transition:enter="transition ease-out duration-250"
       x-transition:enter-start="opacity-0 translate-y-2"
       x-transition:enter-end="opacity-100 translate-y-0"
@@ -565,7 +565,7 @@
 
     </div>
 
-    <!-- رسالة عند عدم وجود ملف -->
+    <!-- ✅ رسالة عند عدم وجود ملف -->
     <div x-show="!fileId" class="wizard-body">
       <p class="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
         {{ t.select_file_first or 'اختر ملفاً أولاً لعرض الصيغ المتاحة' }}
@@ -1397,6 +1397,17 @@ function convertWizard() {
       console.log('📌 fileId from template:', this.fileId);
       console.log('📌 fileName from template:', this.fileName);
       console.log('📌 fileFormat from template:', this.fileFormat);
+
+      // ✅ مراقبة تغييرات fileId
+      this.$watch('fileId', (newVal) => {
+        console.log('🔄 fileId changed to:', newVal);
+        if (newVal) {
+          this.step = 2;
+          if (!this.targetFormat) {
+            this.targetFormat = this.getDefaultTargetFormat();
+          }
+        }
+      });
 
       // ✅ استماع لحدث رفع الملف من مساحة العمل
       window.addEventListener('file-uploaded', (event) => {
