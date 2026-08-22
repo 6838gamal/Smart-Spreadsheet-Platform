@@ -135,6 +135,8 @@ class Settings(BaseSettings):
     FILE_STORAGE_BACKEND: Literal["supabase"] = "supabase"
     UPLOAD_DIR: str = "uploads"
     OUTPUT_DIR: str = "outputs"
+    # ✅ إضافة STORAGE_DIR للتخزين المحلي
+    STORAGE_DIR: str = "./storage"
     MAX_FILE_SIZE_MB: int = 500
     MAX_FILE_SIZE_BYTES: int = 500 * 1024 * 1024
 
