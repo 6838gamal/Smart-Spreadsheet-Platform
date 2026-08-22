@@ -6,7 +6,7 @@ import uuid
 import tempfile
 import re
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select
@@ -73,6 +73,160 @@ def files_to_dict_list(files: List[FileModel]) -> List[dict]:
     if not files:
         return []
     return [file_to_dict(file) for file in files]
+
+
+def extract_actual_url(url: str) -> str:
+    """
+    Extract the actual URL from various redirect services.
+    
+    Supports:
+    - Google Redirect (google.com/url?url=...)
+    - Google Drive (drive.google.com)
+    - Bitly, TinyURL, etc.
+    """
+    parsed = urlparse(url)
+    
+    # Google Redirect
+    if 'google.com' in parsed.netloc and '/url?' in url:
+        query_params = parse_qs(parsed.query)
+        if 'url' in query_params:
+            actual_url = query_params['url'][0]
+            # URL decode
+            actual_url = actual_url.replace('%3A', ':').replace('%2F', '/')
+            actual_url = actual_url.replace('%3F', '?').replace('%3D', '=')
+            actual_url = actual_url.replace('%26', '&')
+            actual_url = actual_url.replace('%2C', ',')
+            return actual_url
+    
+    # Google Drive - extract file ID and create direct download link
+    if 'drive.google.com' in parsed.netloc:
+        if '/file/d/' in url:
+            # Extract file ID from /file/d/FILE_ID/view
+            match = re.search(r'/file/d/([^/]+)', url)
+            if match:
+                file_id = match.group(1)
+                return f"https://drive.google.com/uc?export=download&id={file_id}"
+        elif 'id=' in url:
+            # Extract from ?id=FILE_ID
+            query_params = parse_qs(parsed.query)
+            if 'id' in query_params:
+                file_id = query_params['id'][0]
+                return f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    # Dropbox - convert to direct download
+    if 'dropbox.com' in parsed.netloc:
+        # Change ?dl=0 to ?dl=1 for direct download
+        if '?dl=0' in url:
+            return url.replace('?dl=0', '?dl=1')
+        elif '?dl=' not in url:
+            return url + '?dl=1'
+    
+    # GitHub raw content
+    if 'github.com' in parsed.netloc and '/blob/' in url:
+        # Convert github.com/user/repo/blob/branch/file to raw.githubusercontent.com/user/repo/branch/file
+        parts = url.split('/')
+        # Find 'blob' index
+        try:
+            blob_index = parts.index('blob')
+            user = parts[3]
+            repo = parts[4]
+            branch = parts[blob_index + 1]
+            file_path = '/'.join(parts[blob_index + 2:])
+            return f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{file_path}"
+        except (ValueError, IndexError):
+            pass
+    
+    return url
+
+
+def detect_content_type(content: bytes, content_type: str) -> tuple[str, str]:
+    """
+    Detect the actual content type and extension from file magic bytes.
+    
+    Returns:
+        tuple: (detected_content_type, detected_extension)
+    """
+    # PDF
+    if content.startswith(b'%PDF'):
+        return 'application/pdf', 'pdf'
+    
+    # PNG
+    if content.startswith(b'\x89PNG'):
+        return 'image/png', 'png'
+    
+    # JPEG
+    if content.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg', 'jpg'
+    
+    # GIF
+    if content.startswith(b'GIF8'):
+        return 'image/gif', 'gif'
+    
+    # WebP
+    if content.startswith(b'RIFF') and len(content) > 12 and content[8:12] == b'WEBP':
+        return 'image/webp', 'webp'
+    
+    # BMP
+    if content.startswith(b'BM'):
+        return 'image/bmp', 'bmp'
+    
+    # SVG
+    if content.startswith(b'<svg') or content.startswith(b'<?xml'):
+        try:
+            text = content[:500].decode('utf-8', errors='ignore').lower()
+            if '<svg' in text:
+                return 'image/svg+xml', 'svg'
+        except:
+            pass
+    
+    # ZIP-based formats (DOCX, XLSX, PPTX, JAR, etc.)
+    if content.startswith(b'PK\x03\x04'):
+        # Try to detect specific ZIP-based formats
+        if 'word/' in content[:2000].decode('utf-8', errors='ignore'):
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'
+        elif 'xl/' in content[:2000].decode('utf-8', errors='ignore'):
+            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+        elif 'ppt/' in content[:2000].decode('utf-8', errors='ignore'):
+            return 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'
+        else:
+            return 'application/zip', 'zip'
+    
+    # JSON
+    if content.startswith(b'{') or content.startswith(b'['):
+        try:
+            json.loads(content[:1000])
+            return 'application/json', 'json'
+        except:
+            pass
+    
+    # XML
+    if content.startswith(b'<?xml') or content.startswith(b'<'):
+        try:
+            text = content[:500].decode('utf-8', errors='ignore')
+            if text.strip().startswith('<'):
+                return 'application/xml', 'xml'
+        except:
+            pass
+    
+    # CSV - check for comma-separated values
+    try:
+        text = content[:500].decode('utf-8', errors='ignore')
+        if ',' in text and '\n' in text:
+            lines = text.strip().split('\n')
+            if len(lines) > 1 and len(lines[0].split(',')) > 1:
+                return 'text/csv', 'csv'
+    except:
+        pass
+    
+    # Plain text
+    try:
+        content[:500].decode('utf-8')
+        return 'text/plain', 'txt'
+    except:
+        pass
+    
+    # Default
+    return content_type or 'application/octet-stream', 'bin'
 
 
 async def _auto_analyze(file_id: int, file_path: str, file_format: str, db: AsyncSession) -> int | None:
@@ -262,9 +416,14 @@ async def import_from_url(
                 "error": "URL is required"
             }, status_code=400)
         
+        # ✅ استخراج الرابط الفعلي من خدمات إعادة التوجيه
+        actual_url = extract_actual_url(url)
+        logger.info(f"🔄 Original URL: {url}")
+        logger.info(f"🔄 Actual URL: {actual_url}")
+        
         # Validate URL
         try:
-            parsed = urlparse(url)
+            parsed = urlparse(actual_url)
             if parsed.scheme not in ['http', 'https']:
                 return JSONResponse({
                     "success": False,
@@ -276,29 +435,73 @@ async def import_from_url(
                 "error": "Invalid URL format"
             }, status_code=400)
         
-        # Download file from URL with redirect following
+        # Download file from URL
         timeout_seconds = getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60)
         async with httpx.AsyncClient(
             timeout=timeout_seconds, 
             follow_redirects=True,
             max_redirects=10
         ) as client:
-            # First, get the final URL after redirect
-            response = await client.get(url)
-            response.raise_for_status()
+            # ✅ إضافة User-Agent لتجنب الحظر
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
             
-            # Get the final URL after redirect
-            final_url = str(response.url)
-            logger.info(f"🔄 Final URL after redirect: {final_url}")
+            response = await client.get(actual_url, headers=headers)
+            response.raise_for_status()
             
             content = response.content
             content_type = response.headers.get('content-type', 'application/octet-stream')
+            final_url = str(response.url)
             
-            # Extract filename and extension
+            logger.info(f"📁 Final URL after download: {final_url}")
+            logger.info(f"📁 Content-Type: {content_type}")
+            logger.info(f"📁 Content size: {len(content)} bytes")
+            
+            # ✅ التحقق من أن المحتوى ليس HTML (قد يكون صفحة تحذير)
+            if 'text/html' in content_type and len(content) < 50000:
+                # محاولة فك تشفير HTML
+                try:
+                    html_content = content.decode('utf-8', errors='ignore')
+                    
+                    # البحث عن روابط تحميل في HTML
+                    # PDF links
+                    pdf_urls = re.findall(r'https?://[^\s<>"\']+\.pdf[^\s<>"\']*', html_content)
+                    # Google Drive links
+                    gdrive_links = re.findall(r'https?://drive\.google\.com[^\s<>"\']+', html_content)
+                    # General download links
+                    download_links = re.findall(r'https?://[^\s<>"\']+/download[^\s<>"\']*', html_content)
+                    
+                    all_links = pdf_urls + gdrive_links + download_links
+                    
+                    for link in all_links:
+                        try:
+                            logger.info(f"📄 Found link in HTML: {link}")
+                            # محاولة تحميل الرابط
+                            link_response = await client.get(link, headers=headers)
+                            if link_response.status_code == 200:
+                                link_content_type = link_response.headers.get('content-type', '')
+                                # إذا كان المحتوى ليس HTML، استخدمه
+                                if 'text/html' not in link_content_type:
+                                    content = link_response.content
+                                    content_type = link_content_type
+                                    final_url = link
+                                    logger.info(f"✅ Found valid file: {link}")
+                                    break
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to download link {link}: {e}")
+                except Exception as e:
+                    logger.warning(f"⚠️ HTML parsing failed: {e}")
+            
+            # ✅ اكتشاف النوع الفعلي من Magic Bytes
+            detected_type, detected_ext = detect_content_type(content, content_type)
+            logger.info(f"🔍 Detected type: {detected_type}, extension: {detected_ext}")
+            
+            # ✅ استخراج اسم الملف
             filename = None
-            file_extension = None
+            file_extension = detected_ext
             
-            # 1. Try from Content-Disposition
+            # 1. من Content-Disposition
             content_disposition = response.headers.get('content-disposition')
             if content_disposition and 'filename=' in content_disposition:
                 match = re.search(r'filename="?([^"]+)"?', content_disposition)
@@ -309,7 +512,7 @@ async def import_from_url(
                     if '.' in filename:
                         file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 2. Try from final URL
+            # 2. من الرابط النهائي
             if not filename:
                 path = urlparse(final_url).path
                 filename = path.split('/')[-1]
@@ -319,9 +522,9 @@ async def import_from_url(
                     if '.' in filename:
                         file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 3. Try from original URL if not found
+            # 3. من الرابط الأصلي
             if not filename:
-                path = urlparse(url).path
+                path = urlparse(actual_url).path
                 filename = path.split('/')[-1]
                 if filename:
                     filename = filename.split('?')[0]
@@ -329,90 +532,34 @@ async def import_from_url(
                     if '.' in filename:
                         file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 4. Use Content-Type
+            # 4. استخدام النوع المكتشف
             if not filename or filename == '':
-                if 'application/pdf' in content_type:
-                    file_extension = 'pdf'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.pdf"
-                elif 'spreadsheet' in content_type or 'excel' in content_type:
-                    file_extension = 'xlsx'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.xlsx"
-                elif 'csv' in content_type:
-                    file_extension = 'csv'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.csv"
-                elif 'json' in content_type:
-                    file_extension = 'json'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.json"
-                elif 'text/plain' in content_type:
-                    file_extension = 'txt'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.txt"
-                elif 'image' in content_type:
-                    ext = content_type.split('/')[-1].split('+')[0]
-                    file_extension = ext
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.{ext}"
+                if detected_ext:
+                    filename = f"file_{uuid.uuid4().hex[:8]}.{detected_ext}"
                 else:
+                    filename = f"file_{uuid.uuid4().hex[:8]}.bin"
                     file_extension = 'bin'
-                    filename = f"imported_file_{uuid.uuid4().hex[:8]}.bin"
             
-            # Check file extension from Magic Bytes
-            if content.startswith(b'%PDF'):
-                file_extension = 'pdf'
-                if not filename.endswith('.pdf'):
-                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                    filename = f"{name}.pdf"
-            elif content.startswith(b'\x89PNG'):
-                file_extension = 'png'
-                if not filename.endswith('.png'):
-                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                    filename = f"{name}.png"
-            elif content.startswith(b'\xff\xd8\xff'):
-                file_extension = 'jpg'
-                if not filename.endswith('.jpg') and not filename.endswith('.jpeg'):
-                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                    filename = f"{name}.jpg"
-            elif content.startswith(b'GIF8'):
-                file_extension = 'gif'
-                if not filename.endswith('.gif'):
-                    name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                    filename = f"{name}.gif"
-            elif content.startswith(b'PK\x03\x04'):
-                if 'word' in content_type or filename.endswith('.docx'):
-                    file_extension = 'docx'
-                    if not filename.endswith('.docx'):
-                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                        filename = f"{name}.docx"
-                elif 'excel' in content_type or filename.endswith('.xlsx'):
-                    file_extension = 'xlsx'
-                    if not filename.endswith('.xlsx'):
-                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                        filename = f"{name}.xlsx"
-                elif 'presentation' in content_type or filename.endswith('.pptx'):
-                    file_extension = 'pptx'
-                    if not filename.endswith('.pptx'):
-                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                        filename = f"{name}.pptx"
-                else:
-                    file_extension = 'zip'
-                    if not filename.endswith('.zip'):
-                        name = filename.rsplit('.', 1)[0] if '.' in filename else filename
-                        filename = f"{name}.zip"
+            # ✅ إذا كان الامتداد المكتشف مختلف عن الموجود، استخدم المكتشف
+            if '.' in filename:
+                current_ext = filename.rsplit('.', 1)[-1].lower()
+                if current_ext != file_extension and file_extension:
+                    # استبدال الامتداد
+                    name = filename.rsplit('.', 1)[0]
+                    filename = f"{name}.{file_extension}"
+            elif file_extension:
+                filename = f"{filename}.{file_extension}"
             
-            # Clean filename
+            # ✅ تنظيف اسم الملف
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             filename = filename.strip()
             if len(filename) > 200:
                 name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
                 filename = name[:180] + '.' + ext if ext else name[:200]
             
-            # Ensure extension exists
-            if '.' not in filename:
-                ext = file_extension or 'bin'
-                filename = f"{filename}.{ext}"
+            logger.info(f"📁 Final filename: {filename}, extension: {file_extension}")
             
-            logger.info(f"📁 Extracted filename: {filename}, extension: {file_extension}, content_type: {content_type}")
-            logger.info(f"📁 Final URL: {final_url}")
-            
-            # Create UploadFile
+            # ✅ إنشاء UploadFile
             from tempfile import SpooledTemporaryFile
             
             temp_file = SpooledTemporaryFile(max_size=1024*1024)
@@ -422,27 +569,29 @@ async def import_from_url(
             upload_file = UploadFile(
                 filename=filename,
                 file=temp_file,
-                headers={"content-type": content_type}
+                headers={"content-type": detected_type}
             )
             
-            # Upload to storage
+            # رفع إلى التخزين
             svc = FileService(db)
             db_file = await svc.upload(upload_file, current_user.id)
             
             temp_file.close()
             
-            # Add source URL to metadata
+            # إضافة المصدر إلى metadata
             if db_file.meta is None:
                 db_file.meta = {}
             db_file.meta['source_url'] = final_url[:500]
             db_file.meta['original_url'] = url[:500]
             db_file.meta['imported_from_url'] = True
             db_file.meta['imported_at'] = datetime.utcnow().isoformat()
+            db_file.meta['detected_type'] = detected_type
+            db_file.meta['detected_extension'] = file_extension
             db.add(db_file)
             await db.commit()
             await db.refresh(db_file)
             
-            # Auto-analyze if supported format
+            # تحليل تلقائي
             if db_file.format and db_file.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt', 'docx', 'doc']:
                 await _auto_analyze(db_file.id, db_file.path, db_file.format, db)
             
@@ -452,7 +601,7 @@ async def import_from_url(
                 "filename": db_file.original_name,
                 "format": db_file.format,
                 "source_url": final_url,
-                "message": f"File imported successfully from URL (format: {db_file.format})"
+                "message": f"File imported successfully (format: {db_file.format})"
             })
             
     except httpx.TimeoutException:
