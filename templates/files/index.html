@@ -128,6 +128,60 @@
   </div>
 
   <!-- =========================================================
+       URL IMPORT SECTION - استيراد من رابط
+  ========================================================== -->
+
+  <div class="card p-6 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-200/50 dark:border-indigo-800/30">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300">
+          {{ t.import_from_url or 'استيراد ملف من رابط' }}
+        </h3>
+        <p class="text-xs text-slate-400 dark:text-slate-500">
+          {{ t.import_url_desc or 'أدخل رابط ملف مباشر وسيتم سحبه إلى المنصة' }}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input
+        type="url"
+        id="file-url-input"
+        x-model="fileUrl"
+        placeholder="{{ t.enter_file_url or 'https://example.com/file.pdf' }}"
+        class="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+        @keydown.enter="importFromUrl()"
+      />
+      <button
+        @click="importFromUrl()"
+        :disabled="!fileUrl || importingUrl"
+        class="px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+      >
+        <span x-show="!importingUrl">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </span>
+        <span x-show="importingUrl" x-cloak>
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+        </span>
+        <span x-text="importingUrl ? '{{ t.importing or 'جاري السحب...' }}' : '{{ t.import or 'سحب الملف' }}'"></span>
+      </button>
+    </div>
+
+    <!-- URL Import Result -->
+    <div id="url-import-result" class="mt-3"></div>
+  </div>
+
+  <!-- =========================================================
        FILTERS & SEARCH
   ========================================================== -->
 
@@ -224,6 +278,9 @@
         {% if f.meta.columns %}
         <span>{{ f.meta.columns }} {{ t.cols_unit or 'عمود' }}</span>
         {% endif %}
+        {% if f.meta.source_url %}
+        <span class="text-indigo-400" title="{{ f.meta.source_url }}">🔗</span>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -245,7 +302,7 @@
           {{ t.download or 'تحميل' }}
         </button>
 
-        <!-- تحويل - استخدام Alpine.js لتحديث الواجهة بدون إعادة تحميل -->
+        <!-- تحويل -->
         <button
           @click="goToConverter({{ f.id }})"
           class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors font-medium"
@@ -316,6 +373,10 @@ function filesPage() {
     totalFiles: {{ total }},
     totalSize: '{{ total_size_human if total_size_human else "0 B" }}',
     t: {},
+    
+    // URL Import state
+    fileUrl: '',
+    importingUrl: false,
 
     async init() {
       this.t = window._translations || {};
@@ -356,6 +417,92 @@ function filesPage() {
     },
 
     // ============================================================
+    // URL IMPORT
+    // ============================================================
+
+    async importFromUrl() {
+      const url = this.fileUrl?.trim();
+      if (!url) {
+        this.showUrlResult('❌ الرجاء إدخال رابط صحيح', 'error');
+        return;
+      }
+
+      // Validate URL
+      try {
+        new URL(url);
+      } catch {
+        this.showUrlResult('❌ الرابط غير صالح. تأكد من صحة الرابط', 'error');
+        return;
+      }
+
+      this.importingUrl = true;
+      this.showUrlResult('⏳ جاري سحب الملف من الرابط...', 'info');
+
+      try {
+        const response = await fetch('/files/import-url', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ url: url })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `فشل السحب (${response.status})`);
+        }
+
+        const data = await response.json();
+        
+        if (data.success) {
+          this.showUrlResult(`✅ تم سحب الملف بنجاح: ${data.filename || 'غير معروف'}`, 'success');
+          
+          // Update stats
+          this.totalFiles += 1;
+          
+          // Reload after short delay to show new file
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          throw new Error(data.error || 'حدث خطأ أثناء سحب الملف');
+        }
+      } catch (error) {
+        console.error('URL Import error:', error);
+        this.showUrlResult(`❌ ${error.message}`, 'error');
+      } finally {
+        this.importingUrl = false;
+        this.fileUrl = '';
+      }
+    },
+
+    showUrlResult(message, type = 'info') {
+      const resultBox = document.getElementById('url-import-result');
+      if (!resultBox) return;
+
+      const colors = {
+        success: 'border-emerald-200 dark:border-emerald-700/40 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
+        error: 'border-red-200 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400',
+        info: 'border-blue-200 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+      };
+
+      resultBox.innerHTML = `
+        <div class="p-3 rounded-xl border ${colors[type] || colors.info} text-sm">
+          ${message}
+        </div>
+      `;
+
+      if (type !== 'error') {
+        setTimeout(() => {
+          if (resultBox.querySelector('.p-3')) {
+            resultBox.innerHTML = '';
+          }
+        }, 5000);
+      }
+    },
+
+    // ============================================================
     // UPLOAD HANDLING
     // ============================================================
 
@@ -377,8 +524,7 @@ function filesPage() {
     async uploadFileList(fileList) {
       if (!fileList || !fileList.length) return;
 
-      // Validate files
-      const maxSize = 100 * 1024 * 1024; // 100MB
+      const maxSize = 100 * 1024 * 1024;
       const invalidFiles = [];
       
       for (const file of fileList) {
@@ -415,7 +561,6 @@ function filesPage() {
         
         await this.updateStats();
         
-        // ✅ Check if redirect is needed (single file uploaded)
         const hasRedirect = result.html && result.html.includes('window.location.href');
         
         if (hasRedirect) {
@@ -431,7 +576,6 @@ function filesPage() {
           }
         }
         
-        // If single file and no redirect, reload the page
         if (fileList.length === 1) {
           setTimeout(() => {
             window.location.reload();
@@ -517,37 +661,28 @@ function filesPage() {
     },
 
     // ============================================================
-    // FILE ACTIONS - محسنة
+    // FILE ACTIONS
     // ============================================================
 
-    // عرض الملف - يفتح في صفحة جديدة
     viewFile(fileId) {
       window.open(`/files/${fileId}`, '_blank');
     },
 
-    // تحميل الملف - فتح رابط التحميل
     downloadFile(fileId) {
       window.open(`/files/${fileId}/download`, '_blank');
     },
 
-    // ✅ التحويل - استخدام حدث مخصص بدلاً من إعادة تحميل الصفحة
     goToConverter(fileId) {
       console.log('🔄 Going to workspace with file_id:', fileId);
       
-      // إظهار مؤشر تحميل
       this.showResult('🔄 جاري التوجيه إلى المحول...', 'info');
       
-      // ✅ استخدام حدث HTMX لتحميل المحتوى بدون إعادة تحميل الصفحة
       if (typeof htmx !== 'undefined') {
-        // إرسال حدث لتحديث الواجهة في مساحة العمل
         window.dispatchEvent(new CustomEvent('navigate-to-converter', { 
           detail: { fileId: fileId }
         }));
-        
-        // ✅ الانتقال إلى مساحة العمل مع الحفاظ على الحالة
         window.location.href = `/workspace?tab=convert&file_id=${fileId}`;
       } else {
-        // Fallback
         window.location.href = `/workspace?file_id=${fileId}`;
       }
     },
@@ -566,17 +701,14 @@ function filesPage() {
         });
 
         if (response.ok) {
-          // ✅ إزالة البطاقة من الواجهة مباشرة بدون إعادة تحميل
           const card = document.querySelector(`[data-file-id="${fileId}"]`);
           if (card) {
-            // إضافة تأثير اختفاء
             card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
             card.style.opacity = '0';
             card.style.transform = 'scale(0.95)';
             setTimeout(() => {
               card.remove();
               this.updateStats();
-              // تحديث العدد في الواجهة
               this.totalFiles = document.querySelectorAll('[data-file-id]').length;
             }, 300);
           }
@@ -593,13 +725,10 @@ function filesPage() {
 }
 </script>
 
-<!-- استماع للأحداث من أجزاء أخرى من التطبيق -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // الاستماع لحدث الانتقال إلى المحول
   window.addEventListener('navigate-to-converter', function(e) {
     console.log('📡 Navigate to converter event received:', e.detail);
-    // يمكن إضافة منطق إضافي هنا
   });
 });
 </script>
