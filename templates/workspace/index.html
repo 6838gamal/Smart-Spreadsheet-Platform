@@ -551,6 +551,30 @@ function workspace() {
     },
 
 
+    // ✅ دالة مساعدة لاستخراج ID الملف المرفوع من الاستجابة
+    getUploadedFileId(responseText) {
+      // محاولة استخراج file_id من الاستجابة
+      const match = responseText.match(/selected_file_id["']?\s*:\s*(\d+)/);
+      if (match && match[1]) {
+        return parseInt(match[1]);
+      }
+      
+      // محاولة استخراج من حدث file-uploaded
+      const eventMatch = responseText.match(/file-uploaded.*?detail:.*?fileId:\s*(\d+)/);
+      if (eventMatch && eventMatch[1]) {
+        return parseInt(eventMatch[1]);
+      }
+      
+      // محاولة استخراج من رابط التوجيه
+      const redirectMatch = responseText.match(/file_id=(\d+)/);
+      if (redirectMatch && redirectMatch[1]) {
+        return parseInt(redirectMatch[1]);
+      }
+      
+      return null;
+    },
+
+
     async deleteFile(fileId, fileName) {
       if (this.isDeleting) return;
       
@@ -768,6 +792,15 @@ function workspace() {
           target: '#file-list-container',
           swap: 'innerHTML'
         });
+
+        // ✅ تحديث لوحة التحويل تلقائياً إذا كنا في تبويب التحويل
+        const uploadedFileId = this.getUploadedFileId(responseText);
+        if (uploadedFileId && this.activeTab === 'convert') {
+          // تحديث لوحة التحويل مع الملف الجديد
+          this.selectedFileId = uploadedFileId;
+          this._loadPanel('convert', uploadedFileId);
+          console.log('🔄 Converter panel updated with file:', uploadedFileId);
+        }
 
         if (status) {
           status.textContent = files.length === 1 ? '✅ تم رفع الملف' : `✅ تم رفع ${files.length} ملفات`;
