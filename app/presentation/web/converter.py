@@ -171,17 +171,17 @@ async def converter_panel(
         
         extracted_files = _extract_files(all_files)
         
+        # ✅ جمع الملفات بدون استبعاد أي منها
         files = []
         for f in extracted_files:
             if hasattr(f, 'path') and f.path:
+                files.append(f)
                 try:
-                    if Path(f.path).exists():
-                        files.append(f)
+                    if hasattr(storage, 'file_exists') and not storage.file_exists(f.path):
+                        logger.debug(f"⚠️ File {f.id} ({f.original_name}) not found in storage")
                 except Exception:
-                    # حتى لو فشل التحقق، أضف الملف
-                    files.append(f)
+                    pass
         
-        # ✅ تحويل إلى قواميس بسيطة
         files_dict = [file_to_dict_simple(f) for f in files]
         
         selected_file = None
@@ -247,11 +247,7 @@ async def converter_files_list(
         files = []
         for f in extracted_files:
             if hasattr(f, 'path') and f.path:
-                try:
-                    if Path(f.path).exists():
-                        files.append(f)
-                except Exception:
-                    files.append(f)
+                files.append(f)
         
         files_dict = [file_to_dict_simple(f) for f in files]
         
