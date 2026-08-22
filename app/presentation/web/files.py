@@ -64,7 +64,7 @@ def file_to_dict(file: FileModel) -> dict:
         "size_human": file.size_human if hasattr(file, 'size_human') else f"{file.size_bytes} B" if file.size_bytes else "0 B",
         "source_url": file.meta.get('source_url') if file.meta else None,
         "original_url": file.meta.get('original_url') if file.meta else None,
-        "imported_from_url": file.meta.get('imported_from_url', False) if file.meta else False,
+        "imported_from_url": file.meta.get('imported_from_url', False) if file.meta else None,
     }
 
 
@@ -182,14 +182,17 @@ def detect_content_type(content: bytes, content_type: str) -> tuple[str, str]:
     # ZIP-based formats (DOCX, XLSX, PPTX, JAR, etc.)
     if content.startswith(b'PK\x03\x04'):
         # Try to detect specific ZIP-based formats
-        if 'word/' in content[:2000].decode('utf-8', errors='ignore'):
-            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'
-        elif 'xl/' in content[:2000].decode('utf-8', errors='ignore'):
-            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
-        elif 'ppt/' in content[:2000].decode('utf-8', errors='ignore'):
-            return 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'
-        else:
-            return 'application/zip', 'zip'
+        try:
+            text = content[:2000].decode('utf-8', errors='ignore')
+            if 'word/' in text:
+                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'
+            elif 'xl/' in text:
+                return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+            elif 'ppt/' in text:
+                return 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'
+        except:
+            pass
+        return 'application/zip', 'zip'
     
     # JSON
     if content.startswith(b'{') or content.startswith(b'['):
@@ -637,7 +640,12 @@ async def file_detail(
 ):
     """Display file detail page with preview and analysis."""
     svc = FileService(db)
-    f = await svc.get_file(file_id, current_user.id)
+    
+    try:
+        f = await svc.get_file(file_id, current_user.id)
+    except Exception as e:
+        logger.error(f"❌ Error getting file: {e}")
+        return RedirectResponse(url="/files", status_code=302)
     
     f.storage_key = getattr(f, 'storage_key', None)
     f.is_locally_stored = getattr(f, 'is_locally_stored', False)
@@ -661,12 +669,11 @@ async def file_detail(
     except Exception:
         analysis = None
 
+    # ✅ التحقق من وجود الملف بدون التسبب في حلقة
     file_exists_on_server = False
     try:
         if hasattr(svc.storage, 'file_exists'):
             file_exists_on_server = svc.storage.file_exists(f.path)
-        else:
-            file_exists_on_server = Path(f.path).exists() if f.path else False
     except Exception:
         file_exists_on_server = False
 
@@ -696,30 +703,44 @@ async def download_file(
 ):
     """Download file from server with support for large files."""
     svc = FileService(db)
-    f = await svc.get_file(file_id, current_user.id)
     
+    try:
+        f = await svc.get_file(file_id, current_user.id)
+    except Exception as e:
+        logger.error(f"❌ Error getting file: {e}")
+        return RedirectResponse(url="/files", status_code=302)
+    
+    # ✅ محاولة الحصول على المحتوى
     content = await svc.get_file_content(file_id, current_user.id)
     if content:
+        logger.info(f"✅ Serving file {file_id} from cache/content ({len(content)} bytes)")
         return StreamingResponse(
             io.BytesIO(content),
             media_type=f.mime_type or "application/octet-stream",
             headers={
                 "Content-Disposition": f'attachment; filename="{f.original_name}"',
-                "Content-Length": str(len(content))
+                "Content-Length": str(len(content)),
+                "Cache-Control": "private, max-age=3600"
             }
         )
     
+    # ✅ محاولة التدفق من التخزين - بدون Content-Length
     try:
+        logger.info(f"🔄 Streaming file {file_id} from storage")
         return StreamingResponse(
             svc.stream_file(file_id, current_user.id),
             media_type=f.mime_type or "application/octet-stream",
             headers={
                 "Content-Disposition": f'attachment; filename="{f.original_name}"',
-                "Content-Length": str(f.size_bytes)
+                # ✅ لا نضيف Content-Length هنا
+                "Cache-Control": "private, max-age=3600"
             }
         )
+    except NotFoundError:
+        logger.warning(f"⚠️ File {file_id} not found in storage")
+        return RedirectResponse(url="/files", status_code=302)
     except Exception as e:
-        logger.error(f"Download error: {e}")
+        logger.error(f"❌ Download error: {e}")
         return RedirectResponse(url="/files", status_code=302)
 
 
