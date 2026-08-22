@@ -432,7 +432,7 @@
 
     </div>
 
-    <!-- ✅ Format selection - تظهر دائماً عند وجود ملف -->
+    <!-- Format selection -->
     <div
       x-show="fileId"
       x-transition:enter="transition ease-out duration-250"
@@ -565,7 +565,7 @@
 
     </div>
 
-    <!-- ✅ رسالة عند عدم وجود ملف -->
+    <!-- رسالة عند عدم وجود ملف -->
     <div x-show="!fileId" class="wizard-body">
       <p class="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
         {{ t.select_file_first or 'اختر ملفاً أولاً لعرض الصيغ المتاحة' }}
@@ -676,10 +676,7 @@
 
     <div class="wizard-body space-y-3">
 
-      <!-- =====================================================
-           READY SUMMARY
-           ===================================================== -->
-
+      <!-- READY SUMMARY -->
       <div
         x-show="fileId && targetFormat && step === 3 && convStatus === 'idle'"
         x-cloak
@@ -733,10 +730,7 @@
 
       </div>
 
-      <!-- =====================================================
-           CONVERT BUTTON
-           ===================================================== -->
-
+      <!-- CONVERT BUTTON -->
       <button
         type="button"
         @click="startConvert()"
@@ -768,10 +762,7 @@
 
       </button>
 
-      <!-- =====================================================
-           PROGRESS CARD
-           ===================================================== -->
-
+      <!-- PROGRESS CARD -->
       <div
         x-show="convStatus === 'progress'"
         x-cloak
@@ -920,10 +911,7 @@
 
       </div>
 
-      <!-- =====================================================
-           SUCCESS
-           ===================================================== -->
-
+      <!-- SUCCESS -->
       <div
         x-show="convStatus === 'success'"
         x-cloak
@@ -993,10 +981,7 @@
 
       </div>
 
-      <!-- =====================================================
-           ERROR
-           ===================================================== -->
-
+      <!-- ERROR -->
       <div
         x-show="convStatus === 'error'"
         x-cloak
@@ -1335,7 +1320,7 @@
 </style>
 
 <!-- ============================================================
-     ALPINE.JS - مع إصلاح مشكلة تحديد الملف
+     ALPINE.JS
      ============================================================ -->
 
 <script>
@@ -1413,17 +1398,38 @@ function convertWizard() {
       console.log('📌 fileName from template:', this.fileName);
       console.log('📌 fileFormat from template:', this.fileFormat);
 
-      // ✅ If there's a file selected, go to step 2 and set target format
+      // ✅ استماع لحدث رفع الملف من مساحة العمل
+      window.addEventListener('file-uploaded', (event) => {
+        const fileId = event.detail.fileId;
+        console.log('📂 File uploaded event received in converter:', fileId);
+        
+        // ✅ جلب معلومات الملف من السيرفر
+        fetch(`/api/files/${fileId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.file) {
+                    // ✅ تحديث واجهة التحويل بالملف الجديد
+                    this.pickFile(
+                        data.file.id,
+                        data.file.original_name,
+                        data.file.format
+                    );
+                    console.log('✅ File loaded into converter:', data.file.original_name);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching file:', error);
+            });
+      });
+
+      // ✅ If there's a file selected, go to step 2
       if (this.fileId) {
         this.step = 2;
         this.targetFormat = this.getDefaultTargetFormat();
         this.convStatus = 'idle';
         console.log('✅ File pre-selected, step:', this.step, 'target:', this.targetFormat);
         
-        // ✅ التأكد من أن الملف يظهر كمحدد في الواجهة
-        // هذا يساعد في تحديث الواجهة بشكل صحيح
         this.$nextTick(() => {
-          // تحديث أي عناصر تحتاج إلى تحديث
           console.log('🔄 UI updated with file:', this.fileName);
         });
       } else {
