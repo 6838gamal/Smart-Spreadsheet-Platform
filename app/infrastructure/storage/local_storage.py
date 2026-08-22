@@ -30,8 +30,11 @@ class LocalStorageService:
     def __init__(self):
         self.output_dir = Path(settings.OUTPUT_DIR)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.storage_dir = Path(getattr(settings, 'STORAGE_DIR', './storage'))
+        # ✅ استخدام STORAGE_DIR من الإعدادات
+        storage_dir_path = getattr(settings, 'STORAGE_DIR', './storage')
+        self.storage_dir = Path(storage_dir_path)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"📁 Storage directory: {self.storage_dir.absolute()}")
 
     def _safe_extension(self, filename: str) -> str:
         """Extract and validate file extension."""
@@ -65,8 +68,12 @@ class LocalStorageService:
                     raise FileTooLargeError(size / (1024 * 1024), settings.MAX_FILE_SIZE_MB)
                 await f.write(chunk)
 
+        # ✅ استخدام المسار المطلق
+        absolute_path = str(file_path.absolute())
+        logger.info(f"✅ File saved at: {absolute_path}")
+
         return self._metadata(
-            path=str(file_path),
+            path=absolute_path,
             name=unique_name,
             original_name=file.filename or unique_name,
             size_bytes=size,
@@ -94,8 +101,11 @@ class LocalStorageService:
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(content)
         
+        # ✅ استخدام المسار المطلق
+        absolute_path = str(file_path.absolute())
+        
         return self._metadata(
-            path=str(file_path),
+            path=absolute_path,
             name=file_path.name,
             original_name=file_path.name,
             size_bytes=len(content),
@@ -114,8 +124,11 @@ class LocalStorageService:
         if p.exists():
             shutil.copy2(p, dest_path)
         
+        # ✅ استخدام المسار المطلق
+        absolute_path = str(dest_path.absolute())
+        
         return self._metadata(
-            path=str(dest_path),
+            path=absolute_path,
             name=p.name,
             original_name=p.name,
             size_bytes=dest_path.stat().st_size if dest_path.exists() else 0,
@@ -131,7 +144,19 @@ class LocalStorageService:
 
     async def get_read_path(self, path: str, user_id: int | None = None) -> str:
         """Return a local readable path for processors."""
-        return path
+        # ✅ محاولة تحويل المسار إلى مسار مطلق إذا كان نسبياً
+        path_obj = Path(path)
+        if not path_obj.is_absolute():
+            # محاولة استخدام storage_dir كأساس
+            possible_path = self.storage_dir / path
+            if possible_path.exists():
+                return str(possible_path.absolute())
+            # محاولة البحث في storage_dir مع إزالة /storage من البداية
+            if path.startswith("storage/"):
+                possible_path = self.storage_dir / path[8:]
+                if possible_path.exists():
+                    return str(possible_path.absolute())
+        return str(path_obj.absolute()) if path_obj.exists() else path
 
     def delete_file(self, path: str) -> bool:
         """Delete a file from storage."""
@@ -139,14 +164,44 @@ class LocalStorageService:
         if p.exists():
             p.unlink()
             return True
+        # ✅ محاولة البحث في storage_dir
+        alt_path = self.storage_dir / path
+        if alt_path.exists():
+            alt_path.unlink()
+            return True
+        # محاولة البحث مع إزالة /storage من البداية
+        if path.startswith("storage/"):
+            alt_path = self.storage_dir / path[8:]
+            if alt_path.exists():
+                alt_path.unlink()
+                return True
         return False
 
     def file_exists(self, path: str) -> bool:
-        return Path(path).exists()
+        """Check if file exists."""
+        p = Path(path)
+        if p.exists():
+            return True
+        # ✅ محاولة البحث في storage_dir
+        alt_path = self.storage_dir / path
+        if alt_path.exists():
+            return True
+        # محاولة البحث مع إزالة /storage من البداية
+        if path.startswith("storage/"):
+            alt_path = self.storage_dir / path[8:]
+            if alt_path.exists():
+                return True
+        return False
 
     def get_file_size(self, path: str) -> int:
         p = Path(path)
-        return p.stat().st_size if p.exists() else 0
+        if p.exists():
+            return p.stat().st_size
+        # ✅ محاولة البحث في storage_dir
+        alt_path = self.storage_dir / path
+        if alt_path.exists():
+            return alt_path.stat().st_size
+        return 0
 
     def _metadata(self, **values: object) -> dict:
         return {**values, "storage_backend": self.backend_name}
