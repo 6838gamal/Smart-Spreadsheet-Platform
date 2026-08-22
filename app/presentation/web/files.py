@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 import tempfile
+import re
 from datetime import datetime
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query, HTTPException
@@ -289,7 +290,6 @@ async def import_from_url(
                 # Try to get from Content-Disposition header
                 content_disposition = response.headers.get('content-disposition')
                 if content_disposition and 'filename=' in content_disposition:
-                    import re
                     match = re.search(r'filename="?([^"]+)"?', content_disposition)
                     if match:
                         filename = match.group(1)
@@ -312,59 +312,45 @@ async def import_from_url(
                     else:
                         filename += '.bin'
             
-            # Create a temporary file
-            suffix = Path(filename).suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
+            # ✅ إنشاء UploadFile بالطريقة الصحيحة
+            # إنشاء كائن BytesIO من المحتوى
+            file_obj = io.BytesIO(content)
             
-            try:
-                # Read the file content
-                async with aiofiles.open(tmp_path, 'rb') as f:
-                    file_content = await f.read()
-                
-                # Create a file-like object
-                file_obj = io.BytesIO(file_content)
-                
-                # Create UploadFile
-                upload_file = UploadFile(
-                    filename=filename,
-                    file=file_obj,
-                    content_type=content_type
-                )
-                
-                # Upload to storage using existing service
-                svc = FileService(db)
-                db_file = await svc.upload(upload_file, current_user.id)
-                
-                # Add source URL to metadata
-                if db_file.meta is None:
-                    db_file.meta = {}
-                db_file.meta['source_url'] = url
-                db_file.meta['imported_from_url'] = True
-                db_file.meta['imported_at'] = datetime.utcnow().isoformat()
-                db.add(db_file)
-                await db.commit()
-                await db.refresh(db_file)
-                
-                # Auto-analyze if supported format
-                if db_file.format and db_file.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt', 'docx', 'doc']:
-                    await _auto_analyze(db_file.id, db_file.path, db_file.format, db)
-                
-                # Clean up temp file
-                Path(tmp_path).unlink(missing_ok=True)
-                
-                return JSONResponse({
-                    "success": True,
-                    "file_id": db_file.id,
-                    "filename": db_file.original_name,
-                    "message": "File imported successfully from URL"
-                })
-                
-            except Exception as e:
-                # Clean up temp file on error
-                Path(tmp_path).unlink(missing_ok=True)
-                raise e
+            # ✅ إنشاء UploadFile بشكل صحيح (بدون content_type)
+            upload_file = UploadFile(
+                filename=filename,
+                file=file_obj
+            )
+            # ✅ تعيين content_type كخاصية بعد الإنشاء
+            upload_file.content_type = content_type
+            
+            # ✅ تعيين الحجم
+            upload_file.size = len(content)
+            
+            # Upload to storage using existing service
+            svc = FileService(db)
+            db_file = await svc.upload(upload_file, current_user.id)
+            
+            # Add source URL to metadata
+            if db_file.meta is None:
+                db_file.meta = {}
+            db_file.meta['source_url'] = url
+            db_file.meta['imported_from_url'] = True
+            db_file.meta['imported_at'] = datetime.utcnow().isoformat()
+            db.add(db_file)
+            await db.commit()
+            await db.refresh(db_file)
+            
+            # Auto-analyze if supported format
+            if db_file.format and db_file.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt', 'docx', 'doc']:
+                await _auto_analyze(db_file.id, db_file.path, db_file.format, db)
+            
+            return JSONResponse({
+                "success": True,
+                "file_id": db_file.id,
+                "filename": db_file.original_name,
+                "message": "File imported successfully from URL"
+            })
             
     except httpx.TimeoutException:
         return JSONResponse({
@@ -387,7 +373,7 @@ async def import_from_url(
 
 
 # ============================================================
-# REST OF ROUTES
+# FILE DETAIL
 # ============================================================
 
 @router.get("/files/{file_id}", response_class=HTMLResponse)
