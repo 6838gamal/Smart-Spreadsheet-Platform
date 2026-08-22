@@ -63,6 +63,7 @@ def file_to_dict(file: FileModel) -> dict:
         "image_height": file.meta.get('image_height') if file.meta else None,
         "size_human": file.size_human if hasattr(file, 'size_human') else f"{file.size_bytes} B" if file.size_bytes else "0 B",
         "source_url": file.meta.get('source_url') if file.meta else None,
+        "original_url": file.meta.get('original_url') if file.meta else None,
         "imported_from_url": file.meta.get('imported_from_url', False) if file.meta else False,
     }
 
@@ -275,20 +276,29 @@ async def import_from_url(
                 "error": "Invalid URL format"
             }, status_code=400)
         
-        # Download file from URL
+        # Download file from URL with redirect following
         timeout_seconds = getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60)
-        async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout_seconds, 
+            follow_redirects=True,
+            max_redirects=10
+        ) as client:
+            # First, get the final URL after redirect
             response = await client.get(url)
             response.raise_for_status()
+            
+            # Get the final URL after redirect
+            final_url = str(response.url)
+            logger.info(f"🔄 Final URL after redirect: {final_url}")
             
             content = response.content
             content_type = response.headers.get('content-type', 'application/octet-stream')
             
-            # ✅ استخراج اسم الملف والامتداد بشكل صحيح
+            # Extract filename and extension
             filename = None
             file_extension = None
             
-            # 1. محاولة من Content-Disposition
+            # 1. Try from Content-Disposition
             content_disposition = response.headers.get('content-disposition')
             if content_disposition and 'filename=' in content_disposition:
                 match = re.search(r'filename="?([^"]+)"?', content_disposition)
@@ -299,7 +309,17 @@ async def import_from_url(
                     if '.' in filename:
                         file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 2. محاولة من URL
+            # 2. Try from final URL
+            if not filename:
+                path = urlparse(final_url).path
+                filename = path.split('/')[-1]
+                if filename:
+                    filename = filename.split('?')[0]
+                    filename = filename.split('#')[0]
+                    if '.' in filename:
+                        file_extension = filename.rsplit('.', 1)[-1].lower()
+            
+            # 3. Try from original URL if not found
             if not filename:
                 path = urlparse(url).path
                 filename = path.split('/')[-1]
@@ -309,7 +329,7 @@ async def import_from_url(
                     if '.' in filename:
                         file_extension = filename.rsplit('.', 1)[-1].lower()
             
-            # 3. استخدام Content-Type
+            # 4. Use Content-Type
             if not filename or filename == '':
                 if 'application/pdf' in content_type:
                     file_extension = 'pdf'
@@ -334,7 +354,7 @@ async def import_from_url(
                     file_extension = 'bin'
                     filename = f"imported_file_{uuid.uuid4().hex[:8]}.bin"
             
-            # ✅ التحقق من الامتداد من Magic Bytes
+            # Check file extension from Magic Bytes
             if content.startswith(b'%PDF'):
                 file_extension = 'pdf'
                 if not filename.endswith('.pdf'):
@@ -377,21 +397,22 @@ async def import_from_url(
                         name = filename.rsplit('.', 1)[0] if '.' in filename else filename
                         filename = f"{name}.zip"
             
-            # ✅ تنظيف اسم الملف النهائي
+            # Clean filename
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             filename = filename.strip()
             if len(filename) > 200:
                 name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
                 filename = name[:180] + '.' + ext if ext else name[:200]
             
-            # ✅ التأكد من وجود امتداد
+            # Ensure extension exists
             if '.' not in filename:
                 ext = file_extension or 'bin'
                 filename = f"{filename}.{ext}"
             
             logger.info(f"📁 Extracted filename: {filename}, extension: {file_extension}, content_type: {content_type}")
+            logger.info(f"📁 Final URL: {final_url}")
             
-            # ✅ إنشاء UploadFile
+            # Create UploadFile
             from tempfile import SpooledTemporaryFile
             
             temp_file = SpooledTemporaryFile(max_size=1024*1024)
@@ -413,7 +434,8 @@ async def import_from_url(
             # Add source URL to metadata
             if db_file.meta is None:
                 db_file.meta = {}
-            db_file.meta['source_url'] = url[:500]
+            db_file.meta['source_url'] = final_url[:500]
+            db_file.meta['original_url'] = url[:500]
             db_file.meta['imported_from_url'] = True
             db_file.meta['imported_at'] = datetime.utcnow().isoformat()
             db.add(db_file)
@@ -429,6 +451,7 @@ async def import_from_url(
                 "file_id": db_file.id,
                 "filename": db_file.original_name,
                 "format": db_file.format,
+                "source_url": final_url,
                 "message": f"File imported successfully from URL (format: {db_file.format})"
             })
             
