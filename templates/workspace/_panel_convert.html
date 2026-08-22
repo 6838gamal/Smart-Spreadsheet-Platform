@@ -1397,6 +1397,7 @@ function convertWizard() {
       console.log('📌 fileId from template:', this.fileId);
       console.log('📌 fileName from template:', this.fileName);
       console.log('📌 fileFormat from template:', this.fileFormat);
+      console.log('📌 Total files available:', {{ files|length }});
 
       // ✅ مراقبة تغييرات fileId
       this.$watch('fileId', (newVal) => {
@@ -1406,6 +1407,9 @@ function convertWizard() {
           if (!this.targetFormat) {
             this.targetFormat = this.getDefaultTargetFormat();
           }
+        } else {
+          this.step = 1;
+          this.targetFormat = '';
         }
       });
 
@@ -1414,12 +1418,10 @@ function convertWizard() {
         const fileId = event.detail.fileId;
         console.log('📂 File uploaded event received in converter:', fileId);
         
-        // ✅ جلب معلومات الملف من السيرفر
         fetch(`/api/files/${fileId}`)
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.file) {
-                    // ✅ تحديث واجهة التحويل بالملف الجديد
                     this.pickFile(
                         data.file.id,
                         data.file.original_name,
@@ -1444,10 +1446,22 @@ function convertWizard() {
           console.log('🔄 UI updated with file:', this.fileName);
         });
       } else {
-        this.step = 1;
-        this.targetFormat = '';
-        this.convStatus = 'idle';
-        console.log('ℹ️ No file selected, step:', this.step);
+        // ✅ إذا لم يكن هناك ملف محدد ولكن هناك ملفات، اختر الأول
+        const filesList = {{ files|tojson|safe }};
+        if (filesList && filesList.length > 0) {
+          const firstFile = filesList[0];
+          this.pickFile(
+            firstFile.id,
+            firstFile.original_name,
+            firstFile.format
+          );
+          console.log('✅ Auto-selected first file:', firstFile.original_name);
+        } else {
+          this.step = 1;
+          this.targetFormat = '';
+          this.convStatus = 'idle';
+          console.log('ℹ️ No files available, step:', this.step);
+        }
       }
 
     },
