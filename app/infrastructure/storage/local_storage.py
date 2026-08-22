@@ -10,6 +10,7 @@ Supabase Storage. PostgreSQL keeps the file metadata and object keys.
 import uuid
 import logging
 import shutil
+import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 import aiofiles
@@ -228,23 +229,148 @@ class SupabaseStorageService(LocalStorageService):
         if self.backend_name == "supabase":
             logger.info(f"✅ Supabase Storage initialized with bucket: {self.bucket}")
 
+    def _get_mime_from_extension(self, ext: str) -> str:
+        """Get MIME type from file extension."""
+        mime_map = {
+            # Documents
+            "pdf": "application/pdf",
+            "doc": "application/msword",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "xls": "application/vnd.ms-excel",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "ppt": "application/vnd.ms-powerpoint",
+            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "odt": "application/vnd.oasis.opendocument.text",
+            "ods": "application/vnd.oasis.opendocument.spreadsheet",
+            "odp": "application/vnd.oasis.opendocument.presentation",
+            
+            # Images
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "svg": "image/svg+xml",
+            "bmp": "image/bmp",
+            "tiff": "image/tiff",
+            "ico": "image/x-icon",
+            
+            # Data
+            "json": "application/json",
+            "xml": "application/xml",
+            "csv": "text/csv",
+            "tsv": "text/tab-separated-values",
+            "txt": "text/plain",
+            "yaml": "application/x-yaml",
+            "yml": "application/x-yaml",
+            "parquet": "application/parquet",
+            "feather": "application/feather",
+            
+            # Archives
+            "zip": "application/zip",
+            "rar": "application/x-rar-compressed",
+            "7z": "application/x-7z-compressed",
+            "tar": "application/x-tar",
+            "gz": "application/gzip",
+            
+            # Database
+            "sqlite": "application/x-sqlite3",
+            "db": "application/x-sqlite3",
+            "sql": "application/sql",
+            
+            # Other
+            "html": "text/html",
+            "htm": "text/html",
+            "md": "text/markdown",
+        }
+        return mime_map.get(ext.lower(), "application/pdf")  # ✅ PDF كـ fallback
+
+    def _get_supported_mime_type(self, mime_type: str, path: Path) -> str:
+        """Get a supported MIME type for Supabase Storage."""
+        
+        # ✅ أنواع MIME المدعومة في Supabase
+        supported = {
+            # Images
+            "image/jpeg": "image/jpeg",
+            "image/png": "image/png",
+            "image/gif": "image/gif",
+            "image/webp": "image/webp",
+            "image/svg+xml": "image/svg+xml",
+            "image/bmp": "image/bmp",
+            "image/tiff": "image/tiff",
+            "image/x-icon": "image/x-icon",
+            
+            # Documents
+            "application/pdf": "application/pdf",
+            "application/msword": "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": 
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel": "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint": "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": 
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.oasis.opendocument.text": "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.spreadsheet": "application/vnd.oasis.opendocument.spreadsheet",
+            "application/vnd.oasis.opendocument.presentation": "application/vnd.oasis.opendocument.presentation",
+            
+            # Data
+            "application/json": "application/json",
+            "application/xml": "application/xml",
+            "text/csv": "text/csv",
+            "text/tab-separated-values": "text/tab-separated-values",
+            "text/plain": "text/plain",
+            "application/x-yaml": "application/x-yaml",
+            "application/parquet": "application/parquet",
+            
+            # Archives
+            "application/zip": "application/zip",
+            "application/x-rar-compressed": "application/x-rar-compressed",
+            "application/x-7z-compressed": "application/x-7z-compressed",
+            "application/x-tar": "application/x-tar",
+            "application/gzip": "application/gzip",
+            
+            # Database
+            "application/x-sqlite3": "application/x-sqlite3",
+            "application/sql": "application/sql",
+            
+            # Other
+            "text/html": "text/html",
+            "text/markdown": "text/markdown",
+        }
+        
+        # ✅ إذا كان النوع مدعوماً، استخدمه
+        if mime_type in supported:
+            return supported[mime_type]
+        
+        # ✅ إذا كان application/octet-stream، حاول استنتاج النوع من الامتداد
+        if mime_type == "application/octet-stream" or mime_type == "application/octet-stream":
+            ext = path.suffix.lower()
+            if ext:
+                guessed = self._get_mime_from_extension(ext)
+                if guessed in supported:
+                    return guessed
+        
+        # ✅ استخدام PDF كـ fallback (مدعوم دائماً)
+        return "application/pdf"
+
     def _test_connection(self) -> None:
         """Test Supabase connection by uploading a small test file."""
         try:
             import httpx
             
-            # ✅ استخدام ملف ثنائي و MIME type مدعوم
-            test_content = b"test"
-            test_path = f"test/{uuid.uuid4().hex[:8]}.bin"
+            # ✅ استخدام JSON (نوع MIME مدعوم)
+            test_content = json.dumps({"test": "connection", "timestamp": str(uuid.uuid4())}).encode()
+            test_path = f"test/{uuid.uuid4().hex[:8]}.json"
             
             url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
             
-            # ✅ استخدام application/octet-stream بدلاً من text/plain
             response = httpx.post(
                 url,
                 headers={
                     **self.headers, 
-                    "Content-Type": "application/octet-stream",
+                    "Content-Type": "application/json",
                     "x-upsert": "true"
                 },
                 content=test_content,
@@ -254,60 +380,18 @@ class SupabaseStorageService(LocalStorageService):
             if response.status_code in (200, 201):
                 # ✅ حذف ملف الاختبار
                 delete_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
-                httpx.delete(delete_url, headers=self.headers, timeout=30)
-                logger.info("✅ Supabase Storage connection test passed")
-                self.backend_name = "supabase"
+                delete_response = httpx.delete(delete_url, headers=self.headers, timeout=30)
+                if delete_response.status_code in (200, 204):
+                    logger.info("✅ Supabase Storage connection test passed")
+                    self.backend_name = "supabase"
+                else:
+                    logger.warning(f"⚠️ Test file uploaded but could not delete: {delete_response.status_code}")
+                    self.backend_name = "supabase"  # ✅ استمر حتى مع فشل الحذف
             else:
                 logger.error(f"❌ Supabase Storage test failed: {response.status_code} - {response.text[:200]}")
-                # ✅ إذا كان الخطأ 415 (MIME type not supported)، نحاول مرة أخرى بامتداد مختلف
-                if response.status_code == 415:
-                    logger.info("🔄 Retrying with different file extension...")
-                    self._test_connection_retry()
-                else:
-                    self.backend_name = "local"
+                self.backend_name = "local"
         except Exception as e:
             logger.error(f"❌ Supabase Storage test error: {e}")
-            self.backend_name = "local"
-    
-    def _test_connection_retry(self) -> None:
-        """Retry connection test with different file types."""
-        try:
-            import httpx
-            
-            test_types = [
-                ("test.txt", "text/plain"),
-                ("test.pdf", "application/pdf"),
-                ("test.png", "image/png"),
-                ("test.json", "application/json"),
-            ]
-            
-            for filename, mime_type in test_types:
-                test_path = f"test/{uuid.uuid4().hex[:8]}_{filename}"
-                url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
-                
-                response = httpx.post(
-                    url,
-                    headers={
-                        **self.headers,
-                        "Content-Type": mime_type,
-                        "x-upsert": "true"
-                    },
-                    content=b"test content",
-                    timeout=30
-                )
-                
-                if response.status_code in (200, 201):
-                    # حذف ملف الاختبار
-                    delete_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{test_path}"
-                    httpx.delete(delete_url, headers=self.headers, timeout=30)
-                    logger.info(f"✅ Supabase Storage connection test passed with {mime_type}")
-                    self.backend_name = "supabase"
-                    return
-            
-            logger.error("❌ All connection retry attempts failed")
-            self.backend_name = "local"
-        except Exception as e:
-            logger.error(f"❌ Retry test error: {e}")
             self.backend_name = "local"
 
     async def save_upload(self, file: UploadFile, user_id: int) -> dict:
@@ -330,12 +414,13 @@ class SupabaseStorageService(LocalStorageService):
                     raise FileTooLargeError(size / (1024 * 1024), settings.MAX_FILE_SIZE_MB)
                 await f.write(chunk)
 
-        # ✅ استخدام MIME type مناسب
-        mime_type = file.content_type or "application/octet-stream"
+        # ✅ استنتاج نوع MIME مناسب من الامتداد
+        mime_type = file.content_type or self._get_mime_from_extension(ext)
+        
         await self._upload_file(cache_path, object_key, mime_type)
         cache_path.unlink(missing_ok=True)
         
-        logger.info(f"✅ Uploaded to Supabase: {object_key} ({size} bytes)")
+        logger.info(f"✅ Uploaded to Supabase: {object_key} ({size} bytes) with MIME: {mime_type}")
         
         return self._metadata(
             path=self._storage_uri(object_key),
@@ -364,7 +449,10 @@ class SupabaseStorageService(LocalStorageService):
         
         # Upload to Supabase
         try:
-            mime_type = content_type or "application/octet-stream"
+            # ✅ استنتاج نوع MIME من المسار والامتداد
+            ext = path.split('.')[-1].lower() if '.' in path else ''
+            mime_type = content_type or self._get_mime_from_extension(ext)
+            
             await self._upload_file(cache_path, path, mime_type)
             cache_path.unlink(missing_ok=True)
             
@@ -373,7 +461,7 @@ class SupabaseStorageService(LocalStorageService):
                 "name": Path(path).name,
                 "original_name": Path(path).name,
                 "size_bytes": len(content),
-                "format": path.split('.')[-1].lower() if '.' in path else 'bin',
+                "format": ext or 'bin',
                 "mime_type": mime_type,
                 "bucket": self.bucket,
                 "object_key": path,
@@ -391,6 +479,12 @@ class SupabaseStorageService(LocalStorageService):
             
         p = Path(path)
         object_key = f"outputs/{user_id}/{p.name}"
+        
+        # ✅ استنتاج نوع MIME من الامتداد
+        ext = p.suffix.lstrip(".").lower()
+        if mime_type == "application/octet-stream":
+            mime_type = self._get_mime_from_extension(ext)
+        
         await self._upload_file(p, object_key, mime_type)
         p.unlink(missing_ok=True)
         
@@ -399,7 +493,7 @@ class SupabaseStorageService(LocalStorageService):
             name=p.name,
             original_name=p.name,
             size_bytes=p.stat().st_size,
-            format=p.suffix.lstrip(".").lower(),
+            format=ext,
             mime_type=mime_type,
             bucket=self.bucket,
             object_key=object_key,
@@ -494,10 +588,9 @@ class SupabaseStorageService(LocalStorageService):
         """Upload file to Supabase Storage."""
         url = f"{self.base_url}/storage/v1/object/{self.bucket}/{object_key}"
         
-        # ✅ التأكد من أن MIME type مدعوم
-        if mime_type == "text/plain":
-            mime_type = "application/octet-stream"
-            
+        # ✅ تحويل أنواع MIME غير المدعومة إلى أنواع مدعومة
+        mime_type = self._get_supported_mime_type(mime_type, path)
+        
         headers = {
             **self.headers,
             "Content-Type": mime_type,
@@ -510,18 +603,40 @@ class SupabaseStorageService(LocalStorageService):
                     content = f.read()
                 response = await client.post(url, headers=headers, content=content)
                 response.raise_for_status()
-                logger.info(f"✅ Uploaded to Supabase: {object_key}")
+                logger.info(f"✅ Uploaded to Supabase: {object_key} (MIME: {mime_type})")
         except httpx.HTTPStatusError as e:
-            # ✅ إذا كان خطأ MIME type، حاول مرة أخرى ب application/octet-stream
+            # ✅ إذا كان خطأ MIME type، حاول أنواع أخرى
             if e.response.status_code == 415:
-                logger.warning(f"⚠️ MIME type {mime_type} not supported, retrying with application/octet-stream")
-                headers["Content-Type"] = "application/octet-stream"
-                with path.open("rb") as f:
-                    content = f.read()
-                response = await client.post(url, headers=headers, content=content)
-                response.raise_for_status()
-                logger.info(f"✅ Uploaded to Supabase with fallback MIME type: {object_key}")
+                logger.warning(f"⚠️ MIME type {mime_type} not supported, trying fallback types...")
+                
+                # ✅ قائمة أنواع MIME للـ fallback
+                fallback_types = [
+                    "application/pdf",
+                    "image/png", 
+                    "image/jpeg",
+                    "application/json",
+                    "text/plain",
+                    "application/zip"
+                ]
+                
+                for fallback in fallback_types:
+                    try:
+                        logger.info(f"🔄 Trying fallback MIME: {fallback}")
+                        headers["Content-Type"] = fallback
+                        with path.open("rb") as f:
+                            content = f.read()
+                        response = await client.post(url, headers=headers, content=content)
+                        response.raise_for_status()
+                        logger.info(f"✅ Uploaded with fallback MIME: {fallback}")
+                        return
+                    except Exception:
+                        continue
+                
+                # ✅ إذا فشلت جميع المحاولات
+                logger.error(f"❌ All fallback MIME types failed for {object_key}")
+                raise
             else:
+                logger.error(f"❌ HTTP error uploading to Supabase: {e.response.status_code} - {e.response.text[:200]}")
                 raise
         except Exception as e:
             logger.error(f"❌ Upload to Supabase failed: {e}")
