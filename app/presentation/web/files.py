@@ -2,6 +2,10 @@
 
 import json
 import logging
+import uuid
+import tempfile
+from datetime import datetime
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select
@@ -9,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 from typing import Optional, List
 import io
+import aiofiles
+import httpx
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_user_optional
@@ -55,6 +61,8 @@ def file_to_dict(file: FileModel) -> dict:
         "image_width": file.meta.get('image_width') if file.meta else None,
         "image_height": file.meta.get('image_height') if file.meta else None,
         "size_human": file.size_human if hasattr(file, 'size_human') else f"{file.size_bytes} B" if file.size_bytes else "0 B",
+        "source_url": file.meta.get('source_url') if file.meta else None,
+        "imported_from_url": file.meta.get('imported_from_url', False) if file.meta else False,
     }
 
 
@@ -186,7 +194,6 @@ async def upload_files(
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
-        # ✅ تحديث القائمة فقط بدون توجيه
         all_files, total = await svc.list_files(
             user_id=current_user.id,
             limit=100,
@@ -196,7 +203,6 @@ async def upload_files(
         )
         all_files_dict = files_to_dict_list(all_files)
         
-        # ✅ تحديد الملف المرفوع إذا كان ملف واحد
         selected_file_id = uploaded_files[0].id if len(uploaded_files) == 1 else None
         
         html_content = templates.TemplateResponse(
@@ -216,7 +222,6 @@ async def upload_files(
         if errors:
             msg += f" ⚠️ ({len(errors)} أخطاء)"
         
-        # ✅ إرسال حدث لتحديث لوحة التحويل
         if selected_file_id:
             return HTMLResponse(
                 f'<div class="mb-2 text-sm text-emerald-400 text-center">{msg}</div>'
@@ -231,9 +236,159 @@ async def upload_files(
             + html_content.body.decode('utf-8')
         )
 
-    # Non-HTMX response
     return RedirectResponse(url="/files", status_code=302)
 
+
+# ============================================================
+# URL IMPORT - سحب ملف من رابط
+# ============================================================
+
+@router.post("/files/import-url")
+async def import_from_url(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import a file from a URL."""
+    try:
+        data = await request.json()
+        url = data.get('url')
+        
+        if not url:
+            return JSONResponse({
+                "success": False,
+                "error": "URL is required"
+            }, status_code=400)
+        
+        # Validate URL
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ['http', 'https']:
+                return JSONResponse({
+                    "success": False,
+                    "error": "Only HTTP/HTTPS URLs are supported"
+                }, status_code=400)
+        except Exception:
+            return JSONResponse({
+                "success": False,
+                "error": "Invalid URL format"
+            }, status_code=400)
+        
+        # Download file from URL
+        timeout_seconds = getattr(settings, 'SUPABASE_STORAGE_TIMEOUT_SECONDS', 60)
+        async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            content = response.content
+            content_type = response.headers.get('content-type', 'application/octet-stream')
+            
+            # Extract filename from URL or headers
+            filename = url.split('/')[-1].split('?')[0]
+            if not filename or '.' not in filename:
+                # Try to get from Content-Disposition header
+                content_disposition = response.headers.get('content-disposition')
+                if content_disposition and 'filename=' in content_disposition:
+                    import re
+                    match = re.search(r'filename="?([^"]+)"?', content_disposition)
+                    if match:
+                        filename = match.group(1)
+                
+                if not filename or '.' not in filename:
+                    filename = f"imported_file_{uuid.uuid4().hex[:8]}"
+                    if 'application/pdf' in content_type:
+                        filename += '.pdf'
+                    elif 'spreadsheet' in content_type or 'excel' in content_type:
+                        filename += '.xlsx'
+                    elif 'csv' in content_type:
+                        filename += '.csv'
+                    elif 'json' in content_type:
+                        filename += '.json'
+                    elif 'text/plain' in content_type:
+                        filename += '.txt'
+                    elif 'image' in content_type:
+                        ext = content_type.split('/')[-1].split('+')[0]
+                        filename += f'.{ext}'
+                    else:
+                        filename += '.bin'
+            
+            # Create a temporary file
+            suffix = Path(filename).suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+            
+            try:
+                # Read the file content
+                async with aiofiles.open(tmp_path, 'rb') as f:
+                    file_content = await f.read()
+                
+                # Create a file-like object
+                file_obj = io.BytesIO(file_content)
+                
+                # Create UploadFile
+                upload_file = UploadFile(
+                    filename=filename,
+                    file=file_obj,
+                    content_type=content_type
+                )
+                
+                # Upload to storage using existing service
+                svc = FileService(db)
+                db_file = await svc.upload(upload_file, current_user.id)
+                
+                # Add source URL to metadata
+                if db_file.meta is None:
+                    db_file.meta = {}
+                db_file.meta['source_url'] = url
+                db_file.meta['imported_from_url'] = True
+                db_file.meta['imported_at'] = datetime.utcnow().isoformat()
+                db.add(db_file)
+                await db.commit()
+                await db.refresh(db_file)
+                
+                # Auto-analyze if supported format
+                if db_file.format and db_file.format.lower() in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'txt', 'docx', 'doc']:
+                    await _auto_analyze(db_file.id, db_file.path, db_file.format, db)
+                
+                # Clean up temp file
+                Path(tmp_path).unlink(missing_ok=True)
+                
+                return JSONResponse({
+                    "success": True,
+                    "file_id": db_file.id,
+                    "filename": db_file.original_name,
+                    "message": "File imported successfully from URL"
+                })
+                
+            except Exception as e:
+                # Clean up temp file on error
+                Path(tmp_path).unlink(missing_ok=True)
+                raise e
+            
+    except httpx.TimeoutException:
+        return JSONResponse({
+            "success": False,
+            "error": "Connection timeout. The server took too long to respond."
+        }, status_code=504)
+    except httpx.HTTPStatusError as e:
+        return JSONResponse({
+            "success": False,
+            "error": f"HTTP error: {e.response.status_code} - {e.response.text[:100]}"
+        }, status_code=e.response.status_code)
+    except Exception as e:
+        logger.error(f"URL import error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+
+# ============================================================
+# REST OF ROUTES
+# ============================================================
 
 @router.get("/files/{file_id}", response_class=HTMLResponse)
 async def file_detail(
