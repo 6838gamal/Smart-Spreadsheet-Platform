@@ -1,11 +1,28 @@
+<!-- templates/files/detail.html -->
+
 {% extends "base.html" %}
-{% block title %}{{ file.original_name }} — Smart Spreadsheet{% endblock %}
-{% block page_title %}{{ file.original_name }}{% endblock %}
+
+{% block title %}
+  {{ file.original_name or 'تفاصيل الملف' }} — Smart Spreadsheet
+{% endblock %}
+
+{% block page_title %}
+  <div class="flex items-center gap-3">
+    <span class="text-2xl">📄</span>
+    <span class="truncate">{{ file.original_name or 'تفاصيل الملف' }}</span>
+  </div>
+{% endblock %}
 
 {% block content %}
-<div class="space-y-5" x-data="fileDetail()">
 
-  <!-- File info bar -->
+{% set t = get_texts(lang if lang else 'ar') %}
+
+<div class="space-y-5" x-data="fileDetailPage()" x-init="init()">
+
+  <!-- =========================================================
+       FILE INFO BAR
+  ========================================================== -->
+
   <div class="card p-5 flex flex-wrap items-center gap-4 justify-between">
     <div class="flex items-center gap-4">
       <div class="w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold
@@ -13,49 +30,105 @@
         {% elif file.format == 'csv' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400
         {% elif file.format == 'json' %}bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400
         {% elif file.format == 'pdf' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400
+        {% elif file.format == 'parquet' %}bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400
+        {% elif file.format in ['docx','doc'] %}bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400
+        {% elif file.format in ['jpg','jpeg','png','gif','webp','bmp','svg'] %}bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-400
+        {% elif file.format in ['pptx','ppt'] %}bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400
         {% else %}bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
-        .{{ file.format | upper }}
+        .{{ file.format | upper if file.format else '???' }}
       </div>
       <div>
         <h2 class="font-semibold text-slate-900 dark:text-white">{{ file.original_name }}</h2>
-        <div class="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
-          <span>{{ file.size_human }}</span>
-          {% if file.meta.rows %}<span>·</span><span>{{ "{:,}".format(file.meta.rows) }} صف</span>{% endif %}
-          {% if file.meta.columns %}<span>·</span><span>{{ file.meta.columns }} عمود</span>{% endif %}
+        <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <span>{{ file.size_human or '0 B' }}</span>
+          {% if file.meta and file.meta.rows %}
           <span>·</span>
-          <span>{{ file.created_at.strftime('%Y-%m-%d') }}</span>
+          <span>{{ "{:,}".format(file.meta.rows) }} {{ t.rows_unit or 'صف' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.columns %}
+          <span>·</span>
+          <span>{{ file.meta.columns }} {{ t.cols_unit or 'عمود' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.sheets %}
+          <span>·</span>
+          <span>{{ file.meta.sheets }} {{ t.sheets or 'شرائح' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.pages %}
+          <span>·</span>
+          <span>{{ file.meta.pages }} {{ t.pages or 'صفحات' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.slides %}
+          <span>·</span>
+          <span>{{ file.meta.slides }} {{ t.slides or 'شرائح' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.word_count %}
+          <span>·</span>
+          <span>{{ "{:,}".format(file.meta.word_count) }} {{ t.words or 'كلمة' }}</span>
+          {% endif %}
+          <span>·</span>
+          <span>☁️ {{ t.stored_in_cloud or 'مخزن في السحابة' }}</span>
+          <span>·</span>
+          <span>{{ file.created_at|datetime('%Y-%m-%d') if file.created_at else '-' }}</span>
+          {% if file.is_favorite %}
+          <span>·</span>
+          <span class="text-yellow-400">★ {{ t.favorite or 'مفضلة' }}</span>
+          {% endif %}
+          {% if file.meta and file.meta.source_url %}
+          <span>·</span>
+          <a href="{{ file.meta.source_url }}" target="_blank" class="text-indigo-500 hover:text-indigo-600 underline text-xs" title="{{ file.meta.source_url }}">
+            🔗 {{ t.source_url or 'رابط المصدر' }}
+          </a>
+          {% endif %}
         </div>
       </div>
     </div>
-    <div class="flex items-center gap-2">
-      <a href="/converter?file_id={{ file.id }}" class="btn-primary">
+
+    <div class="flex flex-wrap items-center gap-2">
+      <button 
+        @click="toggleFavorite()"
+        class="text-lg px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        :title="isFavorite ? '{{ t.remove_favorite or 'إزالة من المفضلة' }}' : '{{ t.add_favorite or 'إضافة إلى المفضلة' }}'"
+      >
+        <span :class="isFavorite ? 'text-yellow-400' : 'text-slate-300 dark:text-slate-600'">
+          <span x-text="isFavorite ? '★' : '☆'"></span>
+        </span>
+      </button>
+
+      <a href="/files/{{ file.id }}/download" class="btn-primary inline-flex items-center gap-2 text-sm px-4 py-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
-        تحويل
+        {{ t.download or 'تحميل' }}
       </a>
-      <a href="/cleaner?file_id={{ file.id }}" class="btn-secondary">
-        تنظيف
-      </a>
-      <a href="/files/{{ file.id }}/download" class="btn-secondary">
+
+      <a href="/workspace?file_id={{ file.id }}" class="btn-secondary inline-flex items-center gap-2 text-sm px-4 py-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-        تحميل
+        {{ t.open_in_workspace or 'فتح في مساحة العمل' }}
       </a>
+
+      <button @click="deleteFile()" class="text-red-500 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+        🗑️
+      </button>
     </div>
   </div>
 
-  <!-- Analysis Status Banner -->
+  <!-- =========================================================
+       ANALYSIS STATUS BANNER
+  ========================================================== -->
+
   <div class="card p-5" id="analysis-banner"
        x-data="{
          status: '{{ analysis.status.value if analysis else 'none' }}',
          analysisId: {{ analysis.id if analysis else 'null' }},
          jobId: null,
          polling: false,
+         fileId: {{ file.id }},
 
          startAnalysis() {
-           fetch('/api/v1/intelligence/analyze/{{ file.id }}', {method:'POST'})
+           fetch('/api/v1/intelligence/analyze/' + this.fileId, {method:'POST'})
              .then(r => r.json())
              .then(d => {
                this.jobId = d.job_id;
@@ -85,9 +158,7 @@
          },
 
          init() {
-           // If analysis is already running/queued when the page loads, start polling
            if (this.status === 'pending' || this.status === 'running') {
-             // Need a job_id to poll — just reload every 3s until done
              this.polling = true;
              this.pollByReload();
            }
@@ -137,79 +208,92 @@
 
         <div>
           <p class="text-sm font-semibold text-slate-900 dark:text-white">
-            <span x-show="status === 'completed'">تم تحليل الملف</span>
-            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">التحليل جارٍ…</span>
-            <span x-show="status === 'none'">لم يُحلَّل بعد</span>
-            <span x-show="status === 'failed' || status === 'error'">فشل التحليل</span>
+            <span x-show="status === 'completed'">✅ {{ t.analysis_completed or 'تم تحليل الملف' }}</span>
+            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">⏳ {{ t.analysis_running or 'التحليل جارٍ…' }}</span>
+            <span x-show="status === 'none'">📋 {{ t.analysis_not_started or 'لم يُحلَّل بعد' }}</span>
+            <span x-show="status === 'failed' || status === 'error'">❌ {{ t.analysis_failed or 'فشل التحليل' }}</span>
           </p>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            <span x-show="status === 'completed'">يمكنك الدردشة مع المحتوى والاستعلام عنه</span>
-            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">يتم فهرسة المحتوى لتتمكن من البحث والدردشة معه</span>
-            <span x-show="status === 'none'">حلّل الملف لتفعيل البحث والدردشة مع المحتوى</span>
-            <span x-show="status === 'failed' || status === 'error'">حدث خطأ أثناء التحليل</span>
+            <span x-show="status === 'completed'">{{ t.analysis_completed_desc or 'يمكنك الدردشة مع المحتوى والاستعلام عنه' }}</span>
+            <span x-show="status === 'pending' || status === 'running' || status === 'queued'">{{ t.analysis_running_desc or 'يتم فهرسة المحتوى لتتمكن من البحث والدردشة معه' }}</span>
+            <span x-show="status === 'none'">{{ t.analysis_not_started_desc or 'حلّل الملف لتفعيل البحث والدردشة مع المحتوى' }}</span>
+            <span x-show="status === 'failed' || status === 'error'">{{ t.analysis_failed_desc or 'حدث خطأ أثناء التحليل' }}</span>
           </p>
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <!-- View results -->
         <a x-show="status === 'completed' && analysisId"
            :href="'/intelligence/analyze/' + analysisId"
-           class="btn-primary text-sm">
+           class="btn-primary text-sm inline-flex items-center gap-1.5 px-3 py-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
           </svg>
-          عرض النتائج
+          {{ t.view_results or 'عرض النتائج' }}
         </a>
-        <!-- FIX: pass file_id so the search page pre-selects this file -->
+
+        <!-- Chat with content -->
         <a x-show="status === 'completed' && analysisId"
            :href="'/search?file_id={{ file.id }}'"
-           class="btn-secondary text-sm">
+           class="btn-secondary text-sm inline-flex items-center gap-1.5 px-3 py-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
           </svg>
-          دردشة مع المحتوى
+          {{ t.chat_with_content or 'دردشة مع المحتوى' }}
         </a>
+
         <!-- Analyze / retry -->
         <button x-show="status === 'none' || status === 'failed' || status === 'error'"
                 @click="startAnalysis()"
-                class="btn-primary text-sm">
+                class="btn-primary text-sm inline-flex items-center gap-1.5 px-3 py-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
           </svg>
-          <span x-text="status === 'failed' ? 'إعادة التحليل' : 'تحليل الملف'"></span>
+          <span x-text="status === 'failed' ? '{{ t.retry_analysis or 'إعادة التحليل' }}' : '{{ t.analyze_file or 'تحليل الملف' }}'"></span>
         </button>
+
         <span x-show="status === 'pending' || status === 'running' || status === 'queued'"
-              class="btn-secondary text-sm animate-pulse cursor-default">
-          جارٍ التحليل…
+              class="btn-secondary text-sm animate-pulse cursor-default inline-flex items-center gap-1.5 px-3 py-2">
+          <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          {{ t.analyzing or 'جارٍ التحليل…' }}
         </span>
       </div>
     </div>
   </div>
 
-  <!-- Data Preview -->
+  <!-- =========================================================
+       DATA PREVIEW
+  ========================================================== -->
+
   <div class="card overflow-hidden">
-    <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-      <h3 class="font-semibold text-slate-900 dark:text-white">معاينة البيانات</h3>
-      {% if preview.total_rows is defined %}
+    <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 flex flex-wrap items-center justify-between gap-2">
+      <h3 class="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+        <span>📊</span> {{ t.data_preview or 'معاينة البيانات' }}
+      </h3>
+      {% if preview and preview.total_rows is defined %}
       <span class="text-xs text-slate-500 dark:text-slate-400">
-        عرض أول 200 صف من {{ "{:,}".format(preview.total_rows) }} صف
+        {{ t.showing_first or 'عرض أول' }} 200 {{ t.rows_unit or 'صف' }} {{ t.of or 'من' }} {{ "{:,}".format(preview.total_rows) }} {{ t.rows_unit or 'صف' }}
       </span>
       {% endif %}
     </div>
 
-    {% if preview.error %}
+    <!-- ====== ERROR STATE ====== -->
+    {% if preview and preview.error %}
     <div class="p-8 text-center">
       <svg class="w-10 h-10 mx-auto text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
       </svg>
-      <p class="text-sm text-red-400 font-medium mb-1">تعذّر قراءة الملف</p>
+      <p class="text-sm text-red-400 font-medium mb-1">{{ t.preview_error or 'تعذّر قراءة الملف' }}</p>
       <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">{{ preview.error }}</p>
     </div>
 
-    {% elif preview.rows and preview.content_type == 'text' %}
-    {# Plain-text document (PDF text, DOCX paragraphs, etc.) — render as readable lines #}
-    {% set text_col = preview.columns[0] %}
+    <!-- ====== TEXT / DOCUMENT VIEW ====== -->
+    {% elif preview and preview.content_type == 'text' and preview.rows %}
+    {% set text_col = preview.columns[0] if preview.columns else 'content' %}
     <div class="overflow-auto max-h-[60vh] p-5 space-y-1.5 font-mono text-sm
                 text-slate-700 dark:text-slate-300 leading-relaxed">
       {% for row in preview.rows %}
@@ -217,25 +301,51 @@
         {{ row[text_col] if row[text_col] is not none else '' }}
       </p>
       {% endfor %}
-      {% if preview.total_rows > preview.rows | length %}
+      {% if preview.total_rows and preview.total_rows > preview.rows|length %}
       <p class="text-xs text-slate-400 pt-2 text-center">
-        … {{ "{:,}".format(preview.total_rows - (preview.rows | length)) }} سطر إضافي (اضغط "تحليل" لرؤية المحتوى كاملاً)
+        … {{ "{:,}".format(preview.total_rows - preview.rows|length) }} {{ t.additional_lines or 'سطر إضافي' }}
+        ({{ t.analyze_to_see_full or 'اضغط "تحليل الملف" لرؤية المحتوى كاملاً' }})
       </p>
       {% endif %}
     </div>
 
-    {% elif preview.rows %}
-    {# Tabular data — standard table view #}
+    <!-- ====== IMAGE VIEW ====== -->
+    {% elif preview and preview.type == 'image' %}
+    <div class="p-5 flex flex-col items-center">
+      <img 
+        src="/files/{{ file.id }}/thumbnail" 
+        alt="{{ file.original_name }}"
+        class="max-w-full max-h-[500px] rounded-lg object-contain"
+        loading="lazy"
+      />
+      <div class="text-center text-xs text-slate-400 mt-3">
+        {{ preview.width or '?' }} × {{ preview.height or '?' }} px
+        {% if file.meta and file.meta.image_size %}
+        · {{ file.meta.image_size }}
+        {% endif %}
+      </div>
+      <div class="flex gap-3 mt-4">
+        <a href="/files/{{ file.id }}/download" class="btn-primary text-sm px-4 py-2">
+          {{ t.download_image or 'تحميل الصورة' }}
+        </a>
+        <button @click="startAnalysis()" class="btn-secondary text-sm px-4 py-2" x-show="status === 'none' || status === 'failed'">
+          🔍 {{ t.extract_text_ocr or 'استخراج النصوص (OCR)' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- ====== TABULAR DATA VIEW ====== -->
+    {% elif preview and preview.rows %}
     <div class="overflow-auto max-h-[60vh]">
       <table class="w-full text-xs text-right">
-        <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0">
+        <thead class="bg-slate-50 dark:bg-slate-800/50 sticky top-0 z-10">
           <tr>
             <th class="px-3 py-2.5 text-slate-500 dark:text-slate-400 font-medium text-center w-10">#</th>
             {% for col in preview.columns %}
             <th class="px-3 py-2.5 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap text-start">
               {{ col }}
               {% if preview.dtypes and preview.content_type != 'text' %}
-              <span class="text-slate-400 dark:text-slate-500 ms-1 font-normal text-xs">{{ preview.dtypes[loop.index0] }}</span>
+              <span class="text-slate-400 dark:text-slate-500 ms-1 font-normal text-[10px]">{{ preview.dtypes[loop.index0] }}</span>
               {% endif %}
             </th>
             {% endfor %}
@@ -246,7 +356,7 @@
           <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
             <td class="px-3 py-2 text-slate-400 dark:text-slate-500 text-center">{{ loop.index }}</td>
             {% for col in preview.columns %}
-            <td class="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap max-w-[200px] truncate" title="{{ row[col] }}">
+            <td class="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap max-w-[200px] truncate" title="{{ row[col] if row[col] is not none else '' }}">
               {{ row[col] if row[col] is not none else '' }}
             </td>
             {% endfor %}
@@ -256,33 +366,221 @@
       </table>
     </div>
 
+    <!-- ====== EMPTY / UNSUPPORTED ====== -->
     {% else %}
-    {# Truly empty or unsupported — give a helpful nudge #}
     <div class="p-12 text-center">
       <svg class="w-12 h-12 mx-auto text-slate-200 dark:text-slate-700 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
       </svg>
-      <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">لا توجد بيانات جدولية للعرض</p>
+      <p class="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">{{ t.no_data_to_display or 'لا توجد بيانات جدولية للعرض' }}</p>
       <p class="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
         {% if file.format in ['pdf', 'docx', 'pptx'] %}
-        هذا الملف يحتوي محتوى مستندياً — استخدم زر <strong class="text-indigo-500">تحليل الملف</strong> أعلاه لاستخراج نصوصه والدردشة معه.
-        {% elif file.format in ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'gif'] %}
-        هذه صورة — استخدم زر <strong class="text-indigo-500">تحليل الملف</strong> لاستخراج النصوص منها بـ OCR.
+        📄 {{ t.document_content_hint or 'هذا الملف يحتوي محتوى مستندياً — استخدم زر' }}
+        <strong class="text-indigo-500">{{ t.analyze_file or 'تحليل الملف' }}</strong>
+        {{ t.to_extract_text_and_chat or 'للاستفادة من البحث والدردشة' }}
+        {% elif file.format in ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'gif', 'svg', 'ico'] %}
+        🖼️ {{ t.image_hint or 'هذه صورة — استخدم زر' }}
+        <strong class="text-indigo-500">{{ t.analyze_file or 'تحليل الملف' }}</strong>
+        {{ t.to_extract_text_ocr or 'لاستخراج النصوص منها عبر OCR' }}
+        {% elif file.format in ['zip', 'gz', 'tar', '7z', 'rar'] %}
+        📦 {{ t.archive_hint or 'هذا ملف مضغوط — قم بفك الضغط لعرض المحتويات' }}
         {% else %}
-        الملف فارغ أو لا يحتوي على بيانات قابلة للعرض.
+        {{ t.empty_or_unsupported_hint or 'الملف فارغ أو لا يحتوي على بيانات قابلة للعرض' }}
         {% endif %}
       </p>
+      <div class="flex gap-3 mt-4 justify-center">
+        <a href="/files/{{ file.id }}/download" class="btn-primary text-sm px-4 py-2">
+          {{ t.download or 'تحميل' }}
+        </a>
+        <button @click="startAnalysis()" class="btn-secondary text-sm px-4 py-2" x-show="status === 'none' || status === 'failed'">
+          🔍 {{ t.analyze_file or 'تحليل الملف' }}
+        </button>
+        <a href="/workspace?file_id={{ file.id }}" class="btn-secondary text-sm px-4 py-2">
+          {{ t.open_in_workspace or 'فتح في مساحة العمل' }}
+        </a>
+      </div>
     </div>
     {% endif %}
   </div>
 
+  <!-- =========================================================
+       FILE METADATA (عرض معلومات إضافية)
+  ========================================================== -->
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- معلومات الملف -->
+    <div class="card p-5">
+      <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+        <span>📋</span> {{ t.file_info or 'معلومات الملف' }}
+      </h4>
+      <dl class="space-y-2 text-sm">
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.file_name or 'اسم الملف' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium truncate max-w-[200px]" title="{{ file.original_name }}">
+            {{ file.original_name }}
+          </dd>
+        </div>
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.file_size or 'الحجم' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ file.size_human or '0 B' }}</dd>
+        </div>
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.file_format or 'الصيغة' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">.{{ file.format or '???' }}</dd>
+        </div>
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.mime_type or 'نوع MIME' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 text-xs">{{ file.mime_type or '-' }}</dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.storage_backend or 'مزود التخزين' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">☁️ {{ file.storage_backend or 'Supabase' }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- معلومات إضافية -->
+    {% if file.meta %}
+    <div class="card p-5">
+      <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+        <span>🔍</span> {{ t.additional_info or 'معلومات إضافية' }}
+      </h4>
+      <dl class="space-y-2 text-sm">
+        {% if file.meta.rows %}
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.rows or 'الصفوف' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ "{:,}".format(file.meta.rows) }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.columns %}
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.columns or 'الأعمدة' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ file.meta.columns }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.sheets %}
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.sheets or 'الشرائح' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ file.meta.sheets }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.pages %}
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.pages or 'الصفحات' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ file.meta.pages }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.slides %}
+        <div class="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.slides or 'الشرائح' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ file.meta.slides }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.word_count %}
+        <div class="flex justify-between">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.word_count or 'عدد الكلمات' }}</dt>
+          <dd class="text-slate-800 dark:text-slate-200 font-medium">{{ "{:,}".format(file.meta.word_count) }}</dd>
+        </div>
+        {% endif %}
+        {% if file.meta.imported_from_url %}
+        <div class="flex justify-between border-t border-slate-100 dark:border-slate-700 pt-2 mt-2">
+          <dt class="text-slate-500 dark:text-slate-400">{{ t.imported_from_url or 'مستورد من رابط' }}</dt>
+          <dd class="text-emerald-500">✅</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- =========================================================
+       TAGS
+  ========================================================== -->
+
+  {% if file.tags %}
+  <div class="card p-5">
+    <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+      <span>🏷️</span> {{ t.tags or 'العلامات' }}
+    </h4>
+    <div class="flex flex-wrap gap-2">
+      {% for tag in file.tags %}
+      <span class="text-xs px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium">
+        #{{ tag }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
+
 {% endblock %}
 
 {% block scripts %}
+
 <script>
-function fileDetail() {
-  return {}
+function fileDetailPage() {
+  return {
+    fileId: {{ file.id }},
+    isFavorite: {{ 'true' if file.is_favorite else 'false' }},
+    t: {},
+
+    async init() {
+      this.t = window._translations || {};
+    },
+
+    async toggleFavorite() {
+      try {
+        const response = await fetch(`/files/${this.fileId}/favorite`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        
+        if (response.ok) {
+          this.isFavorite = !this.isFavorite;
+          // تحديث النجمة
+          const star = document.querySelector('.text-lg span');
+          if (star) {
+            star.textContent = this.isFavorite ? '★' : '☆';
+            star.className = this.isFavorite ? 'text-yellow-400' : 'text-slate-300 dark:text-slate-600';
+          }
+        }
+      } catch (error) {
+        console.error('Error toggling favorite:', error);
+      }
+    },
+
+    async deleteFile() {
+      const confirmMsg = this.t?.confirm_delete || 'هل أنت متأكد من حذف هذا الملف؟';
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const response = await fetch(`/files/${this.fileId}/delete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+
+        if (response.ok) {
+          window.location.href = '/files';
+        } else {
+          throw new Error('Delete failed');
+        }
+      } catch (error) {
+        console.error('Delete error:', error);
+        alert('❌ فشل حذف الملف');
+      }
+    },
+
+    startAnalysis() {
+      // يتم التعامل معها من خلال x-data في التحليل
+    }
+  };
 }
 </script>
+
 {% endblock %}
