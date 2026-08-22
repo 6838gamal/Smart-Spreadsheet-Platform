@@ -234,7 +234,7 @@ class FileService:
         return db_file
 
     # ============================================================
-    # FILE RETRIEVAL
+    # FILE RETRIEVAL - محسنة
     # ============================================================
 
     async def get_file(self, file_id: int, user_id: int) -> File:
@@ -257,6 +257,17 @@ class FileService:
             raise NotFoundError(f"File with ID {file_id} not found")
         if f.owner_id != user_id:
             raise AuthorizationError("You are not authorized to access this file")
+        
+        # ✅ التحقق من وجود الملف في التخزين (مع تجاهل الأخطاء)
+        try:
+            if hasattr(self.storage, 'file_exists'):
+                exists = self.storage.file_exists(f.path)
+                if not exists:
+                    logger.warning(f"⚠️ File {file_id} ({f.original_name}) not found in storage at: {f.path}")
+                    # لا نرفع خطأ، فقط نسجل تحذير
+        except Exception as e:
+            logger.warning(f"⚠️ Could not check file existence for {file_id}: {e}")
+        
         return f
 
     async def get_file_content(self, file_id: int, user_id: int) -> Optional[bytes]:
@@ -373,7 +384,10 @@ class FileService:
         # Enrich with storage availability and thumbnail info
         for f in files:
             f.is_cached_locally = False
-            f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
+            try:
+                f.is_available_on_server = self.storage.file_exists(f.path) if hasattr(self.storage, 'file_exists') else False
+            except Exception:
+                f.is_available_on_server = False
             # Add thumbnail URL to meta for template
             if not f.meta:
                 f.meta = {}
@@ -444,7 +458,7 @@ class FileService:
         return await self.file_repo.update(f, meta=current_meta)
 
     # ============================================================
-    # FILE DELETION - IMPROVED (مع إصلاح ترتيب العمليات)
+    # FILE DELETION - IMPROVED
     # ============================================================
 
     async def delete_file(self, file_id: int, user_id: int, delete_local: bool = True) -> bool:
@@ -813,4 +827,4 @@ class FileService:
                 return await fp.read()
         except Exception as e:
             logger.error(f"Failed to read file from storage {file.path}: {e}")
-            return None
+            return Noneض
