@@ -186,49 +186,7 @@ async def upload_files(
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
-        referer = request.headers.get("Referer", "")
-        is_converter = "/converter" in referer
-        
-        # ✅ If single file and no errors, redirect to converter with file_id
-        if len(uploaded_files) == 1 and not errors:
-            file_id = uploaded_files[0].id
-            redirect_url = f"/converter?file_id={file_id}&uploaded=true"
-            
-            # Get updated file list for the panel
-            all_files, total = await svc.list_files(
-                user_id=current_user.id,
-                limit=100,
-                offset=0,
-                sort_by="created_at",
-                sort_order="desc"
-            )
-            all_files_dict = files_to_dict_list(all_files)
-            
-            # Render the updated files panel
-            html_content = templates.TemplateResponse(
-                request,
-                "workspace/_files_panel.html",
-                {
-                    "files": all_files_dict,
-                    "total": total,
-                    "lang": current_user.default_lang,
-                    "uploaded_count": 1,
-                    "has_errors": False,
-                }
-            )
-            
-            return HTMLResponse(
-                f'<div class="mb-2 text-sm text-emerald-400 text-center">✅ تم رفع الملف — جارٍ التوجيه إلى المحول…</div>'
-                f'<script>'
-                f'  console.log("🔄 Redirecting to:", "{redirect_url}");'
-                f'  setTimeout(function() {{'
-                f'    window.location.href = "{redirect_url}";'
-                f'  }}, 600);'
-                f'</script>'
-                + html_content.body.decode('utf-8')
-            )
-        
-        # Multiple files or errors - just refresh the list
+        # ✅ فقط تحديث القائمة بدون توجيه
         all_files, total = await svc.list_files(
             user_id=current_user.id,
             limit=100,
@@ -259,9 +217,7 @@ async def upload_files(
             + html_content.body.decode('utf-8')
         )
 
-    # Non-HTMX response
-    if len(uploaded_files) == 1:
-        return RedirectResponse(url=f"/converter?file_id={uploaded_files[0].id}&uploaded=true", status_code=302)
+    # ✅ Non-HTMX response - العودة إلى صفحة الملفات فقط
     return RedirectResponse(url="/files", status_code=302)
 
 
