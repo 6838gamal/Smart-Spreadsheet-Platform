@@ -312,24 +312,27 @@ async def import_from_url(
                     else:
                         filename += '.bin'
             
-            # ✅ إنشاء UploadFile بالطريقة الصحيحة
-            # إنشاء كائن BytesIO من المحتوى
-            file_obj = io.BytesIO(content)
+            # ✅ الطريقة الصحيحة: استخدام SpooledTemporaryFile
+            from tempfile import SpooledTemporaryFile
             
-            # ✅ إنشاء UploadFile بشكل صحيح (بدون content_type)
+            # إنشاء ملف مؤقت
+            temp_file = SpooledTemporaryFile(max_size=1024*1024)  # 1MB in memory, rest to disk
+            temp_file.write(content)
+            temp_file.seek(0)
+            
+            # ✅ إنشاء UploadFile مع headers
             upload_file = UploadFile(
                 filename=filename,
-                file=file_obj
+                file=temp_file,
+                headers={"content-type": content_type}
             )
-            # ✅ تعيين content_type كخاصية بعد الإنشاء
-            upload_file.content_type = content_type
-            
-            # ✅ تعيين الحجم
-            upload_file.size = len(content)
             
             # Upload to storage using existing service
             svc = FileService(db)
             db_file = await svc.upload(upload_file, current_user.id)
+            
+            # Close temp file
+            temp_file.close()
             
             # Add source URL to metadata
             if db_file.meta is None:
