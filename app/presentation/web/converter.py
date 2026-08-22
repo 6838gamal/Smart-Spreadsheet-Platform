@@ -6,7 +6,7 @@ import time
 import uuid
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Request, Form, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse, JSONResponse
@@ -24,7 +24,6 @@ from app.application.converter.service import ConverterService, EXPORT_FORMATS
 from app.application.converter.engine import DataEngine, DIRECT_PAIRS
 from app.application.converter.dto import ConvertRequestDTO
 from app.application.files.service import FileService
-from app.presentation.web.files import files_to_dict_list, file_to_dict
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -140,6 +139,18 @@ def _friendly_error(raw: str) -> tuple[str, str]:
     return "خطأ في التحويل", raw[:200] if raw else "حدث خطأ غير متوقع."
 
 
+def file_to_dict_simple(file: File) -> dict:
+    """Convert File object to dictionary for JSON serialization."""
+    return {
+        "id": file.id,
+        "original_name": file.original_name,
+        "format": file.format,
+        "size_bytes": file.size_bytes,
+        "size_human": file.size_human if hasattr(file, 'size_human') else f"{file.size_bytes} B" if file.size_bytes else "0 B",
+        "path": file.path,
+    }
+
+
 # ============================================================
 # CONVERTER PANEL (HTMX) - يستخدم داخل مساحة العمل
 # ============================================================
@@ -167,29 +178,26 @@ async def converter_panel(
                     if Path(f.path).exists():
                         files.append(f)
                 except Exception:
-                    pass
+                    # حتى لو فشل التحقق، أضف الملف
+                    files.append(f)
         
-        files_dict = files_to_dict_list(files)
+        # ✅ تحويل إلى قواميس بسيطة
+        files_dict = [file_to_dict_simple(f) for f in files]
         
         selected_file = None
         selected_file_id = file_id
         
-        # ✅ إذا كان هناك file_id في الـ URL، حاول العثور عليه
         if file_id:
             for f in files:
                 if f.id == file_id:
-                    selected_file = file_to_dict(f)
+                    selected_file = file_to_dict_simple(f)
                     selected_file_id = file_id
                     break
         
-        # ✅ إذا لم يتم العثور على الملف ولكن هناك ملفات، اختر الأول
-        if not selected_file_id and files:
-            selected_file_id = files[0].id
-            selected_file = file_to_dict(files[0])
-            logger.info(f"ℹ️ No file_id provided, using first file: {selected_file_id}")
-        
         # Get translations
         translations = get_texts(current_user.default_lang or 'ar')
+        
+        logger.info(f"📁 Files count: {len(files_dict)}, Selected: {selected_file_id}")
         
         return templates.TemplateResponse(
             request,
@@ -212,6 +220,7 @@ async def converter_panel(
             f"""
             <div class="p-4 text-center">
                 <p class="text-red-500">خطأ في تحميل لوحة التحويل: {str(e)}</p>
+                <p class="text-xs text-slate-400 mt-2">{traceback.format_exc()}</p>
             </div>
             """,
             status_code=500
@@ -242,9 +251,9 @@ async def converter_files_list(
                     if Path(f.path).exists():
                         files.append(f)
                 except Exception:
-                    pass
+                    files.append(f)
         
-        files_dict = files_to_dict_list(files)
+        files_dict = [file_to_dict_simple(f) for f in files]
         
         return templates.TemplateResponse(
             request,
