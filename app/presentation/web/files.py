@@ -186,7 +186,7 @@ async def upload_files(
             msg = " | ".join(errors) or "فشل الرفع"
             return HTMLResponse(f'<div class="text-red-400 text-sm text-center">{msg}</div>')
 
-        # ✅ فقط تحديث القائمة بدون توجيه
+        # ✅ تحديث القائمة فقط بدون توجيه
         all_files, total = await svc.list_files(
             user_id=current_user.id,
             limit=100,
@@ -195,6 +195,9 @@ async def upload_files(
             sort_order="desc"
         )
         all_files_dict = files_to_dict_list(all_files)
+        
+        # ✅ تحديد الملف المرفوع إذا كان ملف واحد
+        selected_file_id = uploaded_files[0].id if len(uploaded_files) == 1 else None
         
         html_content = templates.TemplateResponse(
             request,
@@ -205,6 +208,7 @@ async def upload_files(
                 "lang": current_user.default_lang,
                 "uploaded_count": len(uploaded_files),
                 "has_errors": len(errors) > 0,
+                "selected_file_id": selected_file_id,
             }
         )
         
@@ -212,12 +216,22 @@ async def upload_files(
         if errors:
             msg += f" ⚠️ ({len(errors)} أخطاء)"
         
+        # ✅ إرسال حدث لتحديث لوحة التحويل
+        if selected_file_id:
+            return HTMLResponse(
+                f'<div class="mb-2 text-sm text-emerald-400 text-center">{msg}</div>'
+                f'<script>'
+                f'  window.dispatchEvent(new CustomEvent("file-uploaded", {{ detail: {{ fileId: {selected_file_id} }} }}));'
+                f'</script>'
+                + html_content.body.decode('utf-8')
+            )
+        
         return HTMLResponse(
             f'<div class="mb-2 text-sm text-emerald-400 text-center">{msg}</div>'
             + html_content.body.decode('utf-8')
         )
 
-    # ✅ Non-HTMX response - العودة إلى صفحة الملفات فقط
+    # Non-HTMX response
     return RedirectResponse(url="/files", status_code=302)
 
 
