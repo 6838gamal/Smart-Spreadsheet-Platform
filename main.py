@@ -295,33 +295,29 @@ async def apply_column_migrations() -> None:
                 "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
             ))
             
-            # 2. ✅ إضافة أعمدة التخزين إلى جدول files (الإصلاح الرئيسي)
-            try:
-                storage_columns = [
-                    ("storage_key", "VARCHAR"),
-                    ("is_locally_stored", "BOOLEAN DEFAULT TRUE"),
-                    ("last_synced_at", "TIMESTAMP"),
-                    ("storage_backend", "VARCHAR"),
-                    ("storage_bucket", "VARCHAR"),
-                    ("storage_object_key", "VARCHAR"),
-                ]
-                
-                for col_name, col_type in storage_columns:
-                    await conn.execute(__import__("sqlalchemy").text(
-                        f"ALTER TABLE files "
-                        f"ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
-                    ))
-                    logger.info(f"✅ Column '{col_name}' added to files")
-                    
-                # إنشاء فهرس على storage_key لتحسين الأداء
+            # 2. ✅ أعمدة التخزين إلى جدول files (الإصلاح الرئيسي)
+            storage_columns = [
+                ("storage_key", "VARCHAR"),
+                ("is_locally_stored", "BOOLEAN DEFAULT TRUE"),
+                ("last_synced_at", "TIMESTAMP"),
+                ("storage_backend", "VARCHAR"),
+                ("storage_bucket", "VARCHAR"),
+                ("storage_object_key", "VARCHAR"),
+            ]
+            
+            for col_name, col_type in storage_columns:
                 await conn.execute(__import__("sqlalchemy").text(
-                    "CREATE INDEX IF NOT EXISTS ix_files_storage_key "
-                    "ON files (storage_key);"
+                    f"ALTER TABLE files "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
                 ))
-                logger.info("✅ Index created on files.storage_key")
+                logger.info(f"✅ Column '{col_name}' added to files")
                 
-            except Exception as e:
-                logger.warning(f"⚠️ Could not add storage columns to files: {e}")
+            # إنشاء فهرس على storage_key لتحسين الأداء
+            await conn.execute(__import__("sqlalchemy").text(
+                "CREATE INDEX IF NOT EXISTS ix_files_storage_key "
+                "ON files (storage_key);"
+            ))
+            logger.info("✅ Index created on files.storage_key")
             
             # 3. ✅ إصلاح extracted_tables - إضافة table_index
             try:
@@ -437,6 +433,36 @@ async def apply_column_migrations() -> None:
         logger.warning(f"⚠️ Column migration skipped: {exc}")
 
 
+def _check_storage_backend():
+    """Check and log storage backend status."""
+    from app.infrastructure.storage.local_storage import storage
+    
+    logger.info("=" * 60)
+    logger.info(f"📁 STORAGE BACKEND: {storage.backend_name.upper()}")
+    logger.info("=" * 60)
+    
+    if storage.backend_name == "local":
+        logger.error("=" * 60)
+        logger.error("⚠️⚠️⚠️  WARNING: USING LOCAL STORAGE  ⚠️⚠️⚠️")
+        logger.error("=" * 60)
+        logger.error("Files are stored on the local filesystem.")
+        logger.error("ALL FILES WILL BE LOST ON SERVER RESTART!")
+        logger.error("")
+        logger.error("To use persistent storage, add these environment variables:")
+        logger.error("  SUPABASE_URL=https://your-project.supabase.co")
+        logger.error("  SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIs...")
+        logger.error("  SUPABASE_STORAGE_BUCKET=files")
+        logger.error("  FILE_STORAGE_BACKEND=supabase")
+        logger.error("=" * 60)
+    else:
+        logger.info("=" * 60)
+        logger.info("✅✅✅ USING SUPABASE STORAGE ✅✅✅")
+        logger.info("=" * 60)
+        logger.info("Files are stored in Supabase Storage.")
+        logger.info("Files will survive server restarts!")
+        logger.info("=" * 60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: setup on startup, teardown on shutdown."""
@@ -451,16 +477,24 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
     
-    # إنشاء مجلدات المستخدمين (للمستخدمين الموجودين)
+    # ✅ إنشاء مجلد التخزين المحلي
+    storage_dir = getattr(settings, 'STORAGE_DIR', './storage')
+    os.makedirs(storage_dir, exist_ok=True)
+    
+    # ✅ إنشاء مجلدات المستخدمين
     try:
-        user_dir = os.path.join(settings.UPLOAD_DIR, "2")
-        os.makedirs(user_dir, exist_ok=True)
+        for user_id in [2]:  # admin user ID
+            user_dir = os.path.join(storage_dir, "uploads", str(user_id))
+            os.makedirs(user_dir, exist_ok=True)
         logger.info("✅ Upload directories created")
     except Exception as e:
         logger.warning(f"⚠️ Could not create user directories: {e}")
 
     # Seed default admin account
     await seed_admin()
+
+    # ✅ CHECK STORAGE BACKEND
+    _check_storage_backend()
 
     # Start keep-alive in a daemon thread (no asyncio task — survives event-loop pauses)
     threading.Thread(target=_start_keepalive, daemon=True, name="keepalive").start()
@@ -544,8 +578,6 @@ def create_app() -> FastAPI:
             # Call the HF models endpoint
             from app.presentation.api.v1.hf_api import list_hf_models
             from app.core.database import AsyncSessionLocal
-            from app.core.dependencies import get_current_user
-            from fastapi import Depends
             
             # We need to call it with dependencies
             async with AsyncSessionLocal() as db:
@@ -616,15 +648,20 @@ async def keepalive_status():
 @app.get("/api/v1/system/info")
 async def system_info():
     """General system information."""
+    from app.infrastructure.storage.local_storage import storage
+    
     return JSONResponse({
         "app_name": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "debug": settings.DEBUG,
         "environment": os.environ.get("ENVIRONMENT", "development"),
+        "storage_backend": storage.backend_name,
+        "storage_backend_configured": storage.backend_name == "supabase",
         "hf_configured": bool(settings.HUGGINGFACE_TOKEN),
         "external_apis_enabled": settings.EXTERNAL_APIS_ENABLED,
         "upload_dir": settings.UPLOAD_DIR,
         "output_dir": settings.OUTPUT_DIR,
+        "storage_dir": getattr(settings, 'STORAGE_DIR', './storage'),
     })
 
 
