@@ -420,7 +420,7 @@ class DataEngine:
         from img2table.document import Image as Img2Image
         from img2table.ocr import TesseractOCR
 
-        LANGS = "eng+ara+equ"
+        LANGS = "eng+ara"
 
         # ── 1. img2table table detection ─────────────────────────────────────
         try:
