@@ -1,5 +1,5 @@
 {# ============================================================
-   Panel: Convert — تحويل الملفات
+   Panel: Convert — لوحة التحويل (بسيطة، بدون wizard)
    ============================================================ #}
 
 {% set t = get_texts(lang if lang else 'ar') %}
@@ -25,1847 +25,592 @@
   'xml':     {'color':'purple',  'emoji':'🏷️', 'label':'XML'},
   'yaml':    {'color':'violet',  'emoji':'⚙️', 'label':'YAML'},
   'parquet': {'color':'fuchsia', 'emoji':'🗄️', 'label':'Parquet'},
-  'feather': {'color':'pink',    'emoji':'🗄️', 'label':'Feather'}
+  'feather': {'color':'pink',    'emoji':'🗄️', 'label':'Feather'},
+  'jpg':     {'color':'pink',    'emoji':'🖼️', 'label':'JPG'},
+  'jpeg':    {'color':'pink',    'emoji':'🖼️', 'label':'JPEG'},
+  'png':     {'color':'pink',    'emoji':'🖼️', 'label':'PNG'}
 } %}
 
 <div
-  x-data="convertWizard()"
+  x-data="convertPanel()"
   x-init="init()"
-  class="converter-wizard max-w-2xl mx-auto py-3 sm:py-5 px-1 sm:px-0"
+  class="max-w-2xl mx-auto py-2"
   dir="rtl"
 >
 
-  <!-- =========================================================
-       HEADER
-       ========================================================= -->
-
+  <!-- ═══════════════════════════════════════════════════════════
+       HEADER — الأداة + الملف
+  ═══════════════════════════════════════════════════════════ -->
   <div class="mb-5 px-1">
     <div class="flex items-center justify-between gap-3">
 
-      <div>
+      <div class="min-w-0">
         <div class="flex items-center gap-2 mb-1">
-          <span
-            class="w-8 h-8 rounded-xl flex items-center justify-center
-                   bg-brand-100 dark:bg-brand-900/30
-                   text-brand-600 dark:text-brand-400"
-          >
+          <span class="w-8 h-8 rounded-xl flex items-center justify-center
+                       bg-brand-100 dark:bg-brand-900/30
+                       text-brand-600 dark:text-brand-400">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-              />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
             </svg>
           </span>
-
-          <h2 class="text-base sm:text-lg font-bold text-slate-800 dark:text-white">
-            {{ t.converter or 'تحويل الملفات' }}
+          <h2 class="text-base sm:text-lg font-bold text-slate-800 dark:text-white truncate">
+            {{ t.converter or 'تحويل الملف' }}
           </h2>
         </div>
-
         <p class="text-xs sm:text-sm text-slate-400 dark:text-slate-500">
-          {{ t.converter_description or 'حوّل ملفاتك إلى الصيغة التي تحتاجها بسهولة' }}
+          {{ t.converter_description or 'حوّل ملفك بضغطة واحدة' }}
         </p>
       </div>
 
-      <!-- Overall progress -->
-      <div
-        x-show="fileId"
-        x-cloak
-        class="hidden sm:flex flex-col items-end gap-1"
-      >
-        <span
-          class="text-[10px] font-semibold text-slate-400 dark:text-slate-500"
-          x-text="overallLabel"
-        ></span>
-
+      <div x-show="fileId" x-cloak class="hidden sm:flex flex-col items-end gap-1">
+        <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500"
+              x-text="overallLabel"></span>
         <div class="w-24 h-1.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
-          <div
-            class="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500"
-            :style="'width:' + overallProgress + '%'"
-          ></div>
+          <div class="h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500"
+               :style="'width:' + overallProgress + '%'"></div>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- =========================================================
-       STEP 1 — SOURCE FILE
-       ========================================================= -->
 
-  <section class="wizard-card">
+  <!-- ═══════════════════════════════════════════════════════════
+       READY SUMMARY — الملف → الصيغة
+  ═══════════════════════════════════════════════════════════ -->
+  <div x-show="fileId && targetFormat && convStatus === 'idle'"
+       x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       class="ready-summary mb-4">
 
-    <!-- Header -->
-    <button
-      type="button"
-      class="wizard-header"
-      @click="if(step > 1 && !converting) goToStep(1)"
-    >
+    <div class="ready-file">
+      <div class="ready-file-icon">
+        <span x-text="sourceEmoji"></span>
+      </div>
+      <div class="min-w-0 flex-1 text-start">
+        <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {{ t.source_file or 'الملف المصدر' }}
+        </p>
+        <p class="text-sm font-bold text-slate-800 dark:text-white truncate mt-0.5"
+           x-text="fileName"></p>
+      </div>
+    </div>
 
-      <div
-        class="wizard-number"
-        :class="
-          fileId
-            ? 'wizard-number-done'
-            : 'wizard-number-active'
-        "
-      >
+    <div class="ready-arrow">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-6-6l6 6-6 6"/>
+      </svg>
+    </div>
 
-        <template x-if="fileId">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2.5"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </template>
+    <div class="ready-target">
+      <span class="text-lg" x-text="targetEmoji"></span>
+      <div class="text-start">
+        <p class="text-[10px] text-slate-400 dark:text-slate-500">
+          {{ t.target_format or 'صيغة الهدف' }}
+        </p>
+        <p class="text-sm font-bold text-brand-600 dark:text-brand-400"
+           x-text="'.' + targetFormat.toUpperCase()"></p>
+      </div>
+    </div>
 
-        <template x-if="!fileId">
-          <span>١</span>
-        </template>
+  </div>
 
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CONVERT BUTTON
+  ═══════════════════════════════════════════════════════════ -->
+  <button
+    type="button"
+    x-show="convStatus !== 'success'"
+    @click="startConvert()"
+    :disabled="!fileId || !targetFormat || converting"
+    class="convert-button mb-4"
+    :class="converting ? 'convert-button-loading' : ''"
+  >
+    <span x-show="!converting" class="flex items-center justify-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+      </svg>
+      <span>{{ t.start_conversion or 'بدء التحويل' }}</span>
+    </span>
+    <span x-show="converting" x-cloak class="flex items-center justify-center gap-2">
+      <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+      </svg>
+      <span>{{ t.converting or 'جارٍ التحويل…' }}</span>
+    </span>
+  </button>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       PROGRESS
+  ═══════════════════════════════════════════════════════════ -->
+  <div x-show="convStatus === 'progress'" x-cloak
+       x-transition:enter="transition ease-out duration-300"
+       x-transition:enter-start="opacity-0 translate-y-2 scale-[.98]"
+       x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+       class="progress-card">
+
+    <div class="flex items-start gap-3">
+      <div class="progress-spinner-wrapper">
+        <svg class="progress-spinner" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" opacity=".2"/>
+          <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
       </div>
 
       <div class="flex-1 min-w-0 text-start">
-
-        <div class="flex items-center gap-2">
-
-          <p
-            class="text-sm font-bold"
-            :class="
-              fileId
-                ? 'text-brand-600 dark:text-brand-400'
-                : 'text-slate-800 dark:text-white'
-            "
-          >
-            {{ t.select_file or 'اختر الملف المصدر' }}
-          </p>
-
-          <span
-            x-show="fileId"
-            x-cloak
-            class="hidden sm:inline-flex px-1.5 py-0.5 rounded-md
-                   bg-emerald-50 dark:bg-emerald-900/20
-                   text-emerald-600 dark:text-emerald-400
-                   text-[10px] font-bold"
-          >
-            {{ t.complete or 'مكتمل' }}
-          </span>
-
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-bold text-slate-800 dark:text-white">
+              {{ t.converting or 'جارٍ تحويل الملف' }}
+            </p>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mt-1 truncate" x-text="fileName"></p>
+          </div>
+          <div class="progress-percent">
+            <span x-text="currentPct"></span>
+            <span class="text-sm">%</span>
+          </div>
         </div>
+      </div>
+    </div>
 
-        <p
-          x-show="fileId"
-          x-cloak
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1 truncate"
-          x-text="fileName"
-        ></p>
+    <div class="mt-5">
+      <div class="progress-track">
+        <div class="progress-fill" :style="'width:' + currentPct + '%'">
+          <div class="progress-shimmer"></div>
+        </div>
+      </div>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[10px] font-medium text-slate-400 dark:text-slate-500"
+              x-text="progressMsg || '{{ t.processing or 'جاري المعالجة…' }}'"></span>
+        <span class="text-[10px] font-bold text-brand-500" x-text="currentPct + '%'"></span>
+      </div>
+    </div>
 
-        <p
-          x-show="!fileId"
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
-        >
-          {{ t.please_select_file or 'اختر ملفاً للبدء' }}
-        </p>
+    <div class="progress-current-stage">
+      <span class="stage-pulse"></span>
+      <div class="text-start min-w-0">
+        <p class="text-xs font-bold text-brand-700 dark:text-brand-300" x-text="stageLabel"></p>
+      </div>
+    </div>
 
-        <p
-          x-show="fileId && step === 1"
-          x-cloak
-          class="text-xs text-amber-600 dark:text-amber-400 mt-1"
-        >
-          💡 {{ t.file_selected or 'يمكنك تغيير الملف المحدد من القائمة أدناه' }}
-        </p>
-
+    <div class="progress-stages">
+      <div class="progress-stage" :class="stageState('read')">
+        <span class="stage-dot">
+          <template x-if="stageIsDone('read')">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </template>
+          <template x-if="!stageIsDone('read')"><span>1</span></template>
+        </span>
+        <span>{{ t.reading or 'قراءة' }}</span>
       </div>
 
-      <template x-if="fileId && step > 1">
-        <svg
-          class="w-4 h-4 text-slate-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
-      </template>
+      <div class="stage-line"></div>
 
+      <div class="progress-stage" :class="stageState('analyze')">
+        <span class="stage-dot">
+          <template x-if="stageIsDone('analyze')">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </template>
+          <template x-if="!stageIsDone('analyze')"><span>2</span></template>
+        </span>
+        <span>{{ t.analyzing or 'تحليل' }}</span>
+      </div>
+
+      <div class="stage-line"></div>
+
+      <div class="progress-stage" :class="stageState('convert')">
+        <span class="stage-dot">
+          <template x-if="stageIsDone('convert')">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </template>
+          <template x-if="!stageIsDone('convert')"><span>3</span></template>
+        </span>
+        <span>{{ t.converting_short or 'تحويل' }}</span>
+      </div>
+
+      <div class="stage-line"></div>
+
+      <div class="progress-stage" :class="stageState('save')">
+        <span class="stage-dot">
+          <template x-if="stageIsDone('save')">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+            </svg>
+          </template>
+          <template x-if="!stageIsDone('save')"><span>4</span></template>
+        </span>
+        <span>{{ t.saving or 'حفظ' }}</span>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SUCCESS
+  ═══════════════════════════════════════════════════════════ -->
+  <div x-show="convStatus === 'success'" x-cloak
+       x-transition:enter="transition ease-out duration-350"
+       x-transition:enter-start="opacity-0 translate-y-3 scale-[.97]"
+       x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+       class="success-card">
+
+    <div class="success-header">
+      <div class="success-icon">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <div class="flex-1 text-start min-w-0">
+        <p class="font-bold text-sm">{{ t.conversion_success or 'تم التحويل بنجاح!' }}</p>
+        <p class="text-emerald-100 text-xs mt-0.5 truncate" x-text="successSubtitle"></p>
+      </div>
+    </div>
+
+    <div class="success-body">
+      <div class="grid grid-cols-3 gap-2">
+        <div class="stat-card">
+          <p class="stat-value" x-text="successData.rows ?? '—'"></p>
+          <p class="stat-label">{{ t.rows or 'صف' }}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-value" x-text="successData.cols ?? '—'"></p>
+          <p class="stat-label">{{ t.columns or 'عمود' }}</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-value"
+             x-text="successData.duration_ms ? (successData.duration_ms / 1000).toFixed(1) + 's' : '—'"></p>
+          <p class="stat-label">{{ t.time or 'المدة' }}</p>
+        </div>
+      </div>
+
+      <a :href="'/converter/download/' + encodeURIComponent(successData.filename)"
+         class="download-button">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        {{ t.download_converted or 'تحميل الملف الناتج' }}
+      </a>
+
+      <button type="button" @click="resetConvert()" class="new-conversion-button">
+        {{ t.new_conversion or 'تحويل ملف آخر' }}
+        <span>←</span>
+      </button>
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       ERROR
+  ═══════════════════════════════════════════════════════════ -->
+  <div x-show="convStatus === 'error'" x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       class="error-card">
+
+    <div class="flex items-start gap-3">
+      <div class="error-icon">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
+        </svg>
+      </div>
+      <div class="flex-1 min-w-0 text-start">
+        <p class="text-sm font-bold text-red-700 dark:text-red-400" x-text="errorTitle"></p>
+        <p class="text-xs mt-1 leading-relaxed text-red-500 dark:text-red-400/80"
+           x-text="errorDetail"></p>
+      </div>
+    </div>
+
+    <button type="button" @click="retryConvert()" class="retry-button">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 4v5h5M20 20v-5h-5M5.5 9A7 7 0 0117 5.5L20 9M18.5 15A7 7 0 017 18.5L4 15"/>
+      </svg>
+      {{ t.retry_conversion or 'حاول مجدداً' }}
     </button>
 
-    <!-- ✅ Body - قائمة الملفات (جلب من API) -->
-    <div
-      x-show="step === 1"
-      x-transition:enter="transition ease-out duration-200"
-      x-transition:enter-start="opacity-0 -translate-y-1"
-      x-transition:enter-end="opacity-100 translate-y-0"
-      class="wizard-body"
-    >
-
-      <!-- ✅ حالة التحميل -->
-      <div x-show="loading" class="text-center py-4">
-        <svg class="animate-spin w-6 h-6 mx-auto text-brand-500" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-        </svg>
-        <p class="text-xs text-slate-400 mt-2">جاري تحميل الملفات...</p>
-      </div>
-
-      <!-- ✅ قائمة الملفات -->
-      <div x-show="!loading && filesList.length > 0" class="space-y-1.5 max-h-64 overflow-y-auto pe-1 custom-scrollbar">
-
-        <template x-for="f in filesList" :key="f.id">
-          <button
-            type="button"
-            @click="pickFile(f.id, f.original_name, f.format)"
-            class="w-full flex items-center gap-3 p-2.5 rounded-lg border-2 transition-all duration-150 text-start group hover:bg-slate-50 dark:hover:bg-slate-800/30"
-            :class="
-              f.id === fileId
-                ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/20 shadow-sm'
-                : 'border-transparent hover:border-slate-200 dark:hover:border-slate-700'
-            "
-          >
-
-            <!-- File icon -->
-            <span
-              class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-              :class="'bg-' + (fmtMeta[f.format]?.color || 'slate') + '-100 dark:bg-' + (fmtMeta[f.format]?.color || 'slate') + '-900/30'"
-            >
-              <span x-text="fmtMeta[f.format]?.emoji || '📄'"></span>
-            </span>
-
-            <!-- Information -->
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-slate-800 dark:text-white truncate" x-text="f.original_name"></p>
-              <div class="flex items-center gap-2 mt-0.5">
-                <span class="text-[11px] text-slate-400 dark:text-slate-500" x-text="f.format?.toUpperCase() || '???'"></span>
-                <span class="text-[11px] text-slate-300 dark:text-slate-600">•</span>
-                <span class="text-[11px] text-slate-400 dark:text-slate-500" x-text="formatSize(f.size_bytes)"></span>
-              </div>
-            </div>
-
-            <!-- Selection indicator -->
-            <div
-              class="flex-shrink-0 w-5 h-5 rounded-full border-2 transition-all duration-200 flex items-center justify-center"
-              :class="
-                f.id === fileId
-                  ? 'border-brand-500 bg-brand-500'
-                  : 'border-slate-300 dark:border-slate-600 group-hover:border-brand-400'
-              "
-            >
-              <svg
-                x-show="f.id === fileId"
-                class="w-3 h-3 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="3"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            </div>
-
-          </button>
-        </template>
-
-      </div>
-
-      <!-- ✅ عدد الملفات -->
-      <div x-show="!loading && filesList.length > 0" class="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">
-        <span x-text="filesList.length"></span> ملف متاح
-      </div>
-
-      <!-- ✅ حالة فارغة -->
-      <div x-show="!loading && filesList.length === 0" class="empty-state text-center py-8">
-
-        <div class="empty-icon text-4xl mb-3">
-          📂
-        </div>
-
-        <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">
-          {{ t.no_files or 'لا يوجد ملفات' }}
-        </p>
-
-        <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          {{ t.please_select_file or 'ارفع ملفاً من صفحة الملفات أولاً' }}
-        </p>
-
-        <a
-          href="/files"
-          class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
-        >
-          <span>←</span>
-          {{ t.files or 'الذهاب إلى صفحة الملفات' }}
-        </a>
-
-      </div>
-
-    </div>
-
-  </section>
-
-  <!-- Connector -->
-  <div
-    class="wizard-connector"
-    :class="fileId ? 'wizard-connector-active' : ''"
-  ></div>
-
-  <!-- =========================================================
-       STEP 2 — TARGET FORMAT
-       ========================================================= -->
-
-  <section class="wizard-card">
-
-    <!-- Header -->
-    <div class="wizard-header cursor-default">
-
-      <div
-        class="wizard-number"
-        :class="
-          targetFormat
-            ? 'wizard-number-done'
-            : fileId
-              ? 'wizard-number-active'
-              : 'wizard-number-locked'
-        "
-      >
-
-        <template x-if="targetFormat">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2.5"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </template>
-
-        <template x-if="!targetFormat">
-          <span>٢</span>
-        </template>
-
-      </div>
-
-      <div class="flex-1 text-start">
-
-        <div class="flex items-center justify-between">
-          <p
-            class="text-sm font-bold"
-            :class="
-              targetFormat
-                ? 'text-brand-600 dark:text-brand-400'
-                : fileId
-                  ? 'text-slate-800 dark:text-white'
-                  : 'text-slate-400 dark:text-slate-600'
-            "
-          >
-            {{ t.target_format or 'صيغة الهدف' }}
-          </p>
-
-          <button
-            x-show="fileId && step === 2"
-            @click="if(!converting) goToStep(1)"
-            class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            ← {{ t.back or 'تغيير الملف' }}
-          </button>
-        </div>
-
-        <p
-          x-show="targetFormat"
-          x-cloak
-          class="text-xs text-brand-600 dark:text-brand-400 mt-1 font-semibold"
-          x-text="'.' + targetFormat.toUpperCase() + ' ✓'"
-        ></p>
-
-        <p
-          x-show="!targetFormat && fileId"
-          x-cloak
-          class="text-xs text-amber-600 dark:text-amber-400 mt-1 font-semibold"
-        >
-          ⚠️ {{ t.please_select_file or 'الرجاء اختيار صيغة من القائمة أدناه' }}
-        </p>
-
-        <p
-          x-show="!fileId"
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
-        >
-          {{ t.select_file or 'اختر ملفاً أولاً' }}
-        </p>
-
-      </div>
-
-    </div>
-
-    <!-- Format selection -->
-    <div
-      x-show="fileId"
-      x-transition:enter="transition ease-out duration-250"
-      x-transition:enter-start="opacity-0 translate-y-2"
-      x-transition:enter-end="opacity-100 translate-y-0"
-      class="wizard-body"
-    >
-
-      {% set fmt_groups = [
-        ('📊', 'جداول', ['xlsx','xls','xlsm','xlsb','ods','csv','tsv']),
-        ('📄', 'وثائق', ['pdf','docx','doc','html']),
-        ('🗄️', 'بيانات', ['json','xml','yaml','parquet','feather'])
-      ] %}
-
-      <div class="space-y-5">
-
-        {% for group_icon, group_label, group_fmts in fmt_groups %}
-
-        {% set visible_fmts = [] %}
-
-        {% for fmt in group_fmts %}
-          {% if fmt in export_formats %}
-            {% set _ = visible_fmts.append(fmt) %}
-          {% endif %}
-        {% endfor %}
-
-        {% if visible_fmts %}
-
-        <div>
-
-          <div class="flex items-center gap-2 mb-2.5">
-
-            <span class="text-sm">
-              {{ group_icon }}
-            </span>
-
-            <p class="text-[11px] font-bold uppercase tracking-wide
-                      text-slate-400 dark:text-slate-500">
-              {{ group_label }}
-            </p>
-
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-            {% for fmt in visible_fmts %}
-
-            {% set m = fmt_meta.get(fmt, {
-              'color':'slate',
-              'emoji':'📄',
-              'label':fmt|upper
-            }) %}
-
-            <button
-              type="button"
-              @click="selectFormat('{{ fmt }}')"
-              class="format-card"
-              :class="
-                targetFormat === '{{ fmt }}'
-                  ? 'format-card-selected'
-                  : ''
-              "
-            >
-
-              <span
-                class="format-icon bg-{{ m.color }}-100
-                       dark:bg-{{ m.color }}-900/30"
-              >
-                {{ m.emoji }}
-              </span>
-
-              <span class="flex-1 text-start">
-
-                <span
-                  class="block text-xs font-bold"
-                  :class="
-                    targetFormat === '{{ fmt }}'
-                      ? 'text-white'
-                      : 'text-slate-700 dark:text-slate-200'
-                  "
-                >
-                  .{{ fmt|upper }}
-                </span>
-
-                <span
-                  class="block text-[10px] mt-0.5"
-                  :class="
-                    targetFormat === '{{ fmt }}'
-                      ? 'text-white/70'
-                      : 'text-slate-400 dark:text-slate-500'
-                  "
-                >
-                  {{ m.label }}
-                </span>
-
-              </span>
-
-              <span
-                x-show="targetFormat === '{{ fmt }}'"
-                x-cloak
-                class="format-selected-check"
-              >
-                <svg
-                  class="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="3"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </span>
-
-            </button>
-
-            {% endfor %}
-
-          </div>
-
-        </div>
-
-        {% endif %}
-        {% endfor %}
-
-      </div>
-
-    </div>
-
-    <!-- رسالة عند عدم وجود ملف -->
-    <div x-show="!fileId" class="wizard-body">
-      <p class="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-        {{ t.select_file_first or 'اختر ملفاً أولاً لعرض الصيغ المتاحة' }}
-      </p>
-    </div>
-
-  </section>
-
-  <!-- Connector -->
-  <div
-    class="wizard-connector"
-    :class="targetFormat ? 'wizard-connector-active' : ''"
-  ></div>
-
-  <!-- =========================================================
-       STEP 3 — CONVERSION
-       ========================================================= -->
-
-  <section class="wizard-card">
-
-    <!-- Header -->
-    <div class="wizard-header cursor-default">
-
-      <div
-        class="wizard-number"
-        :class="
-          convStatus === 'success'
-            ? 'wizard-number-success'
-            : fileId && targetFormat
-              ? 'wizard-number-active'
-              : 'wizard-number-locked'
-        "
-      >
-
-        <template x-if="convStatus === 'success'">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2.5"
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </template>
-
-        <template x-if="convStatus !== 'success'">
-          <span>٣</span>
-        </template>
-
-      </div>
-
-      <div class="flex-1 text-start">
-
-        <div class="flex items-center justify-between">
-          <p
-            class="text-sm font-bold"
-            :class="
-              convStatus === 'success'
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : fileId && targetFormat
-                  ? 'text-slate-800 dark:text-white'
-                  : 'text-slate-400 dark:text-slate-600'
-            "
-          >
-            {{ t.convert or 'التحويل' }}
-          </p>
-
-          <button
-            x-show="fileId && targetFormat && step === 3 && convStatus !== 'success'"
-            @click="if(!converting) goToStep(2)"
-            class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            ← {{ t.change or 'تغيير الصيغة' }}
-          </button>
-        </div>
-
-        <p
-          x-show="convStatus === 'success'"
-          x-cloak
-          class="text-xs text-emerald-500 dark:text-emerald-400 mt-1"
-        >
-          ✅ {{ t.conversion_success or 'اكتملت العملية بنجاح' }}
-        </p>
-
-        <p
-          x-show="convStatus !== 'success' && fileId && targetFormat"
-          x-cloak
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
-        >
-          {{ t.file_ready or 'الملف جاهز للتحويل' }}
-        </p>
-
-        <p
-          x-show="!fileId || !targetFormat"
-          class="text-xs text-slate-400 dark:text-slate-500 mt-1"
-        >
-          {{ t.select_file or 'اختر ملفاً وصيغة للبدء' }}
-        </p>
-
-      </div>
-
-    </div>
-
-    <div class="wizard-body space-y-3">
-
-      <!-- READY SUMMARY -->
-      <div
-        x-show="fileId && targetFormat && step === 3 && convStatus === 'idle'"
-        x-cloak
-        x-transition:enter="transition ease-out duration-200"
-        x-transition:enter-start="opacity-0 translate-y-1"
-        x-transition:enter-end="opacity-100 translate-y-0"
-        class="ready-summary"
-      >
-
-        <div class="ready-file">
-
-          <div class="ready-file-icon">
-            <span x-text="sourceEmoji"></span>
-          </div>
-
-          <div class="min-w-0 flex-1 text-start">
-
-            <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {{ t.source_file or 'الملف المصدر' }}
-            </p>
-
-            <p class="text-sm font-bold text-slate-800 dark:text-white truncate mt-0.5" x-text="fileName"></p>
-
-          </div>
-
-        </div>
-
-        <div class="ready-arrow">
-
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-6-6l6 6-6 6"/>
-          </svg>
-
-        </div>
-
-        <div class="ready-target">
-
-          <span class="text-lg" x-text="targetEmoji"></span>
-
-          <div class="text-start">
-
-            <p class="text-[10px] text-slate-400 dark:text-slate-500">
-              {{ t.target_format or 'صيغة الهدف' }}
-            </p>
-
-            <p class="text-sm font-bold text-brand-600 dark:text-brand-400" x-text="'.' + targetFormat.toUpperCase()"></p>
-
-          </div>
-
-        </div>
-
-      </div>
-
-      <!-- CONVERT BUTTON -->
-      <button
-        type="button"
-        @click="startConvert()"
-        :disabled="!fileId || !targetFormat || converting"
-        class="convert-button"
-        :class="converting ? 'convert-button-loading' : ''"
-      >
-
-        <span x-show="!converting" class="flex items-center justify-center gap-2">
-
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-          </svg>
-
-          <span>{{ t.start_conversion or 'بدء التحويل' }}</span>
-
-        </span>
-
-        <span x-show="converting" x-cloak class="flex items-center justify-center gap-2">
-
-          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-
-          <span>{{ t.converting or 'جارٍ التحويل…' }}</span>
-
-        </span>
-
-      </button>
-
-      <!-- PROGRESS CARD -->
-      <div
-        x-show="convStatus === 'progress'"
-        x-cloak
-        x-transition:enter="transition ease-out duration-300"
-        x-transition:enter-start="opacity-0 translate-y-2 scale-[.98]"
-        x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-        class="progress-card"
-      >
-
-        <!-- Top -->
-        <div class="flex items-start gap-3">
-
-          <div class="progress-spinner-wrapper">
-
-            <svg class="progress-spinner" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" opacity=".2"/>
-              <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            </svg>
-
-          </div>
-
-          <div class="flex-1 min-w-0 text-start">
-
-            <div class="flex items-center justify-between gap-3">
-
-              <div class="min-w-0">
-
-                <p class="text-sm font-bold text-slate-800 dark:text-white">
-                  {{ t.converting or 'جارٍ تحويل الملف' }}
-                </p>
-
-                <p class="text-xs text-slate-400 dark:text-slate-500 mt-1 truncate" x-text="fileName"></p>
-
-              </div>
-
-              <div class="progress-percent">
-                <span x-text="currentPct"></span>
-                <span class="text-sm">%</span>
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        <!-- Progress bar -->
-        <div class="mt-5">
-
-          <div class="progress-track">
-
-            <div class="progress-fill" :style="'width:' + currentPct + '%'">
-              <div class="progress-shimmer"></div>
-            </div>
-
-          </div>
-
-          <div class="flex items-center justify-between mt-2">
-
-            <span class="text-[10px] font-medium text-slate-400 dark:text-slate-500" x-text="progressMsg || '{{ t.processing or 'جاري المعالجة…' }}'"></span>
-
-            <span class="text-[10px] font-bold text-brand-500" x-text="currentPct + '%'"></span>
-
-          </div>
-
-        </div>
-
-        <!-- Current stage -->
-        <div class="progress-current-stage">
-
-          <span class="stage-pulse"></span>
-
-          <div class="text-start min-w-0">
-
-            <p class="text-xs font-bold text-brand-700 dark:text-brand-300" x-text="stageLabel"></p>
-
-            <p x-show="processed !== null && total !== null" x-cloak class="text-[10px] text-brand-500/80 dark:text-brand-400/80 mt-0.5">
-              <span x-text="processed"></span>
-              {{ t.of or 'من' }}
-              <span x-text="total"></span>
-              {{ t.items or 'عنصر' }}
-            </p>
-
-          </div>
-
-        </div>
-
-        <!-- Stages -->
-        <div class="progress-stages">
-
-          <div class="progress-stage" :class="stageState('read')">
-            <span class="stage-dot">
-              <template x-if="stageIsDone('read')">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-                </svg>
-              </template>
-              <template x-if="!stageIsDone('read')"><span>1</span></template>
-            </span>
-            <span>{{ t.reading or 'قراءة' }}</span>
-          </div>
-
-          <div class="stage-line"></div>
-
-          <div class="progress-stage" :class="stageState('analyze')">
-            <span class="stage-dot">
-              <template x-if="stageIsDone('analyze')">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-                </svg>
-              </template>
-              <template x-if="!stageIsDone('analyze')"><span>2</span></template>
-            </span>
-            <span>{{ t.analyzing or 'تحليل' }}</span>
-          </div>
-
-          <div class="stage-line"></div>
-
-          <div class="progress-stage" :class="stageState('convert')">
-            <span class="stage-dot">
-              <template x-if="stageIsDone('convert')">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-                </svg>
-              </template>
-              <template x-if="!stageIsDone('convert')"><span>3</span></template>
-            </span>
-            <span>{{ t.converting_short or 'تحويل' }}</span>
-          </div>
-
-          <div class="stage-line"></div>
-
-          <div class="progress-stage" :class="stageState('save')">
-            <span class="stage-dot">
-              <template x-if="stageIsDone('save')">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-width="3" d="M5 13l4 4L19 7"/>
-                </svg>
-              </template>
-              <template x-if="!stageIsDone('save')"><span>4</span></template>
-            </span>
-            <span>{{ t.saving or 'حفظ' }}</span>
-          </div>
-
-        </div>
-
-      </div>
-
-      <!-- SUCCESS -->
-      <div
-        x-show="convStatus === 'success'"
-        x-cloak
-        x-transition:enter="transition ease-out duration-350"
-        x-transition:enter-start="opacity-0 translate-y-3 scale-[.97]"
-        x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-        class="success-card"
-      >
-
-        <div class="success-header">
-
-          <div class="success-icon">
-
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-            </svg>
-
-          </div>
-
-          <div class="flex-1 text-start min-w-0">
-
-            <p class="font-bold text-sm">{{ t.conversion_success or 'تم التحويل بنجاح!' }}</p>
-
-            <p class="text-emerald-100 text-xs mt-0.5 truncate" x-text="successSubtitle"></p>
-
-          </div>
-
-        </div>
-
-        <div class="success-body">
-
-          <div class="grid grid-cols-3 gap-2">
-
-            <div class="stat-card">
-              <p class="stat-value" x-text="successData.rows ?? '—'"></p>
-              <p class="stat-label">{{ t.rows or 'صف' }}</p>
-            </div>
-
-            <div class="stat-card">
-              <p class="stat-value" x-text="successData.cols ?? '—'"></p>
-              <p class="stat-label">{{ t.columns or 'عمود' }}</p>
-            </div>
-
-            <div class="stat-card">
-              <p class="stat-value" x-text="successData.duration_ms ? (successData.duration_ms / 1000).toFixed(1) + 's' : '—'"></p>
-              <p class="stat-label">{{ t.time or 'المدة' }}</p>
-            </div>
-
-          </div>
-
-          <a :href="'/converter/download/' + encodeURIComponent(successData.filename)" class="download-button">
-
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-
-            {{ t.download_converted or 'تحميل الملف الناتج' }}
-
-          </a>
-
-          <button type="button" @click="resetConvert()" class="new-conversion-button">
-            {{ t.new_conversion or 'تحويل ملف آخر' }}
-            <span>←</span>
-          </button>
-
-        </div>
-
-      </div>
-
-      <!-- ERROR -->
-      <div
-        x-show="convStatus === 'error'"
-        x-cloak
-        x-transition:enter="transition ease-out duration-200"
-        x-transition:enter-start="opacity-0 translate-y-1"
-        x-transition:enter-end="opacity-100 translate-y-0"
-        class="error-card"
-      >
-
-        <div class="flex items-start gap-3">
-
-          <div class="error-icon">
-
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 1.732z"/>
-            </svg>
-
-          </div>
-
-          <div class="flex-1 min-w-0 text-start">
-
-            <p class="text-sm font-bold text-red-700 dark:text-red-400" x-text="errorTitle"></p>
-
-            <p class="text-xs mt-1 leading-relaxed text-red-500 dark:text-red-400/80" x-text="errorDetail"></p>
-
-          </div>
-
-        </div>
-
-        <button type="button" @click="retryConvert()" class="retry-button">
-
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.5 9A7 7 0 0117 5.5L20 9M18.5 15A7 7 0 017 18.5L4 15"/>
-          </svg>
-
-          {{ t.retry_conversion or 'حاول مجدداً' }}
-
-        </button>
-
-      </div>
-
-    </div>
-
-  </section>
+  </div>
 
 </div>
 
-<!-- ============================================================
+
+<!-- ═══════════════════════════════════════════════════════════
      STYLES
-     ============================================================ -->
-
+═══════════════════════════════════════════════════════════ -->
 <style>
-/* Card base */
-.wizard-card {
-  @apply bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm;
-}
-
-.wizard-header {
-  @apply w-full flex items-center gap-3 p-3 sm:p-4 transition-colors text-left;
-}
-
-.wizard-header:not(.cursor-default):hover {
-  @apply bg-slate-50 dark:bg-slate-800/30;
-}
-
-.wizard-number {
-  @apply w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all flex-shrink-0;
-}
-
-.wizard-number-active {
-  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
-}
-
-.wizard-number-done {
-  @apply bg-emerald-500 text-white;
-}
-
-.wizard-number-success {
-  @apply bg-emerald-500 text-white;
-}
-
-.wizard-number-locked {
-  @apply bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500;
-}
-
-.wizard-body {
-  @apply px-3 pb-4 sm:px-4 sm:pb-5;
-}
-
-.wizard-connector {
-  @apply w-0.5 h-5 mx-auto transition-colors duration-300;
-}
-
-.wizard-connector-active {
-  @apply bg-brand-400 dark:bg-brand-500;
-}
-
-/* File cards */
-.file-card {
-  @apply w-full flex items-center gap-3 p-2.5 rounded-lg transition-all border-2 border-transparent;
-}
-
-.file-card:hover {
-  @apply bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700;
-}
-
-.file-card-selected {
-  @apply bg-brand-50 dark:bg-brand-900/20 border-brand-300 dark:border-brand-600;
-}
-
-.file-icon {
-  @apply w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0;
-}
-
-.file-check {
-  @apply w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center transition-all;
-}
-
-/* Format cards */
-.format-card {
-  @apply flex items-center gap-2.5 p-2.5 rounded-lg border-2 transition-all text-left;
-  @apply border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600;
-  @apply bg-white dark:bg-slate-800/50;
-}
-
-.format-card-selected {
-  @apply border-brand-500 dark:border-brand-400 bg-brand-50 dark:bg-brand-900/20;
-}
-
-.format-icon {
-  @apply w-7 h-7 rounded-lg flex items-center justify-center text-xs flex-shrink-0;
-}
-
-.format-selected-check {
-  @apply w-4 h-4 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0;
-}
-
-/* Convert button */
 .convert-button {
   @apply w-full py-3 px-4 rounded-xl font-bold text-white text-sm transition-all;
   @apply bg-gradient-to-r from-brand-500 to-violet-500 hover:from-brand-600 hover:to-violet-600;
   @apply disabled:opacity-50 disabled:cursor-not-allowed;
 }
+.convert-button-loading { @apply opacity-80 cursor-wait; }
 
-.convert-button-loading {
-  @apply opacity-80 cursor-wait;
+.ready-summary {
+  @apply flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-700/50;
 }
+.ready-file { @apply flex items-center gap-3 flex-1 min-w-0; }
+.ready-file-icon {
+  @apply w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-sm flex-shrink-0;
+}
+.ready-arrow { @apply text-slate-400 dark:text-slate-500 flex-shrink-0; }
+.ready-target { @apply flex items-center gap-2 flex-shrink-0; }
 
-/* Progress */
 .progress-card {
   @apply bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-slate-700/50 space-y-4;
 }
-
-.progress-track {
-  @apply w-full h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700;
-}
-
+.progress-track { @apply w-full h-1.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700; }
 .progress-fill {
   @apply h-full rounded-full bg-gradient-to-r from-brand-500 to-violet-500 transition-all duration-500 relative;
 }
-
 .progress-shimmer {
-  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer;
+  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent;
+  animation: shimmer 2s infinite;
 }
-
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
-
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-.progress-percent {
-  @apply text-xl font-bold text-brand-600 dark:text-brand-400 flex items-end gap-0.5;
-}
-
+.progress-percent { @apply text-xl font-bold text-brand-600 dark:text-brand-400 flex items-end gap-0.5; }
 .progress-spinner-wrapper {
   @apply w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0;
 }
-
-.progress-spinner {
-  @apply w-6 h-6 text-brand-500 animate-spin;
-}
-
+.progress-spinner { @apply w-6 h-6 text-brand-500 animate-spin; }
 .progress-current-stage {
   @apply flex items-center gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700/50;
 }
-
-.stage-pulse {
-  @apply w-2 h-2 rounded-full bg-brand-500 animate-pulse flex-shrink-0;
-}
-
-.progress-stages {
-  @apply flex items-center justify-between gap-1 pt-1;
-}
-
+.stage-pulse { @apply w-2 h-2 rounded-full bg-brand-500 animate-pulse flex-shrink-0; }
+.progress-stages { @apply flex items-center justify-between gap-1 pt-1; }
 .progress-stage {
   @apply flex flex-col items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 transition-colors flex-1;
 }
-
-.progress-stage.active {
-  @apply text-brand-600 dark:text-brand-400;
-}
-
-.progress-stage.done {
-  @apply text-emerald-500 dark:text-emerald-400;
-}
-
+.progress-stage.active { @apply text-brand-600 dark:text-brand-400; }
+.progress-stage.done { @apply text-emerald-500 dark:text-emerald-400; }
 .stage-dot {
   @apply w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold transition-all;
   @apply bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400;
 }
+.progress-stage.active .stage-dot { @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30; }
+.progress-stage.done .stage-dot { @apply bg-emerald-500 text-white; }
+.stage-line { @apply flex-1 h-0.5 bg-slate-200 dark:bg-slate-700; }
+.progress-stage.done + .stage-line { @apply bg-emerald-400 dark:bg-emerald-500; }
 
-.progress-stage.active .stage-dot {
-  @apply bg-brand-500 text-white shadow-lg shadow-brand-500/30;
-}
-
-.progress-stage.done .stage-dot {
-  @apply bg-emerald-500 text-white;
-}
-
-.stage-line {
-  @apply flex-1 h-0.5 bg-slate-200 dark:bg-slate-700;
-}
-
-.progress-stage.done + .stage-line {
-  @apply bg-emerald-400 dark:bg-emerald-500;
-}
-
-/* Success */
 .success-card {
   @apply bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/50 overflow-hidden;
 }
-
-.success-header {
-  @apply flex items-center gap-3 p-4 bg-emerald-100/50 dark:bg-emerald-800/20;
-}
-
+.success-header { @apply flex items-center gap-3 p-4 bg-emerald-100/50 dark:bg-emerald-800/20; }
 .success-icon {
   @apply w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 text-white;
 }
-
-.success-body {
-  @apply p-4 space-y-3;
-}
-
+.success-body { @apply p-4 space-y-3; }
 .stat-card {
   @apply bg-white dark:bg-slate-800/50 rounded-lg p-2.5 text-center border border-emerald-200/50 dark:border-emerald-700/30;
 }
-
-.stat-value {
-  @apply text-sm font-bold text-emerald-700 dark:text-emerald-300;
-}
-
-.stat-label {
-  @apply text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5;
-}
-
+.stat-value { @apply text-sm font-bold text-emerald-700 dark:text-emerald-300; }
+.stat-label { @apply text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5; }
 .download-button {
   @apply flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg font-medium text-sm transition-all;
   @apply bg-emerald-600 hover:bg-emerald-700 text-white;
 }
-
 .new-conversion-button {
   @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
   @apply text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50;
 }
 
-/* Error */
 .error-card {
   @apply bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-700/50 p-4 space-y-3;
 }
-
 .error-icon {
   @apply w-8 h-8 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 text-white;
 }
-
 .retry-button {
   @apply flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-sm font-medium transition-all;
   @apply bg-red-100 dark:bg-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/50;
 }
 
-/* Empty state */
-.empty-state {
-  @apply flex flex-col items-center justify-center py-6;
-}
-
-.empty-icon {
-  @apply w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center text-2xl;
-}
-
-/* Ready summary */
-.ready-summary {
-  @apply flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-700/50;
-}
-
-.ready-file {
-  @apply flex items-center gap-3 flex-1 min-w-0;
-}
-
-.ready-file-icon {
-  @apply w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-sm flex-shrink-0;
-}
-
-.ready-arrow {
-  @apply text-slate-400 dark:text-slate-500 flex-shrink-0;
-}
-
-.ready-target {
-  @apply flex items-center gap-2 flex-shrink-0;
-}
-
-/* Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 dark:bg-slate-600 rounded-full;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-400 dark:bg-slate-500;
-}
-
-/* Alpine.js x-cloak */
-[x-cloak] {
-  display: none !important;
-}
+[x-cloak] { display: none !important; }
 </style>
 
-<!-- ============================================================
+
+<!-- ═══════════════════════════════════════════════════════════
      ALPINE.JS
-     ============================================================ -->
-
+═══════════════════════════════════════════════════════════ -->
 <script>
-function convertWizard() {
-
+function convertPanel() {
   return {
 
-    /* --------------------------------------------------------
-       State
-       -------------------------------------------------------- */
-
-    step: 1,
-
+    /* ─── State ──────────────────────────────────────────── */
     fileId: {{ selected_file_id or 'null' }},
+    fileName: {% if selected_file %}{{ selected_file.original_name | tojson }}{% else %}''{% endif %},
+    fileFormat: {% if selected_file %}{{ (selected_file.format or '') | tojson }}{% else %}''{% endif %},
 
-    fileName: {% if selected_file_id %}
-      {{ files
-        | selectattr("id", "equalto", selected_file_id)
-        | map(attribute="original_name")
-        | first
-        | default("")
-        | tojson
-      }}
-    {% else %}
-      ''
-    {% endif %},
+    targetFormat: {{ (target_format or '') | tojson }},
 
-    fileFormat: {% if selected_file_id %}
-      {{ files
-        | selectattr("id", "equalto", selected_file_id)
-        | map(attribute="format")
-        | first
-        | default("")
-        | tojson
-      }}
-    {% else %}
-      ''
-    {% endif %},
-
-    targetFormat: '',
+    toolId: {{ (tool_id or '') | tojson }},
 
     convStatus: 'idle',
-
     converting: false,
-
     currentPct: 0,
-
     progressMsg: '',
-
     stage: 'read',
-
-    processed: null,
-
-    total: null,
-
     successData: {},
-
     successSubtitle: '',
-
     errorTitle: '',
-
     errorDetail: '',
-
     eventSource: null,
 
-    // ✅ قائمة الملفات
-    filesList: [],
-
-    // ✅ حالة التحميل
-    loading: false,
-
-    // ✅ تعريف fmtMeta في Alpine
-    fmtMeta: {
-      'xlsx':    { emoji: '📊', color: 'emerald' },
-      'xls':     { emoji: '📊', color: 'emerald' },
-      'xlsm':    { emoji: '📊', color: 'emerald' },
-      'xlsb':    { emoji: '📊', color: 'emerald' },
-      'ods':     { emoji: '🗂️', color: 'teal' },
-      'csv':     { emoji: '📋', color: 'blue' },
-      'tsv':     { emoji: '📋', color: 'cyan' },
-      'pdf':     { emoji: '📄', color: 'red' },
-      'docx':    { emoji: '📝', color: 'indigo' },
-      'doc':     { emoji: '📝', color: 'indigo' },
-      'html':    { emoji: '🌐', color: 'orange' },
-      'json':    { emoji: '🔣', color: 'yellow' },
-      'xml':     { emoji: '🏷️', color: 'purple' },
-      'yaml':    { emoji: '⚙️', color: 'violet' },
-      'parquet': { emoji: '🗄️', color: 'fuchsia' },
-      'feather': { emoji: '🗄️', color: 'pink' }
-    },
-
-
-    /* --------------------------------------------------------
-       Initialization
-       -------------------------------------------------------- */
-
+    /* ─── Init ───────────────────────────────────────────── */
     init() {
+      console.log('🔄 [convertPanel] init');
+      console.log('📌 fileId:', this.fileId, 'targetFormat:', this.targetFormat, 'toolId:', this.toolId);
 
-      console.log('🔄 [convertWizard] init() called');
-      console.log('📌 fileId from template:', this.fileId);
-
-      // ✅ جلب الملفات من API
-      this.fetchFiles();
-
-      // ✅ مراقبة تغييرات fileId
-      this.$watch('fileId', (newVal) => {
-        console.log('🔄 fileId changed to:', newVal);
-        if (newVal) {
-          this.step = 2;
-          if (!this.targetFormat) {
-            this.targetFormat = this.getDefaultTargetFormat();
-          }
-        }
-      });
-
-      // ✅ استماع لحدث رفع الملف من مساحة العمل
-      window.addEventListener('file-uploaded', (event) => {
-        const fileId = event.detail.fileId;
-        console.log('📂 File uploaded event received in converter:', fileId);
-        
-        // ✅ إعادة تحميل قائمة الملفات
-        this.fetchFiles();
-        
-        // ✅ جلب معلومات الملف من السيرفر
-        fetch(`/api/files/${fileId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.file) {
-                    this.pickFile(
-                        data.file.id,
-                        data.file.original_name,
-                        data.file.format
-                    );
-                    console.log('✅ File loaded into converter:', data.file.original_name);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error fetching file:', error);
-            });
-      });
-
-      // ✅ If there's a file selected, go to step 2
-      if (this.fileId) {
-        this.step = 2;
-        this.targetFormat = this.getDefaultTargetFormat();
-        this.convStatus = 'idle';
-        console.log('✅ File pre-selected, step:', this.step, 'target:', this.targetFormat);
-      } else {
-        this.step = 1;
-        this.targetFormat = '';
-        this.convStatus = 'idle';
-        console.log('ℹ️ No file selected, step:', this.step);
+      // إذا لم تكن هناك صيغة هدف، احسبها من الأداة
+      if (!this.targetFormat && this.toolId) {
+        this.targetFormat = this._targetFromTool(this.toolId);
       }
 
-    },
-
-
-    /* --------------------------------------------------------
-       جلب الملفات من API
-       -------------------------------------------------------- */
-
-    fetchFiles() {
-      this.loading = true;
-      
-      fetch('/api/files/list')
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            this.filesList = data.files || [];
-            console.log('✅ Files loaded:', this.filesList.length);
-          } else {
-            console.error('❌ Failed to load files:', data.error);
-          }
-        })
-        .catch(error => {
-          console.error('❌ Error fetching files:', error);
-        })
-        .finally(() => {
-          this.loading = false;
-        });
-    },
-
-
-    /* --------------------------------------------------------
-       تنسيق حجم الملف
-       -------------------------------------------------------- */
-
-    formatSize(bytes) {
-      if (!bytes) return '0 B';
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      let size = bytes;
-      let unitIndex = 0;
-      while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex++;
-      }
-      return size.toFixed(1) + ' ' + units[unitIndex];
-    },
-
-
-    /* --------------------------------------------------------
-       Default target
-       -------------------------------------------------------- */
-
-    getDefaultTargetFormat() {
-
-      const formats = {{ export_formats | tojson }};
-
-      console.log('📋 getDefaultTargetFormat - formats:', formats);
-
-      if (!Array.isArray(formats) || !formats.length) {
-        console.warn('⚠️ No export formats available');
-        return '';
-      }
-
-      if (formats.includes('xlsx')) {
-        console.log('✅ Using default format: xlsx');
-        return 'xlsx';
-      }
-
-      const defaultFormat = formats[0] || '';
-      console.log('✅ Using first available format:', defaultFormat);
-      return defaultFormat;
-
-    },
-
-
-    /* --------------------------------------------------------
-       File selection
-       -------------------------------------------------------- */
-
-    pickFile(id, name, format) {
-
-      console.log('📂 pickFile() called:', { id, name, format });
-
-      if (this.converting) {
-        console.warn('⚠️ Cannot pick file while converting');
-        return;
-      }
-
-      this.fileId = id;
-      this.fileName = name;
-      this.fileFormat = format;
-
-      if (!this.targetFormat) {
-        this.targetFormat = this.getDefaultTargetFormat();
-        console.log('🔄 Set default target format:', this.targetFormat);
-      }
-
-      this.convStatus = 'idle';
-      this.currentPct = 0;
-      this.progressMsg = '';
-      this.stage = 'read';
-      this.processed = null;
-      this.total = null;
-      this.errorTitle = '';
-      this.errorDetail = '';
-
-      this.step = 2;
-
-      console.log('✅ File picked, step:', this.step, 'target:', this.targetFormat);
-
-    },
-
-
-    /* --------------------------------------------------------
-       Format selection
-       -------------------------------------------------------- */
-
-    selectFormat(format) {
-
-      console.log('🎯 selectFormat() called:', format);
-
+      // إذا كان هناك ملف + صيغة، ابدأ تلقائياً؟ لا — انتظر ضغط المستخدم
       if (!this.fileId) {
-        console.warn('⚠️ Cannot select format: no file selected');
-        return;
+        console.warn('⚠️ No file selected');
       }
-
-      if (this.converting) {
-        console.warn('⚠️ Cannot select format while converting');
-        return;
-      }
-
-      this.targetFormat = format;
-      this.convStatus = 'idle';
-
-      this.step = 3;
-
-      console.log('✅ Format selected:', this.targetFormat, 'step:', this.step);
-
-    },
-
-
-    /* --------------------------------------------------------
-       Step navigation
-       -------------------------------------------------------- */
-
-    goToStep(step) {
-
-      console.log('🔀 goToStep() called:', step);
-
-      if (this.converting) {
-        console.warn('⚠️ Cannot navigate while converting');
-        return;
-      }
-
-      if (step === 1) {
-        this.step = 1;
-        console.log('↩️ Back to step 1');
-        return;
-      }
-
-      if (step === 2 && this.fileId) {
-        this.step = 2;
-        this.convStatus = 'idle';
-        console.log('↩️ Back to step 2');
-        return;
-      }
-
-      if (step === 3 && this.fileId && this.targetFormat) {
-        this.step = 3;
-        console.log('↩️ Forward to step 3');
-      }
-
-    },
-
-
-    /* --------------------------------------------------------
-       Overall progress
-       -------------------------------------------------------- */
-
-    get overallProgress() {
-
-      if (!this.fileId) {
-        return 0;
-      }
-
       if (!this.targetFormat) {
-        return 33;
+        console.warn('⚠️ No target format resolved');
       }
-
-      if (this.convStatus === 'success') {
-        return 100;
-      }
-
-      return 66;
-
     },
 
-
-    get overallLabel() {
-
-      if (this.convStatus === 'success') {
-        return 'اكتمل';
-      }
-
-      if (this.targetFormat) {
-        return 'جاهز للتحويل';
-      }
-
-      if (this.fileId) {
-        return 'اختر الصيغة';
-      }
-
-      return 'البدء';
-
-    },
-
-
-    /* --------------------------------------------------------
-       Format metadata
-       -------------------------------------------------------- */
-
-    get formatMeta() {
-
-      return {
-        xlsx:    { emoji: '📊' },
-        xls:     { emoji: '📊' },
-        xlsm:    { emoji: '📊' },
-        xlsb:    { emoji: '📊' },
-        ods:     { emoji: '🗂️' },
-        csv:     { emoji: '📋' },
-        tsv:     { emoji: '📋' },
-        pdf:     { emoji: '📄' },
-        docx:    { emoji: '📝' },
-        doc:     { emoji: '📝' },
-        html:    { emoji: '🌐' },
-        json:    { emoji: '🔣' },
-        xml:     { emoji: '🏷️' },
-        yaml:    { emoji: '⚙️' },
-        parquet: { emoji: '🗄️' },
-        feather: { emoji: '🗄️' }
+    _targetFromTool(toolId) {
+      const map = {
+        'excel-to-pdf':  'pdf',
+        'pdf-to-excel':  'xlsx',
+        'word-to-excel': 'xlsx',
+        'pdf-to-word':   'docx',
+        'excel-to-word': 'docx',
+        'word-to-pdf':   'pdf',
+        'img-to-pdf':    'pdf',
+        'xls-to-pdf':    'pdf',
+        'png-to-pdf':    'pdf',
+        'png-to-excel':  'xlsx',
+        'xlsx-to-pdf':   'pdf',
+        'ppt-to-pdf':    'pdf',
+        'pdf-to-jpg':    'jpg',
+        'jpg-to-excel':  'xlsx',
+        'pdf-to-png':    'png',
+        'excel-to-csv':  'csv',
+        'jpg-to-pdf':    'pdf',
+        'excel-to-jpg':  'jpg',
       };
-
+      return map[toolId] || '';
     },
 
-
+    /* ─── Computed ──────────────────────────────────────── */
     get sourceEmoji() {
-
-      return this.formatMeta[this.fileFormat]?.emoji || '📄';
-
+      const m = { xlsx:'📊', xls:'📊', xlsm:'📊', xlsb:'📊', ods:'🗂️',
+        csv:'📋', tsv:'📋', pdf:'📄', docx:'📝', doc:'📝', html:'🌐',
+        json:'🔣', xml:'🏷️', yaml:'⚙️', parquet:'🗄️', feather:'🗄️',
+        jpg:'🖼️', jpeg:'🖼️', png:'🖼️' };
+      return m[this.fileFormat] || '📄';
     },
-
 
     get targetEmoji() {
-
-      return this.formatMeta[this.targetFormat]?.emoji || '📄';
-
+      const m = { xlsx:'📊', xls:'📊', csv:'📋', pdf:'📄', docx:'📝',
+        html:'🌐', json:'🔣', xml:'🏷️', parquet:'🗄️', feather:'🗄️',
+        jpg:'🖼️', png:'🖼️' };
+      return m[this.targetFormat] || '📄';
     },
 
+    get overallProgress() {
+      if (!this.fileId) return 0;
+      if (!this.targetFormat) return 50;
+      if (this.convStatus === 'success') return 100;
+      if (this.convStatus === 'progress') return this.currentPct;
+      return 66;
+    },
 
-    /* --------------------------------------------------------
-       Stage labels
-       -------------------------------------------------------- */
+    get overallLabel() {
+      if (this.convStatus === 'success') return 'اكتمل';
+      if (this.convStatus === 'progress') return 'جاري التحويل';
+      if (this.targetFormat) return 'جاهز للتحويل';
+      return 'البدء';
+    },
 
     get stageLabel() {
-
       const labels = {
         read: 'جاري قراءة الملف…',
         analyze: 'جاري تحليل البيانات…',
         convert: 'جاري تحويل البيانات…',
         save: 'جاري إنشاء وحفظ الملف…'
       };
-
       return labels[this.stage] || 'جاري المعالجة…';
-
     },
 
-
-    /* --------------------------------------------------------
-       Stage ranking
-       -------------------------------------------------------- */
-
-    stageRank(stage) {
-
-      const ranks = {
-        read: 1,
-        analyze: 2,
-        convert: 3,
-        save: 4
-      };
-
-      return ranks[stage] || 1;
-
-    },
-
-
-    currentStageRank() {
-
-      return this.stageRank(this.stage);
-
-    },
-
-
-    stageIsDone(stage) {
-
-      return (
-        this.currentStageRank() >
-        this.stageRank(stage)
-      );
-
-    },
-
-
-    stageState(stage) {
-
-      if (this.stageIsDone(stage)) {
-        return 'done';
-      }
-
-      if (this.stage === stage) {
-        return 'active';
-      }
-
+    /* ─── Stage helpers ─────────────────────────────────── */
+    stageRank(s) { return ({ read:1, analyze:2, convert:3, save:4 })[s] || 1; },
+    currentStageRank() { return this.stageRank(this.stage); },
+    stageIsDone(s) { return this.currentStageRank() > this.stageRank(s); },
+    stageState(s) {
+      if (this.stageIsDone(s)) return 'done';
+      if (this.stage === s) return 'active';
       return '';
-
     },
 
-
-    /* --------------------------------------------------------
-       Convert
-       -------------------------------------------------------- */
-
+    /* ─── Start conversion ──────────────────────────────── */
     startConvert() {
+      if (!this.fileId || !this.targetFormat || this.converting) return;
 
-      if (!this.fileId || !this.targetFormat || this.converting) {
-        console.warn('⚠️ Cannot start conversion:', {
-          fileId: this.fileId,
-          targetFormat: this.targetFormat,
-          converting: this.converting
-        });
-        return;
-      }
-
-      console.log('🚀 Starting conversion...');
+      console.log('🚀 Starting conversion...', { fileId: this.fileId, targetFormat: this.targetFormat });
 
       this.closeEventSource();
-
       this.converting = true;
       this.convStatus = 'progress';
       this.currentPct = 0;
       this.progressMsg = 'بدء التحويل…';
       this.stage = 'read';
-      this.processed = null;
-      this.total = null;
       this.errorTitle = '';
       this.errorDetail = '';
-      this.step = 3;
 
       const params = new URLSearchParams({
         file_id: String(this.fileId),
         target_format: String(this.targetFormat)
       });
-
       const url = `/converter/convert-sse?${params.toString()}`;
-      console.log('📡 SSE URL:', url);
 
       try {
-
         const es = new EventSource(url);
         this.eventSource = es;
 
-        es.addEventListener('progress', event => {
+        es.addEventListener('progress', ev => {
           try {
-            const d = JSON.parse(event.data || '{}');
-            if (typeof d.pct === 'number') {
-              this.currentPct = Math.max(0, Math.min(100, d.pct));
-            }
+            const d = JSON.parse(ev.data || '{}');
+            if (typeof d.pct === 'number') this.currentPct = Math.max(0, Math.min(100, d.pct));
             if (d.msg) this.progressMsg = d.msg;
-            if (d.stage) {
-              const validStages = ['read', 'analyze', 'convert', 'save'];
-              if (validStages.includes(d.stage)) {
-                this.stage = d.stage;
-              }
+            if (d.stage && ['read','analyze','convert','save'].includes(d.stage)) {
+              this.stage = d.stage;
             }
-            if (d.processed !== undefined && d.processed !== null) {
-              this.processed = d.processed;
-            }
-            if (d.total !== undefined && d.total !== null) {
-              this.total = d.total;
-            }
-          } catch (error) {
-            console.warn('Invalid progress event:', error);
+          } catch (e) {
+            console.warn('Invalid progress event', e);
           }
         });
 
-        es.addEventListener('done', event => {
+        es.addEventListener('done', ev => {
           let d = {};
-          try {
-            d = JSON.parse(event.data || '{}');
-          } catch (error) {
-            this.finishWithError(
-              'استجابة غير صالحة',
-              'تعذر قراءة نتيجة التحويل.'
-            );
-            this.closeEventSource();
-            return;
-          }
+          try { d = JSON.parse(ev.data || '{}'); }
+          catch { this.finishWithError('استجابة غير صالحة', 'تعذر قراءة نتيجة التحويل.'); return; }
 
           this.closeEventSource();
           this.converting = false;
@@ -1874,55 +619,37 @@ function convertWizard() {
             this.currentPct = 100;
             this.stage = 'save';
             this.progressMsg = 'اكتمل التحويل بنجاح';
-
             setTimeout(() => {
               this.successData = d;
-              this.successSubtitle =
-                `${d.src_name || this.fileName} → .${
-                  (d.target_fmt || this.targetFormat).toUpperCase()
-                }`;
+              this.successSubtitle = `${d.src_name || this.fileName} → .${(d.target_fmt || this.targetFormat).toUpperCase()}`;
               this.convStatus = 'success';
-              console.log('✅ Conversion completed successfully!');
             }, 350);
           } else {
             this.errorTitle = d.title || 'خطأ في التحويل';
             this.errorDetail = d.detail || 'تعذر إتمام عملية التحويل.';
             this.convStatus = 'error';
-            console.error('❌ Conversion failed:', this.errorTitle);
           }
         });
 
         es.onerror = () => {
           this.closeEventSource();
           this.converting = false;
-
           if (this.convStatus !== 'success') {
             this.errorTitle = 'انقطع الاتصال';
             this.errorDetail = 'تعذر الاتصال بخدمة التحويل. تحقق من الاتصال وحاول مجدداً.';
             this.convStatus = 'error';
-            console.error('❌ SSE connection error');
           }
         };
-
-      } catch (error) {
+      } catch (e) {
         this.converting = false;
         this.errorTitle = 'تعذر بدء التحويل';
         this.errorDetail = 'حدث خطأ أثناء إنشاء اتصال التحويل. حاول مجدداً.';
         this.convStatus = 'error';
-        console.error('❌ Start conversion error:', error);
       }
-
     },
 
-
-    /* --------------------------------------------------------
-       Retry
-       -------------------------------------------------------- */
-
     retryConvert() {
-      if (!this.fileId || !this.targetFormat) {
-        return;
-      }
+      if (!this.fileId || !this.targetFormat) return;
       this.convStatus = 'idle';
       this.currentPct = 0;
       this.stage = 'read';
@@ -1930,11 +657,6 @@ function convertWizard() {
       this.errorDetail = '';
       this.startConvert();
     },
-
-
-    /* --------------------------------------------------------
-       Error helper
-       -------------------------------------------------------- */
 
     finishWithError(title, detail) {
       this.closeEventSource();
@@ -1944,26 +666,12 @@ function convertWizard() {
       this.convStatus = 'error';
     },
 
-
-    /* --------------------------------------------------------
-       Close SSE
-       -------------------------------------------------------- */
-
     closeEventSource() {
       if (this.eventSource) {
-        try {
-          this.eventSource.close();
-        } catch (error) {
-          console.warn('Failed to close EventSource:', error);
-        }
+        try { this.eventSource.close(); } catch {}
         this.eventSource = null;
       }
     },
-
-
-    /* --------------------------------------------------------
-       Reset
-       -------------------------------------------------------- */
 
     resetConvert() {
       this.closeEventSource();
@@ -1971,22 +679,16 @@ function convertWizard() {
       this.currentPct = 0;
       this.progressMsg = '';
       this.stage = 'read';
-      this.processed = null;
-      this.total = null;
       this.convStatus = 'idle';
       this.successData = {};
       this.successSubtitle = '';
       this.errorTitle = '';
       this.errorDetail = '';
-      this.fileId = null;
-      this.fileName = '';
-      this.fileFormat = '';
-      this.targetFormat = '';
-      this.step = 1;
-      console.log('🔄 Reset conversion state');
-    }
+
+      // إبلاغ index.html للعودة إلى Screen 2 (اختيار ملف آخر لنفس الأداة)
+      window.dispatchEvent(new CustomEvent('converter-reset'));
+    },
 
   };
-
 }
 </script>
