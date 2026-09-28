@@ -3,7 +3,7 @@
 
 FROM python:3.12-slim
 
-# System libraries required at runtime + fonts for PDF generation
+# System libraries required at runtime + fonts + OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl-dev \
@@ -13,11 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-extra \
     fonts-liberation \
     fontconfig \
-    # ─── OCR (Tesseract) — if you need img2table/pytesseract ──
+    # ─── OCR (Tesseract) — Arabic + English + OSD ─────────────
     tesseract-ocr \
     tesseract-ocr-ara \
     tesseract-ocr-eng \
-    tesseract-ocr-equ \
+    tesseract-ocr-osd \
     libgl1 \
     libglib2.0-0 \
     # ─── Cairo/Pango (for PyMuPDF/cairosvg/weasyprint) ────────
