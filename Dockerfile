@@ -3,11 +3,31 @@
 
 FROM python:3.12-slim
 
-# System libraries required at runtime
+# System libraries required at runtime + fonts for PDF generation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    # ─── PDF / Arabic font support ────────────────────────────
+    fonts-dejavu \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
+    fonts-liberation \
+    fontconfig \
+    # ─── OCR (Tesseract) — if you need img2table/pytesseract ──
+    tesseract-ocr \
+    tesseract-ocr-ara \
+    tesseract-ocr-eng \
+    tesseract-ocr-equ \
+    libgl1 \
+    libglib2.0-0 \
+    # ─── Cairo/Pango (for PyMuPDF/cairosvg/weasyprint) ────────
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f -v
 
 # Copy uv binary from the official image
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
