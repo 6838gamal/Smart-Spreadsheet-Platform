@@ -1,10 +1,17 @@
+<!-- templates/files/index.html -->
 {% extends "base.html" %}
-{% block title %}Workspace — FlexiConvert{% endblock %}
+
+{% block title %}
+  {{ t.files or 'الملفات' }} — FlexiConvert
+{% endblock %}
+
 {% block page_title %}{% endblock %}
+
 {% block main_class %}p-0 overflow-hidden flex flex-col bg-slate-950{% endblock %}
 
 {% block content %}
-{% set t = get_texts(lang) %}
+
+{% set t = get_texts(lang if lang else 'ar') %}
 
 <style>
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -29,6 +36,15 @@
     border-color: rgba(99, 102, 241, 0.4);
     box-shadow: 0 12px 25px -5px rgba(99, 102, 241, 0.15);
   }
+  .file-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .file-card.filtered-out { display: none !important; }
+  .file-card.disabled-tool {
+    opacity: 0.35;
+    filter: grayscale(0.7);
+    pointer-events: none;
+  }
   @keyframes pulse-border {
     0%, 100% { border-color: rgba(99, 102, 241, 0.4); }
     50% { border-color: rgba(99, 102, 241, 0.8); }
@@ -36,33 +52,41 @@
   .animated-border { animation: pulse-border 2s infinite; }
 
   [x-cloak] { display: none !important; }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 </style>
 
 
 <div
   class="flex h-full min-h-0 overflow-hidden bg-slate-950 text-slate-100 font-sans"
-  x-data="workspace()"
+  x-data="filesWorkspace()"
   x-init="init()"
 >
 
-  <!-- ═══════════════════════════════════════════════════════════════════════
-       HTMX TARGET (مخفي — للتوافق مع دوال الحذف/الرفع)
-  ═══════════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════════════════════
+       HTMX HIDDEN TARGETS (للتوافق مع دوال الرفع/الحذف/التحديث)
+  ═══════════════════════════════════════════════════════════════════ -->
   <div id="file-list-container" class="hidden" aria-hidden="true">
-    {% include "workspace/_files_panel.html" %}
+    {% include "workspace/_files_panel.html" ignore missing %}
   </div>
-
   <div id="upload-status" class="hidden" aria-hidden="true"></div>
+  <div id="upload-result" class="hidden" aria-hidden="true"></div>
+  <div id="url-import-result" class="hidden" aria-hidden="true"></div>
 
 
-  <!-- ═══════════════════════════════════════════════════════════════════════
+  <!-- ═══════════════════════════════════════════════════════════════════
        MAIN AREA
-  ═══════════════════════════════════════════════════════════════════════════ -->
+  ═══════════════════════════════════════════════════════════════════ -->
   <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         HEADER (Logo + File Badge)
-    ═══════════════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         HEADER (Logo + File Badge + Tool Badge)
+    ═══════════════════════════════════════════════════════════════ -->
     <header class="flex-shrink-0 glass-panel border-b border-slate-800/60">
       <div class="h-14 flex items-center gap-3 px-4 md:px-5">
 
@@ -85,11 +109,33 @@
 
         <div class="h-8 w-px bg-slate-800/60 mx-1 hidden sm:block"></div>
 
+        <!-- Selected Tool Badge -->
+        <div x-show="activeTool" x-cloak
+          class="hidden md:flex items-center gap-2 min-w-0 max-w-[220px]
+                 px-2.5 py-1.5 rounded-lg bg-indigo-950/40 border border-indigo-700/40">
+          <div class="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+               :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
+            <i class="text-xs" :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
+          </div>
+          <div class="min-w-0">
+            <div x-text="activeTool ? activeTool.title : ''"
+                 class="text-xs font-medium text-slate-200 truncate"></div>
+            <div class="text-[9px] text-indigo-400">الأداة النشطة</div>
+          </div>
+          <button @click="closeTool()"
+            class="w-5 h-5 flex items-center justify-center rounded-md
+                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0"
+            title="إلغاء الأداة">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
+            </svg>
+          </button>
+        </div>
+
         <!-- Selected File Badge -->
         <div x-show="selectedFileId" x-cloak
-          class="hidden sm:flex items-center gap-2 min-w-0 max-w-[280px]
-                 px-2.5 py-1.5 rounded-lg
-                 bg-slate-900/60 border border-slate-700/60">
+          class="hidden sm:flex items-center gap-2 min-w-0 max-w-[240px]
+                 px-2.5 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/60">
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 text-emerald-400
                       flex items-center justify-center flex-shrink-0 border border-emerald-500/20">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,13 +159,19 @@
 
         <!-- Right Status -->
         <div class="ms-auto flex items-center gap-2">
-          <div x-show="!selectedFileId && !activeTool" class="text-[10px] text-slate-500 hidden sm:block">
+          <div x-show="!selectedFileId && !activeTool"
+               class="text-[10px] text-slate-500 hidden sm:block">
             اختر أداة تحويل للبدء
           </div>
-          <div x-show="selectedFileId || activeTool" x-cloak
+          <div x-show="selectedFileId && activeTool" x-cloak
                class="flex items-center gap-1.5 text-[10px] text-emerald-400">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span x-text="activeTool ? 'أداة نشطة' : 'نشط'"></span>
+            <span>جاهز للتحويل</span>
+          </div>
+          <div x-show="activeTool && !selectedFileId" x-cloak
+               class="flex items-center gap-1.5 text-[10px] text-amber-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            <span>اختر ملفاً</span>
           </div>
         </div>
 
@@ -127,41 +179,266 @@
     </header>
 
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         CONTENT AREA
-    ═══════════════════════════════════════════════════════════════════ -->
-    <section
-      id="workspace-panel"
-      class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6 bg-slate-950"
-    >
-      <div class="max-w-[1600px] mx-auto min-h-full">
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT AREA (Scrollable)
+    ═══════════════════════════════════════════════════════════════ -->
+    <section class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6">
+      <div class="max-w-[1600px] mx-auto space-y-6">
+
 
         <!-- ═══════════════════════════════════════════════════════════════
-             VIEW 1: TOOLS GRID
+             STORAGE STATUS BAR
+        ═══════════════════════════════════════════════════════════════ -->
+        <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400
+                    p-3 bg-slate-900/40 rounded-xl border border-slate-800/60">
+          <div class="flex flex-wrap items-center gap-3">
+            <span>☁️</span>
+            <span>
+              <span class="font-medium text-slate-300">{{ t.storage_provider or 'مزود التخزين' }}:</span>
+              <span class="text-indigo-400" x-text="storageProvider"></span>
+            </span>
+            <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
+            <span>
+              <span class="font-medium text-slate-300">{{ t.total_files or 'إجمالي الملفات' }}:</span>
+              <span x-text="totalFiles"></span>
+            </span>
+            <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
+            <span>
+              <span class="font-medium text-slate-300">{{ t.total_size or 'الحجم الكلي' }}:</span>
+              <span x-text="totalSize"></span>
+            </span>
+          </div>
+          <button @click="refreshFiles()"
+            class="text-xs px-3 py-1 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/60
+                   text-indigo-400 border border-indigo-800/40 transition-colors">
+            ↻ {{ t.refresh or 'تحديث' }}
+          </button>
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             UPLOAD ZONE
+        ═══════════════════════════════════════════════════════════════ -->
+        <div
+          class="glass-panel p-4 sm:p-6 rounded-2xl transition-all duration-200"
+          x-on:dragover.prevent="dragging = true"
+          x-on:dragleave.prevent="dragging = false"
+          x-on:drop.prevent="handleDrop($event)"
+          :class="dragging ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : ''"
+        >
+          <div
+            class="border-2 border-dashed border-slate-700 rounded-2xl p-6 sm:p-8 text-center transition-all duration-200"
+            :class="dragging ? 'border-indigo-500 bg-indigo-950/20 scale-[1.01]' : 'hover:border-slate-600'"
+          >
+            <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-indigo-950/40
+                        flex items-center justify-center border border-indigo-800/40">
+              <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+
+            <p class="text-slate-200 font-semibold mb-1">
+              {{ t.drag_drop or 'اسحب وأفلت الملفات هنا' }}
+            </p>
+            <p class="text-xs text-slate-400 mb-5">
+              {{ t.file_limit or 'الحد الأقصى 100MB لكل ملف' }}
+              <span class="block mt-1 text-emerald-400">☁️ {{ t.stored_in_cloud or 'مخزن في السحابة' }}</span>
+            </p>
+
+            <label class="inline-flex items-center justify-center gap-2 cursor-pointer
+                          px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white
+                          font-medium text-sm transition-colors shadow-lg shadow-brand-600/30">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              {{ t.choose_files or 'اختر الملفات' }}
+              <input
+                type="file"
+                multiple
+                class="hidden"
+                x-ref="fileInput"
+                @change="uploadFiles($event)"
+                accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.doc,.pdf,.pptx,.ppt,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
+              />
+            </label>
+
+            <p x-show="dragging" x-cloak class="mt-4 text-xs font-semibold text-indigo-400">
+              {{ t.drop_to_upload or 'أفلت الملفات للرفع' }}
+            </p>
+          </div>
+
+          <!-- Uploading Status -->
+          <div x-show="uploading" x-cloak
+               class="mt-4 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
+                          flex items-center justify-center">
+                <svg class="animate-spin w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
+                  <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-slate-300">
+                  {{ t.uploading_to_cloud or 'جاري الرفع إلى السحابة…' }}
+                </p>
+                <p class="text-xs text-slate-500 mt-0.5"
+                   x-text="uploadCount > 1 ? uploadCount + ' ملفات' : 'ملف واحد'"></p>
+              </div>
+            </div>
+            <div class="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                   :style="'width:' + uploadProgress + '%'"></div>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             URL IMPORT
+        ═══════════════════════════════════════════════════════════════ -->
+        <div class="glass-panel p-4 sm:p-6 rounded-2xl border border-indigo-800/30">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
+                        flex items-center justify-center text-indigo-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-slate-200">
+                {{ t.import_from_url or 'استيراد ملف من رابط' }}
+              </h3>
+              <p class="text-xs text-slate-500">
+                {{ t.import_url_desc or 'أدخل رابط ملف مباشر وسيتم سحبه إلى المنصة' }}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input
+              type="url"
+              x-model="fileUrl"
+              placeholder="{{ t.enter_file_url or 'https://example.com/file.pdf' }}"
+              class="flex-1 px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-900/60
+                     text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500
+                     focus:border-transparent transition"
+              @keydown.enter="importFromUrl()"
+              :disabled="importingUrl"
+            />
+            <button
+              @click="importFromUrl()"
+              :disabled="!fileUrl || importingUrl"
+              class="px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700
+                     disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm
+                     font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <span x-show="!importingUrl">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </span>
+              <span x-show="importingUrl" x-cloak>
+                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+              </span>
+              <span x-text="importingUrl ? 'جاري السحب...' : 'سحب الملف'"></span>
+            </button>
+          </div>
+
+          <!-- URL Import Progress -->
+          <div x-show="importingUrl || importStatus" x-cloak class="mt-4 space-y-3">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                <span x-text="importProgressLabel"></span>
+                <span x-text="importProgress + '%'"></span>
+              </div>
+              <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all duration-500 ease-out"
+                  :class="importStatus === 'error'
+                    ? 'bg-red-500'
+                    : importStatus === 'success'
+                      ? 'bg-emerald-500'
+                      : 'bg-gradient-to-r from-indigo-500 to-violet-500'"
+                  :style="'width:' + importProgress + '%'"
+                ></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between text-[10px] text-slate-500">
+              <template x-for="stage in importStages" :key="stage.id">
+                <div class="flex items-center gap-1.5 flex-1">
+                  <span class="w-1.5 h-1.5 rounded-full"
+                        :class="importStage === stage.id
+                          ? 'bg-indigo-500 animate-pulse'
+                          : isStageDone(stage.id)
+                            ? 'bg-emerald-500'
+                            : 'bg-slate-700'"></span>
+                  <span :class="importStage === stage.id ? 'text-indigo-400 font-medium' : ''"
+                        x-text="stage.label"></span>
+                  <div x-show="stage.id !== 'saving'"
+                       class="flex-1 h-px bg-slate-800 mx-2"></div>
+                </div>
+              </template>
+            </div>
+
+            <div
+              class="p-3 rounded-lg text-sm border"
+              :class="importStatus === 'success'
+                ? 'border-emerald-700/40 bg-emerald-950/30 text-emerald-400'
+                : importStatus === 'error'
+                  ? 'border-red-700/40 bg-red-950/30 text-red-400'
+                  : 'border-indigo-700/40 bg-indigo-950/30 text-indigo-400'"
+            >
+              <div class="flex items-center gap-2">
+                <span x-show="importStatus === 'success'" class="text-lg">✅</span>
+                <span x-show="importStatus === 'error'" class="text-lg">❌</span>
+                <span x-show="!importStatus || importStatus === 'progress'" class="text-lg">⏳</span>
+                <span x-text="importMessage"></span>
+              </div>
+              <div x-show="importStatus === 'success' && importedFile" x-cloak
+                   class="mt-2 text-xs text-emerald-400">
+                <span class="font-medium">اسم الملف:</span>
+                <span x-text="importedFile?.filename"></span>
+                <span class="mx-2">•</span>
+                <span class="font-medium">الصيغة:</span>
+                <span x-text="importedFile?.format || 'غير معروف'"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             TOOLS GRID (يظهر عندما لا تكون هناك أداة نشطة)
         ═══════════════════════════════════════════════════════════════ -->
         <div x-show="!activeTool" x-transition.opacity>
 
           <!-- Hero -->
-          <div class="relative py-6 md:py-10 mb-8 text-center overflow-hidden">
+          <div class="relative py-6 md:py-8 mb-6 text-center overflow-hidden">
             <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96
                         bg-brand-600/20 rounded-full blur-3xl pointer-events-none"></div>
-            <div class="absolute top-10 right-10 w-72 h-72
-                        bg-purple-600/15 rounded-full blur-3xl pointer-events-none"></div>
 
-            <div class="relative z-10 max-w-3xl mx-auto space-y-4">
+            <div class="relative z-10 max-w-3xl mx-auto space-y-3">
               <span class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold
                            bg-brand-500/10 text-brand-400 border border-brand-500/20">
                 <i class="fa-solid fa-bolt text-yellow-400"></i>
                 تحويل سريع، آمن، ومجاني 100%
               </span>
-              <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-                حول ملفاتك بين
+              <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
+                اختر أداة التحويل
                 <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400
-                             bg-clip-text text-transparent">كافة الصيغ</span>
-                بضغطة واحدة
+                             bg-clip-text text-transparent">المناسبة</span>
               </h1>
-              <p class="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto">
-                اختر أداة التحويل المناسبة من الأسفل، ارفع ملفك، واحصل على النتيجة فوراً.
+              <p class="text-slate-400 text-sm max-w-2xl mx-auto">
+                ثم اختر الملف المطابق من قائمتك، وستُفتح لوحة التحويل مباشرةً.
               </p>
             </div>
           </div>
@@ -170,7 +447,7 @@
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4
                       border-b border-slate-800/80 pb-4 mb-6">
             <div>
-              <h2 class="text-xl font-bold text-white">أدوات التحويل المتاحة</h2>
+              <h2 class="text-lg font-bold text-white">أدوات التحويل المتاحة</h2>
               <p class="text-slate-400 text-xs mt-1">اختر الأداة المطلوبة للبدء</p>
             </div>
 
@@ -219,7 +496,6 @@
             </template>
           </div>
 
-          <!-- No Results -->
           <div x-show="filteredTools.length === 0" class="text-center py-12">
             <i class="fa-solid fa-folder-open text-4xl text-slate-600 mb-3"></i>
             <p class="text-slate-400 text-sm">لا توجد أدوات مطابقة</p>
@@ -229,35 +505,276 @@
 
 
         <!-- ═══════════════════════════════════════════════════════════════
-             VIEW 2: CONVERTER WORKSPACE
+             ACTIVE TOOL BANNER (يظهر عندما تكون هناك أداة نشطة)
         ═══════════════════════════════════════════════════════════════ -->
-        <div x-show="activeTool" x-cloak x-transition.opacity>
-          <div class="glass-panel rounded-2xl p-6 sm:p-8 relative overflow-hidden
-                      border border-brand-500/30 shadow-2xl">
-
-            <button @click="closeTool()"
-              class="absolute top-4 left-4 p-2 text-slate-400 hover:text-white
-                     bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all">
-              <i class="fa-solid fa-xmark text-lg"></i>
-            </button>
-
-            <div class="flex items-center gap-4 mb-6">
-              <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl text-white shadow-md"
-                   :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
-                <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
-              </div>
-              <div>
-                <h2 class="text-xl font-bold text-white"
-                    x-text="activeTool ? activeTool.title : ''"></h2>
-                <p class="text-xs text-slate-400"
-                   x-text="activeTool ? activeTool.desc : ''"></p>
-              </div>
+        <div x-show="activeTool && !selectedFileId" x-cloak x-transition.opacity
+             class="rounded-2xl p-4 border-2 animated-border"
+             :class="activeTool ? 'bg-indigo-950/30 border-indigo-600/50' : ''">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                 :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
+              <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
             </div>
-
-            <div id="converter-panel" class="min-h-[300px]"></div>
-
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                  🎯 الأداة النشطة
+                </span>
+              </div>
+              <h3 class="text-lg font-bold text-white"
+                  x-text="activeTool ? activeTool.title : ''"></h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                اختر ملفاً من القائمة أدناه — الملفات المتوافقة فقط ظاهرة.
+              </p>
+            </div>
+            <button @click="closeTool()"
+              class="px-4 py-2 rounded-xl text-xs font-medium
+                     bg-slate-800 hover:bg-slate-700 text-slate-300
+                     border border-slate-700 transition-colors whitespace-nowrap">
+              تغيير الأداة
+            </button>
           </div>
         </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             CONVERTER PANEL (HTMX target)
+        ═══════════════════════════════════════════════════════════════ -->
+        <div x-show="activeTool && selectedFileId" x-cloak x-transition.opacity>
+          <div class="glass-panel rounded-2xl p-4 sm:p-6 relative overflow-hidden
+                      border border-brand-500/30 shadow-2xl">
+            <div id="converter-panel" class="min-h-[200px]"></div>
+          </div>
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             FILTERS & SEARCH
+        ═══════════════════════════════════════════════════════════════ -->
+        <div x-show="!selectedFileId" x-transition.opacity>
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white">
+                <span x-show="!activeTool">ملفاتك</span>
+                <span x-show="activeTool" x-cloak>
+                  ملفات متوافقة مع
+                  <span class="text-brand-400" x-text="activeTool?.title"></span>
+                </span>
+              </h2>
+              <p class="text-slate-400 text-xs mt-1">
+                <span x-show="!activeTool">جميع الملفات المرفوعة</span>
+                <span x-show="activeTool" x-cloak>
+                  فقط الملفات المطابقة لصيغة الأداة
+                </span>
+              </p>
+            </div>
+
+            <form method="get" class="flex gap-2 flex-wrap">
+              <input
+                type="text"
+                name="search"
+                value="{{ search }}"
+                placeholder="{{ t.search_files or 'البحث في الملفات…' }}"
+                class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
+                       text-slate-100 text-sm focus:outline-none focus:ring-2
+                       focus:ring-indigo-500 transition min-w-[160px]"
+              />
+              <select name="fmt"
+                class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
+                       text-slate-100 text-sm focus:outline-none focus:ring-2
+                       focus:ring-indigo-500 transition">
+                <option value="">جميع الصيغ</option>
+                {% for ext in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'docx', 'parquet', 'xml', 'yaml', 'ods'] %}
+                <option value="{{ ext }}" {% if ext == fmt %}selected{% endif %}>{{ ext|upper }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit"
+                class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white
+                       text-sm font-medium transition-colors">
+                بحث
+              </button>
+              {% if search or fmt %}
+              <a href="/files"
+                 class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300
+                        text-sm font-medium transition-colors border border-slate-700">
+                مسح
+              </a>
+              {% endif %}
+            </form>
+          </div>
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             FILES GRID
+        ═══════════════════════════════════════════════════════════════ -->
+        <div x-show="!selectedFileId" x-transition.opacity>
+
+          {% if files %}
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+               id="files-grid">
+            {% for f in files %}
+            <div
+              class="glass-card file-card p-4 flex flex-col gap-3 group"
+              data-file-id="{{ f.id }}"
+              data-file-name="{{ f.original_name }}"
+              data-file-format="{{ f.format|lower if f.format else '' }}"
+              :class="activeTool && !isFileCompatibleWithTool('{{ f.format|lower if f.format else '' }}')
+                ? 'filtered-out'
+                : ''"
+            >
+              <!-- File type + status -->
+              <div class="flex items-start justify-between">
+                <span class="text-xs font-bold px-2 py-1 rounded-lg
+                  {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20
+                  {% elif f.format == 'csv' %}bg-blue-500/10 text-blue-400 border border-blue-500/20
+                  {% elif f.format == 'json' %}bg-yellow-500/10 text-yellow-400 border border-yellow-500/20
+                  {% elif f.format == 'pdf' %}bg-red-500/10 text-red-400 border border-red-500/20
+                  {% elif f.format == 'parquet' %}bg-purple-500/10 text-purple-400 border border-purple-500/20
+                  {% elif f.format in ['docx','doc'] %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20
+                  {% elif f.format in ['jpg','jpeg','png','gif','webp','bmp','svg'] %}bg-pink-500/10 text-pink-400 border border-pink-500/20
+                  {% elif f.format in ['pptx','ppt'] %}bg-orange-500/10 text-orange-400 border border-orange-500/20
+                  {% else %}bg-slate-700/40 text-slate-300 border border-slate-700{% endif %}
+                ">
+                  .{{ f.format | upper if f.format else '???' }}
+                </span>
+
+                <div class="flex items-center gap-1">
+                  <span class="text-xs text-emerald-500"
+                        title="{{ t.stored_in_cloud or 'مخزن في السحابة' }}">☁️</span>
+
+                  <button
+                    type="button"
+                    hx-post="/files/{{ f.id }}/favorite"
+                    hx-swap="outerHTML"
+                    class="text-lg leading-none transition-colors"
+                    :title="'{{ t.favorite or 'المفضلة' }}'"
+                  >
+                    <span class="{% if f.is_favorite %}text-yellow-400{% else %}text-slate-600 hover:text-yellow-300{% endif %}">
+                      {% if f.is_favorite %}★{% else %}☆{% endif %}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Name & size -->
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-white truncate" title="{{ f.original_name }}">
+                  {{ f.original_name }}
+                </p>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  {{ f.size_human if f.size_human else (f.size_bytes|format_size) }}
+                </p>
+              </div>
+
+              <!-- Meta -->
+              {% if f.meta %}
+              <div class="text-xs text-slate-500 flex gap-3 flex-wrap">
+                {% if f.meta.rows %}<span>{{ "{:,}".format(f.meta.rows) }} صف</span>{% endif %}
+                {% if f.meta.columns %}<span>{{ f.meta.columns }} عمود</span>{% endif %}
+                {% if f.meta.sheets %}<span>{{ f.meta.sheets }} ورقة</span>{% endif %}
+                {% if f.meta.pages %}<span>{{ f.meta.pages }} صفحة</span>{% endif %}
+                {% if f.meta.source_url %}
+                <span class="text-indigo-400" title="{{ f.meta.source_url }}">🔗</span>
+                {% endif %}
+              </div>
+              {% endif %}
+
+              <!-- Actions -->
+              <div class="flex gap-1.5 mt-auto pt-2 border-t border-slate-800/60">
+                <a href="/files/{{ f.id }}" target="_blank"
+                  class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
+                         bg-slate-800/60 hover:bg-slate-800 text-slate-300
+                         transition-colors font-medium">
+                  عرض
+                </a>
+
+                <button @click="downloadFile({{ f.id }})"
+                  class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
+                         bg-slate-800/60 hover:bg-slate-800 text-slate-300
+                         transition-colors font-medium">
+                  تحميل
+                </button>
+
+                <!-- زر التحويل الموحّد -->
+                <button
+                  x-show="activeTool"
+                  x-cloak
+                  @click="selectFileAndConvert({{ f.id }}, '{{ f.original_name|e }}')"
+                  class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
+                         bg-brand-600 hover:bg-brand-500 text-white
+                         transition-colors font-medium shadow-md shadow-brand-600/20">
+                  ✓ اختر
+                </button>
+
+                <button
+                  x-show="!activeTool"
+                  @click="quickConvert({{ f.id }}, '{{ f.original_name|e }}', '{{ f.format|lower if f.format else '' }}')"
+                  class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
+                         bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-400
+                         transition-colors font-medium border border-indigo-800/40">
+                  تحويل
+                </button>
+
+                <button @click="deleteFile({{ f.id }})"
+                  class="text-xs py-1.5 px-2 rounded-lg
+                         bg-red-950/40 hover:bg-red-900/40 text-red-400
+                         transition-colors font-medium border border-red-800/40">
+                  <i class="fa-solid fa-trash text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- No compatible files message -->
+          <div x-show="activeTool" x-cloak
+               class="hidden text-center py-12 rounded-2xl border-2 border-dashed border-slate-800">
+            <i class="fa-solid fa-filter-circle-xmark text-4xl text-slate-600 mb-3"></i>
+            <p class="text-slate-400 text-sm">
+              لا توجد ملفات متوافقة مع هذه الأداة.
+            </p>
+            <p class="text-slate-500 text-xs mt-1">
+              ارفع ملفاً بصيغة
+              <span class="text-brand-400 font-semibold"
+                    x-text="activeTool ? activeTool.inputFormats.map(f => '.' + f).join(', ') : ''"></span>
+            </p>
+          </div>
+
+          <!-- Pagination -->
+          {% if total_pages > 1 %}
+          <div class="flex items-center justify-center gap-2 mt-6">
+            {% for p in range(1, total_pages + 1) %}
+            <a href="?page={{ p }}{% if search %}&search={{ search }}{% endif %}{% if fmt %}&fmt={{ fmt }}{% endif %}"
+              class="w-9 h-9 flex items-center justify-center rounded-lg text-sm font-medium transition-colors
+                {% if p == page %}bg-brand-600 text-white{% else %}bg-slate-900/60 border border-slate-800 text-slate-300 hover:bg-slate-800{% endif %}">
+              {{ p }}
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% else %}
+          <!-- Empty state -->
+          <div class="glass-panel rounded-2xl p-16 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800/60
+                        flex items-center justify-center">
+              <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-slate-300 mb-2">
+              {{ t.no_files_empty or 'لا يوجد ملفات' }}
+            </h3>
+            <p class="text-slate-500 text-sm">
+              {{ t.upload_to_start or 'ارفع ملفاً للبدء' }}
+            </p>
+          </div>
+          {% endif %}
+
+        </div>
+
 
       </div>
     </section>
@@ -267,9 +784,9 @@
 </div>
 
 
-<!-- ═══════════════════════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════════════
      FOOTER
-═══════════════════════════════════════════════════════════════════════════ -->
+═══════════════════════════════════════════════════════════════════ -->
 <footer class="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
   <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-3">
     <p>© 2026 FlexiConvert - جميع الحقوق محفوظة</p>
@@ -288,21 +805,48 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <script>
-function workspace() {
+function filesWorkspace() {
   return {
     // ═══════════════════════════════════════════════════════════════════
-    // STATE
+    // STATE — Storage / Upload
+    // ═══════════════════════════════════════════════════════════════════
+    dragging: false,
+    uploading: false,
+    uploadProgress: 0,
+    uploadCount: 0,
+    storageProvider: '{{ settings.STORAGE_PROVIDER if settings and settings.STORAGE_PROVIDER else "Supabase" }}',
+    totalFiles: {{ total or 0 }},
+    totalSize: '{{ total_size_human if total_size_human else "0 B" }}',
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STATE — URL Import
+    // ═══════════════════════════════════════════════════════════════════
+    fileUrl: '',
+    importingUrl: false,
+    importProgress: 0,
+    importStage: 'validating',
+    importStatus: '',
+    importMessage: '',
+    importedFile: null,
+    importStages: [
+      { id: 'validating',  label: 'تحقق' },
+      { id: 'downloading', label: 'تحميل' },
+      { id: 'processing',  label: 'معالجة' },
+      { id: 'saving',      label: 'حفظ' },
+    ],
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STATE — Converter / Tools
     // ═══════════════════════════════════════════════════════════════════
     selectedFileId: null,
     selectedFileName: '',
-    fileSearch: '',
-    isDeleting: false,
-
     activeTool: null,
     activeCategory: 'all',
+    isDeleting: false,
+    _navigating: false,
 
     // ═══════════════════════════════════════════════════════════════════
-    // TOOLS DATA
+    // TOOLS CONFIG
     // ═══════════════════════════════════════════════════════════════════
     toolCategories: [
       { id: 'all',         label: 'الكل' },
@@ -313,24 +857,114 @@ function workspace() {
     ],
 
     tools: [
-      { id: 'excel-to-pdf',  title: 'Excel to PDF',  category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.' },
-      { id: 'pdf-to-excel',  title: 'PDF to Excel',  category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.' },
-      { id: 'word-to-excel', title: 'Word to Excel', category: 'excel',      icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل النصوص والبيانات من Word إلى Excel.' },
-      { id: 'pdf-to-word',   title: 'PDF to Word',   category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.' },
-      { id: 'excel-to-word', title: 'Excel to Word', category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تصدير بيانات Excel إلى ملف Word منظم.' },
-      { id: 'word-to-pdf',   title: 'Word to PDF',   category: 'to-pdf',     icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.' },
-      { id: 'img-to-pdf',    title: 'Img to PDF',    category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تجميع الصور داخل مستند PDF واحد.' },
-      { id: 'xls-to-pdf',    title: 'Xls to PDF',    category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل صيغ XLS القديمة إلى PDF.' },
-      { id: 'png-to-pdf',    title: 'PNG to PDF',    category: 'to-pdf',     icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور PNG عالية الدقة إلى PDF.' },
-      { id: 'png-to-excel',  title: 'PNG to Excel',  category: 'word-image', icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'استخراج الجداول من صور PNG إلى Excel.' },
-      { id: 'xlsx-to-pdf',   title: 'Xlsx to PDF',   category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل XLSX الحديث إلى PDF متناسق.' },
-      { id: 'ppt-to-pdf',    title: 'PPT to PDF',    category: 'to-pdf',     icon: 'fa-file-powerpoint', iconColor: 'text-orange-500',  bgColor: 'bg-orange-500/10',  desc: 'تحويل عروض PowerPoint إلى PDF.' },
-      { id: 'pdf-to-jpg',    title: 'PDF to JPG',    category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج صفحات PDF إلى صور JPG.' },
-      { id: 'jpg-to-excel',  title: 'JPG to Excel',  category: 'word-image', icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل الجداول المصورة JPG إلى Excel.' },
-      { id: 'pdf-to-png',    title: 'PDF to PNG',    category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.' },
-      { id: 'excel-to-csv',  title: 'Excel to CSV',  category: 'excel',      icon: 'fa-file-csv',        iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل Excel إلى صيغة CSV.' },
-      { id: 'jpg-to-pdf',    title: 'JPG to PDF',    category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور JPG إلى مستند PDF.' },
-      { id: 'excel-to-jpg',  title: 'Excel to JPG',  category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل الجداول والرسوم إلى صورة JPG.' },
+      {
+        id: 'excel-to-pdf', title: 'Excel to PDF', category: 'to-pdf',
+        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.',
+        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'],
+      },
+      {
+        id: 'pdf-to-excel', title: 'PDF to Excel', category: 'from-pdf',
+        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+        desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.',
+        inputFormats: ['pdf'],
+      },
+      {
+        id: 'word-to-excel', title: 'Word to Excel', category: 'excel',
+        icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
+        desc: 'تحويل النصوص والبيانات من Word إلى Excel.',
+        inputFormats: ['docx', 'doc'],
+      },
+      {
+        id: 'pdf-to-word', title: 'PDF to Word', category: 'from-pdf',
+        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+        desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.',
+        inputFormats: ['pdf'],
+      },
+      {
+        id: 'excel-to-word', title: 'Excel to Word', category: 'excel',
+        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تصدير بيانات Excel إلى ملف Word منظم.',
+        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'],
+      },
+      {
+        id: 'word-to-pdf', title: 'Word to PDF', category: 'to-pdf',
+        icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
+        desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.',
+        inputFormats: ['docx', 'doc'],
+      },
+      {
+        id: 'img-to-pdf', title: 'Img to PDF', category: 'to-pdf',
+        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+        desc: 'تجميع الصور داخل مستند PDF واحد.',
+        inputFormats: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'],
+      },
+      {
+        id: 'xls-to-pdf', title: 'Xls to PDF', category: 'to-pdf',
+        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تحويل صيغ XLS القديمة إلى PDF.',
+        inputFormats: ['xls'],
+      },
+      {
+        id: 'png-to-pdf', title: 'PNG to PDF', category: 'to-pdf',
+        icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+        desc: 'تحويل صور PNG عالية الدقة إلى PDF.',
+        inputFormats: ['png'],
+      },
+      {
+        id: 'png-to-excel', title: 'PNG to Excel', category: 'word-image',
+        icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+        desc: 'استخراج الجداول من صور PNG إلى Excel.',
+        inputFormats: ['png'],
+      },
+      {
+        id: 'xlsx-to-pdf', title: 'Xlsx to PDF', category: 'to-pdf',
+        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تحويل XLSX الحديث إلى PDF متناسق.',
+        inputFormats: ['xlsx'],
+      },
+      {
+        id: 'ppt-to-pdf', title: 'PPT to PDF', category: 'to-pdf',
+        icon: 'fa-file-powerpoint', iconColor: 'text-orange-400', bgColor: 'bg-orange-500/10',
+        desc: 'تحويل عروض PowerPoint إلى PDF.',
+        inputFormats: ['pptx', 'ppt'],
+      },
+      {
+        id: 'pdf-to-jpg', title: 'PDF to JPG', category: 'from-pdf',
+        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+        desc: 'استخراج صفحات PDF إلى صور JPG.',
+        inputFormats: ['pdf'],
+      },
+      {
+        id: 'jpg-to-excel', title: 'JPG to Excel', category: 'word-image',
+        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+        desc: 'تحويل الجداول المصورة JPG إلى Excel.',
+        inputFormats: ['jpg', 'jpeg'],
+      },
+      {
+        id: 'pdf-to-png', title: 'PDF to PNG', category: 'from-pdf',
+        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+        desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.',
+        inputFormats: ['pdf'],
+      },
+      {
+        id: 'excel-to-csv', title: 'Excel to CSV', category: 'excel',
+        icon: 'fa-file-csv', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تحويل Excel إلى صيغة CSV.',
+        inputFormats: ['xlsx', 'xls', 'xlsm'],
+      },
+      {
+        id: 'jpg-to-pdf', title: 'JPG to PDF', category: 'to-pdf',
+        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+        desc: 'تحويل صور JPG إلى مستند PDF.',
+        inputFormats: ['jpg', 'jpeg'],
+      },
+      {
+        id: 'excel-to-jpg', title: 'Excel to JPG', category: 'excel',
+        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+        desc: 'تحويل الجداول والرسوم إلى صورة JPG.',
+        inputFormats: ['xlsx', 'xls', 'xlsm'],
+      },
     ],
 
     get filteredTools() {
@@ -338,43 +972,73 @@ function workspace() {
       return this.tools.filter(t => t.category === this.activeCategory);
     },
 
+    get importProgressLabel() {
+      const labels = {
+        'validating':  '🔄 جاري التحقق من الرابط...',
+        'downloading': '⬇️ جاري تحميل الملف...',
+        'processing':  '⚙️ جاري معالجة الملف...',
+        'saving':      '💾 جاري حفظ الملف...',
+        'done':        this.importStatus === 'success' ? '✅ تم الاستيراد بنجاح' : '❌ فشل الاستيراد',
+      };
+      return labels[this.importStage] || '⏳ جاري العمل...';
+    },
 
     // ═══════════════════════════════════════════════════════════════════
     // INIT
     // ═══════════════════════════════════════════════════════════════════
     init() {
+      this.resetImportState();
+
       const params = new URLSearchParams(window.location.search);
       const urlFileId = params.get('file_id');
       const urlTool = params.get('tool');
 
-      console.log('🔍 URL params - file_id:', urlFileId, 'tool:', urlTool);
+      // استرجاع الأداة من URL
+      if (urlTool) {
+        const tool = this.tools.find(t => t.id === urlTool);
+        if (tool) this.activeTool = tool;
+      }
 
+      // استرجاع الملف المحدد من URL
       if (urlFileId) {
-        this.selectedFileId = parseInt(urlFileId);
-        const fileCard = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
-        if (fileCard) {
-          this.selectedFileName = fileCard.dataset.fileName || '';
+        const id = parseInt(urlFileId);
+        const card = document.querySelector(`[data-file-id="${id}"]`);
+        this.selectedFileId = id;
+        if (card) {
+          this.selectedFileName = card.dataset.fileName || '';
         } else {
-          this.fetchFileName(this.selectedFileId);
+          this.fetchFileName(id);
         }
       }
 
+      // open_file_id من الـ backend
       {% if open_file_id %}
-      const el = document.querySelector(`[data-file-id="{{ open_file_id }}"]`);
-      if (el && !this.selectedFileId) {
-        this.selectedFileName = el.dataset.fileName || '';
-        this.selectedFileId = {{ open_file_id }};
+      if (!this.selectedFileId) {
+        const el = document.querySelector(`[data-file-id="{{ open_file_id }}"]`);
+        if (el) {
+          this.selectedFileId = {{ open_file_id }};
+          this.selectedFileName = el.dataset.fileName || '';
+        }
       }
       {% endif %}
 
-      if (urlTool) {
-        const tool = this.tools.find(t => t.id === urlTool);
-        if (tool) {
-          this.$nextTick(() => this.openTool(tool, true));
-        }
+      // تحميل لوحة التحويل إذا كان لدينا أداة + ملف
+      if (this.activeTool && this.selectedFileId) {
+        this.$nextTick(() => this._loadConverterPanel(this.activeTool, this.selectedFileId));
       }
-    },
 
+      // استمع لأحداث التخزين
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'flexiconvert-files-updated') this.updateStats();
+      });
+
+      window.addEventListener('pageshow', () => {
+        this.dragging = false;
+        this.uploading = false;
+        this.uploadProgress = 0;
+        this.resetImportState();
+      });
+    },
 
     async fetchFileName(fileId) {
       try {
@@ -390,7 +1054,6 @@ function workspace() {
       }
     },
 
-
     // ═══════════════════════════════════════════════════════════════════
     // TOOLS ACTIONS
     // ═══════════════════════════════════════════════════════════════════
@@ -398,28 +1061,53 @@ function workspace() {
       this.activeCategory = catId;
     },
 
-    openTool(tool, fromInit = false) {
+    /**
+     * فتح أداة → تصبح نشطة → تُفلتر الملفات حسب الصيغ المتوافقة.
+     * لا يتم تحميل لوحة التحويل حتى يختار المستخدم ملفاً.
+     */
+    openTool(tool) {
       this.activeTool = tool;
 
+      // إذا كان الملف المحدد غير متوافق مع الأداة الجديدة → ألغِ تحديده
+      if (this.selectedFileId) {
+        const card = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
+        const fmt = card?.dataset.fileFormat || '';
+        if (fmt && !this.isFileCompatibleWithTool(fmt)) {
+          this.clearFile();
+        }
+      }
+
+      // تحديث URL
       const url = new URL(window.location);
       url.searchParams.set('tool', tool.id);
       if (this.selectedFileId) {
         url.searchParams.set('file_id', this.selectedFileId);
+      } else {
+        url.searchParams.delete('file_id');
       }
-      if (!fromInit) {
-        window.history.pushState({}, '', url);
-      }
+      window.history.pushState({}, '', url);
 
+      // تمرير إلى الملفات
       this.$nextTick(() => {
-        this._loadConverterPanel(tool, this.selectedFileId);
+        document.querySelector('#files-grid')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     },
 
     closeTool() {
       this.activeTool = null;
+      this.selectedFileId = null;
+      this.selectedFileName = '';
+
       const url = new URL(window.location);
       url.searchParams.delete('tool');
+      url.searchParams.delete('file_id');
       window.history.pushState({}, '', url);
+
+      const panel = document.getElementById('converter-panel');
+      if (panel) panel.innerHTML = '';
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
     goHome() {
@@ -428,6 +1116,107 @@ function workspace() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    // FILE ↔ TOOL COMPATIBILITY
+    // ═══════════════════════════════════════════════════════════════════
+    isFileCompatibleWithTool(format) {
+      if (!this.activeTool) return true;
+      if (!format) return false;
+      const fmt = String(format).toLowerCase().replace(/^\./, '');
+      return this.activeTool.inputFormats.includes(fmt);
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FILE SELECTION / CONVERSION
+    // ═══════════════════════════════════════════════════════════════════
+    /**
+     * عند الضغط على "✓ اختر" في بطاقة ملف (بعد اختيار أداة).
+     */
+    selectFileAndConvert(id, name) {
+      if (!this.activeTool) {
+        // لا توجد أداة → اختر أداة أولاً
+        this._showToast('اختر أداة تحويل أولاً', 'info');
+        return;
+      }
+      this.selectFile(id, name);
+    },
+
+    /**
+     * عند الضغط على "تحويل" بدون أداة نشطة → اقترح أداة افتراضية.
+     */
+    quickConvert(id, name, format) {
+      const suggested = this._suggestToolFor(format);
+      if (!suggested) {
+        this._showToast('لا توجد أداة مناسبة لهذا النوع', 'error');
+        return;
+      }
+      this.selectedFileId = id;
+      this.selectedFileName = name;
+      this.openTool(suggested);
+      this.$nextTick(() => {
+        this._loadConverterPanel(suggested, id);
+        document.querySelector('#converter-panel')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+
+    _suggestToolFor(format) {
+      const fmt = String(format || '').toLowerCase();
+      if (!fmt) return null;
+      // اقترح أداة تتوافق مع الصيغة
+      const map = {
+        'xlsx': 'excel-to-pdf',
+        'xls':  'xls-to-pdf',
+        'xlsm': 'excel-to-pdf',
+        'xlsb': 'excel-to-pdf',
+        'ods':  'excel-to-pdf',
+        'csv':  'excel-to-pdf',
+        'docx': 'word-to-pdf',
+        'doc':  'word-to-pdf',
+        'pdf':  'pdf-to-excel',
+        'pptx': 'ppt-to-pdf',
+        'ppt':  'ppt-to-pdf',
+        'png':  'png-to-pdf',
+        'jpg':  'jpg-to-pdf',
+        'jpeg': 'jpg-to-pdf',
+        'webp': 'img-to-pdf',
+        'bmp':  'img-to-pdf',
+        'gif':  'img-to-pdf',
+      };
+      const toolId = map[fmt];
+      return toolId ? this.tools.find(t => t.id === toolId) : null;
+    },
+
+    selectFile(id, name) {
+      this.selectedFileId = id;
+      this.selectedFileName = name;
+
+      const url = new URL(window.location);
+      url.searchParams.set('file_id', id);
+      if (this.activeTool) url.searchParams.set('tool', this.activeTool.id);
+      window.history.pushState({}, '', url);
+
+      // حمّل لوحة التحويل في نفس الصفحة
+      if (this.activeTool) {
+        this.$nextTick(() => {
+          this._loadConverterPanel(this.activeTool, id);
+          document.querySelector('#converter-panel')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
+    },
+
+    clearFile() {
+      this.selectedFileId = null;
+      this.selectedFileName = '';
+
+      const url = new URL(window.location);
+      url.searchParams.delete('file_id');
+      window.history.pushState({}, '', url);
+
+      const panel = document.getElementById('converter-panel');
+      if (panel) panel.innerHTML = '';
+    },
 
     // ═══════════════════════════════════════════════════════════════════
     // PANEL LOADING (HTMX)
@@ -443,7 +1232,7 @@ function workspace() {
 
       htmx.ajax('GET', url, {
         target: '#converter-panel',
-        swap: 'innerHTML'
+        swap: 'innerHTML',
       }).then(() => {
         panel.classList.remove('opacity-60', 'pointer-events-none');
       }).catch(() => {
@@ -452,61 +1241,271 @@ function workspace() {
       });
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    // URL IMPORT
+    // ═══════════════════════════════════════════════════════════════════
+    resetImportState() {
+      this.importProgress = 0;
+      this.importStage = 'validating';
+      this.importStatus = '';
+      this.importMessage = '';
+      this.importedFile = null;
+    },
+
+    isStageDone(stageId) {
+      const order = ['validating', 'downloading', 'processing', 'saving', 'done'];
+      const curIdx = order.indexOf(this.importStage);
+      const stgIdx = order.indexOf(stageId);
+      if (this.importStage === 'done' && this.importStatus === 'success') return true;
+      return curIdx > stgIdx && stgIdx !== -1;
+    },
+
+    async importFromUrl() {
+      const url = this.fileUrl?.trim();
+      if (!url) {
+        this.showImportResult('❌ الرجاء إدخال رابط صحيح', 'error');
+        return;
+      }
+
+      try {
+        new URL(url);
+      } catch {
+        this.showImportResult('❌ الرابط غير صالح. تأكد من صحة الرابط', 'error');
+        return;
+      }
+
+      this.resetImportState();
+      this.importingUrl = true;
+      this.importStatus = 'progress';
+      this.importMessage = '🔄 جاري التحقق من الرابط...';
+      this.importStage = 'validating';
+      this.importProgress = 10;
+
+      const progressTimer = setInterval(() => {
+        if (this.importStage === 'validating' && this.importProgress < 25) {
+          this.importProgress += 2;
+        } else if (this.importStage === 'validating' && this.importProgress >= 25) {
+          this.importStage = 'downloading';
+          this.importMessage = '⬇️ جاري تحميل الملف...';
+        } else if (this.importStage === 'downloading' && this.importProgress < 60) {
+          this.importProgress += 3;
+        } else if (this.importStage === 'downloading' && this.importProgress >= 60) {
+          this.importStage = 'processing';
+          this.importMessage = '⚙️ جاري معالجة الملف...';
+        } else if (this.importStage === 'processing' && this.importProgress < 80) {
+          this.importProgress += 2;
+        } else if (this.importStage === 'processing' && this.importProgress >= 80) {
+          this.importStage = 'saving';
+          this.importMessage = '💾 جاري حفظ الملف...';
+        } else if (this.importStage === 'saving' && this.importProgress < 95) {
+          this.importProgress += 1;
+        }
+      }, 300);
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+        const response = await fetch('/files/import-url', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({ url }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        clearInterval(progressTimer);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `فشل السحب (${response.status})`);
+        }
+
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'حدث خطأ أثناء سحب الملف');
+
+        this.importProgress = 100;
+        this.importStage = 'done';
+        this.importStatus = 'success';
+        this.importMessage = `✅ تم سحب الملف بنجاح: ${data.filename || 'غير معروف'}`;
+        this.importedFile = {
+          filename: data.filename,
+          format: data.format,
+          file_id: data.file_id,
+        };
+
+        this.totalFiles += 1;
+
+        // ✅ لا reload — فقط حدّث القائمة عبر HTMX ثم أعد تحميل الصفحة
+        // لتحديث بطاقات الملفات (بدون فقدان الحالة)
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+
+      } catch (error) {
+        clearInterval(progressTimer);
+        if (error.name === 'AbortError') {
+          this.showImportResult('⏰ انتهت المهلة الزمنية. حاول مرة أخرى', 'error');
+        } else {
+          console.error('URL Import error:', error);
+          this.showImportResult(`❌ ${error.message}`, 'error');
+        }
+      } finally {
+        this.importingUrl = false;
+        this.fileUrl = '';
+      }
+    },
+
+    showImportResult(message, type = 'info') {
+      this.importStatus = type;
+      this.importMessage = message;
+      if (type === 'error') {
+        this.importStage = 'done';
+        this.importProgress = 100;
+      }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    // UPLOAD
+    // ═══════════════════════════════════════════════════════════════════
+    handleDrop(event) {
+      this.dragging = false;
+      const files = event.dataTransfer.files;
+      if (files && files.length) this.uploadFileList(files);
+    },
+
+    uploadFiles(event) {
+      const files = event.target.files;
+      if (files && files.length) this.uploadFileList(files);
+    },
+
+    async uploadFileList(fileList) {
+      if (!fileList || !fileList.length) return;
+
+      const maxSize = 100 * 1024 * 1024;
+      const invalidFiles = [];
+      for (const file of fileList) {
+        if (file.size > maxSize) invalidFiles.push(file.name);
+      }
+      if (invalidFiles.length) {
+        this._showToast(`❌ ملفات كبيرة جداً: ${invalidFiles.join(', ')}`, 'error');
+        if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+        return;
+      }
+
+      this.uploading = true;
+      this.uploadProgress = 5;
+      this.uploadCount = fileList.length;
+
+      const formData = new FormData();
+      for (const file of fileList) formData.append('files', file);
+
+      try {
+        const result = await this.uploadWithProgress(formData);
+        this.uploadProgress = 100;
+
+        this._showToast(
+          fileList.length === 1
+            ? '✅ تم رفع الملف بنجاح ☁️'
+            : `✅ تم رفع ${fileList.length} ملفات بنجاح ☁️`,
+          'success'
+        );
+
+        await this.updateStats();
+
+        // إذا كان هناك redirect من السيرفر، احترمه
+        const hasRedirect = result.html && result.html.includes('window.location.href');
+        if (hasRedirect) {
+          const match = result.html.match(/window\.location\.href\s*=\s*"([^"]+)"/);
+          if (match && match[1]) {
+            setTimeout(() => { window.location.href = match[1]; }, 600);
+            return;
+          }
+        }
+
+        // وإلا → أعد تحميل الصفحة لتحديث البطاقات
+        setTimeout(() => window.location.reload(), 600);
+
+      } catch (error) {
+        console.error('Upload failed:', error);
+        this._showToast('❌ فشل الرفع — حاول مجدداً', 'error');
+      } finally {
+        this.uploading = false;
+        if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+      }
+    },
+
+    uploadWithProgress(formData) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/files/upload', true);
+        xhr.setRequestHeader('HX-Request', 'true');
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (!event.lengthComputable) {
+            this.uploadProgress = Math.min(90, Math.max(10, this.uploadProgress));
+            return;
+          }
+          const percent = Math.round((event.loaded / event.total) * 100);
+          this.uploadProgress = Math.max(5, Math.min(95, percent));
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({ html: xhr.responseText || '', redirect: null });
+          } else {
+            reject(new Error(`Upload failed with HTTP ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+
+        xhr.send(formData);
+      });
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STATS / REFRESH
+    // ═══════════════════════════════════════════════════════════════════
+    async updateStats() {
+      try {
+        const response = await fetch('/files/storage-stats');
+        const stats = await response.json();
+        this.totalFiles = stats.total_files || 0;
+        this.totalSize = stats.total_size_human || '0 B';
+      } catch (error) {
+        console.error('Failed to update stats:', error);
+      }
+    },
+
+    refreshFiles() {
+      window.location.reload();
+    },
 
     // ═══════════════════════════════════════════════════════════════════
     // FILE ACTIONS
     // ═══════════════════════════════════════════════════════════════════
-    selectFile(id, name) {
-      this.selectedFileId = id;
-      this.selectedFileName = name;
-
-      const url = new URL(window.location);
-      url.searchParams.set('file_id', id);
-      window.history.pushState({}, '', url);
-
-      if (this.activeTool) {
-        this._loadConverterPanel(this.activeTool, id);
-      }
+    downloadFile(fileId) {
+      window.open(`/files/${fileId}/download`, '_blank');
     },
 
-    clearFile() {
-      this.selectedFileId = null;
-      this.selectedFileName = '';
-
-      const url = new URL(window.location);
-      url.searchParams.delete('file_id');
-      window.history.pushState({}, '', url);
-
-      if (this.activeTool) {
-        this._loadConverterPanel(this.activeTool, null);
-      }
-    },
-
-
-    getUploadedFileId(responseText) {
-      const match = responseText.match(/selected_file_id["']?\s*:\s*(\d+)/);
-      if (match && match[1]) return parseInt(match[1]);
-      const eventMatch = responseText.match(/file-uploaded.*?detail:.*?fileId:\s*(\d+)/);
-      if (eventMatch && eventMatch[1]) return parseInt(eventMatch[1]);
-      const redirectMatch = responseText.match(/file_id=(\d+)/);
-      if (redirectMatch && redirectMatch[1]) return parseInt(redirectMatch[1]);
-      return null;
-    },
-
-
-    async deleteFile(fileId, fileName) {
+    async deleteFile(fileId) {
       if (this.isDeleting) return;
-      if (!confirm(`هل أنت متأكد من حذف الملف "${fileName || 'غير معروف'}"؟`)) return;
+      if (!confirm('هل أنت متأكد من حذف هذا الملف؟')) return;
 
       this.isDeleting = true;
 
       try {
-        const response = await fetch(`/api/files/${fileId}`, {
-          method: 'DELETE',
+        const response = await fetch(`/files/${fileId}/delete`, {
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-          }
+            'X-Requested-With': 'XMLHttpRequest',
+          },
         });
 
         if (!response.ok) {
@@ -516,12 +1515,20 @@ function workspace() {
 
         if (this.selectedFileId === fileId) this.clearFile();
 
-        await htmx.ajax('GET', '/workspace/panel/files', {
-          target: '#file-list-container',
-          swap: 'innerHTML'
-        });
+        // إزالة البطاقة من DOM
+        const card = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (card) {
+          card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(0.95)';
+          setTimeout(() => {
+            card.remove();
+            this.updateStats();
+            this.totalFiles = document.querySelectorAll('[data-file-id]').length;
+          }, 300);
+        }
 
-        this._showToast('تم حذف الملف بنجاح ✓', 'success');
+        this._showToast('✅ تم حذف الملف بنجاح', 'success');
       } catch (error) {
         console.error('Delete failed:', error);
         this._showToast(error.message || 'فشل حذف الملف', 'error');
@@ -529,7 +1536,6 @@ function workspace() {
         this.isDeleting = false;
       }
     },
-
 
     // ═══════════════════════════════════════════════════════════════════
     // UI HELPERS
@@ -539,13 +1545,15 @@ function workspace() {
       if (oldToast) oldToast.remove();
 
       const toast = document.createElement('div');
-      toast.className = `custom-toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl text-sm font-medium transition-all duration-300 transform translate-y-0 backdrop-blur ${
-        type === 'success'
-          ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
-          : type === 'error'
-          ? 'bg-red-500/10 text-red-300 border border-red-500/30'
-          : 'bg-brand-500/10 text-brand-300 border border-brand-500/30'
-      }`;
+      toast.className = `custom-toast fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl
+        shadow-2xl text-sm font-medium transition-all duration-300 transform translate-y-0
+        backdrop-blur border ${
+          type === 'success'
+            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
+            : type === 'error'
+              ? 'bg-red-950/60 text-red-300 border-red-700/50'
+              : 'bg-indigo-950/60 text-indigo-300 border-indigo-700/50'
+        }`;
       toast.textContent = message;
       document.body.appendChild(toast);
 
@@ -555,74 +1563,17 @@ function workspace() {
         setTimeout(() => toast.remove(), 300);
       }, 3000);
     },
-
-
-    filterFiles() {
-      const q = this.fileSearch.toLowerCase().trim();
-      document.querySelectorAll('[data-file-card]').forEach(el => {
-        const name = (el.dataset.fileName || '').toLowerCase();
-        el.style.display = (!q || name.includes(q)) ? '' : 'none';
-      });
-    },
-
-
-    async uploadFiles(e) {
-      const files = e.target.files;
-      if (!files || !files.length) return;
-
-      const formData = new FormData();
-      for (const file of files) formData.append('files', file);
-
-      const status = document.getElementById('upload-status');
-
-      try {
-        const res = await fetch('/files/upload', {
-          method: 'POST',
-          body: formData,
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.message || `فشل الرفع (${res.status})`);
-        }
-
-        const responseText = await res.text();
-        const hasRedirect = responseText.includes('window.location.href');
-
-        if (hasRedirect) {
-          const match = responseText.match(/window\.location\.href\s*=\s*"([^"]+)"/);
-          if (match && match[1]) {
-            setTimeout(() => { window.location.href = match[1]; }, 300);
-            return;
-          }
-        }
-
-        await htmx.ajax('GET', '/workspace/panel/files', {
-          target: '#file-list-container',
-          swap: 'innerHTML'
-        });
-
-        const uploadedFileId = this.getUploadedFileId(responseText);
-        if (uploadedFileId) {
-          this.selectedFileId = uploadedFileId;
-          if (this.activeTool) {
-            this._loadConverterPanel(this.activeTool, uploadedFileId);
-          }
-        }
-
-        this._showToast(
-          files.length === 1 ? 'تم رفع الملف بنجاح ✓' : `تم رفع ${files.length} ملفات بنجاح ✓`,
-          'success'
-        );
-      } catch (error) {
-        console.error('File upload failed:', error);
-        this._showToast(error.message || 'فشل رفع الملف', 'error');
-      } finally {
-        e.target.value = '';
-      }
-    }
   };
 }
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // استمع لأحداث التنقل (للتوافق مع أي كود قديم)
+  window.addEventListener('navigate-to-converter', function (e) {
+    console.log('📡 Navigate event (legacy):', e.detail);
+  });
+});
+</script>
+
 {% endblock %}
