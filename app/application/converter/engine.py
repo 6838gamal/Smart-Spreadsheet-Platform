@@ -45,6 +45,97 @@ DIRECT_PAIRS: set[tuple[str, str]] = (
 )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Font discovery helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Candidate locations for regular/bold fonts.
+# Ordered by preference: DejaVu → Noto Arabic → Liberation → macOS → Windows.
+_REGULAR_FONT_CANDIDATES: list[str] = [
+    # Debian / Ubuntu
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    # Alpine
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    # Fedora / RHEL
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+    # Noto Sans Arabic (excellent Arabic support)
+    "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+    "/usr/share/fonts/noto/NotoSansArabic-Regular.ttf",
+    # Liberation (Latin only — last resort)
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    # macOS
+    "/Library/Fonts/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    # Windows
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/tahoma.ttf",
+    # Project-local fallback
+    str(Path(__file__).parent / "fonts" / "DejaVuSans.ttf"),
+]
+
+_BOLD_FONT_CANDIDATES: list[str] = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+    "/usr/share/fonts/noto/NotoSansArabic-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/Library/Fonts/Arial Unicode.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    str(Path(__file__).parent / "fonts" / "DejaVuSans-Bold.ttf"),
+]
+
+
+def _find_font(candidates: list[str]) -> str | None:
+    """Return the first existing font file path from candidates."""
+    for p in candidates:
+        try:
+            if os.path.exists(p):
+                return p
+        except Exception:
+            continue
+    return None
+
+
+def _get_fonts() -> tuple[str | None, str | None]:
+    """
+    Discover available fonts on the system.
+    Returns (regular_path, bold_path) — either may be None.
+
+    This is called at PDF-generation time so that fonts installed at runtime
+    (e.g., via apt inside a container) are picked up automatically.
+    """
+    regular = _find_font(candidates=_REGULAR_FONT_CANDIDATES)
+    bold = _find_font(candidates=_BOLD_FONT_CANDIDATES)
+    if regular:
+        logger.debug("PDF font (regular) discovered: %s", regular)
+    else:
+        logger.warning("No suitable regular font found — PDF output may lack Unicode support")
+    if bold:
+        logger.debug("PDF font (bold) discovered: %s", bold)
+    else:
+        logger.warning("No suitable bold font found — PDF headers will use regular font")
+    return regular, bold
+
+
+def _try_insert_font(page, fontname: str, fontfile: str | None) -> bool:
+    """
+    Attempt to load a font into a PyMuPDF page.
+    Returns True on success. If fontfile is None or fails, returns False
+    so the caller can fall back to a built-in font.
+    """
+    if not fontfile:
+        return False
+    try:
+        page.insert_font(fontname=fontname, fontfile=fontfile)
+        return True
+    except Exception as e:
+        logger.warning("Failed to load font %s: %s", fontfile, e)
+        return False
+
+
 class DataEngine:
     """
     Unified data engine using Polars as the primary processing backbone.
@@ -682,8 +773,12 @@ class DataEngine:
         import arabic_reshaper
         from bidi.algorithm import get_display
 
-        FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        FONT_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        # ═══════════════════════════════════════════════════════════════
+        # Font discovery — search multiple locations, tolerate missing
+        # ═══════════════════════════════════════════════════════════════
+        FONT_REGULAR, FONT_BOLD = _get_fonts()
+        if FONT_REGULAR is None:
+            logger.error("No regular font available — PDF will use built-in Helvetica (Latin only)")
 
         MARGIN   = 28
         ROW_H    = 16
@@ -718,18 +813,30 @@ class DataEngine:
 
         def _new_page():
             pg = doc.new_page(width=PAGE_W, height=PAGE_H)
-            pg.insert_font(fontname="dvr", fontfile=FONT_REGULAR)
-            pg.insert_font(fontname="dvb", fontfile=FONT_BOLD)
+            # Try to load discovered fonts; fall back to built-ins if missing
+            reg_ok = _try_insert_font(pg, "dvr", FONT_REGULAR)
+            bold_ok = _try_insert_font(pg, "dvb", FONT_BOLD)
+            if not reg_ok:
+                logger.warning("Regular font unavailable — using Helvetica for PDF text")
+            if not bold_ok:
+                logger.warning("Bold font unavailable — using Helvetica-Bold for PDF headers")
             return pg
+
+        def _font_names() -> tuple[str, str]:
+            """Return the actual font names to use (may be built-ins)."""
+            reg = "dvr" if FONT_REGULAR else "helv"
+            bold = "dvb" if FONT_BOLD else ("dvb" if FONT_REGULAR else "hebo")
+            return reg, bold
 
         def _draw_section(pg, y, title):
             col_w_full = PAGE_W - 2 * MARGIN
             rect = fitz.Rect(MARGIN, y, MARGIN + col_w_full, y + SEC_H)
             pg.draw_rect(rect, color=None, fill=C_SEC_BG, width=0, overlay=True)
             txt, rtl = _prep(title)
+            _, bold_name = _font_names()
             pg.insert_textbox(
                 fitz.Rect(rect.x0 + 4, rect.y0 + 3, rect.x1 - 4, rect.y1 - 3),
-                txt, fontname="dvb", fontsize=FONT_SEC, color=C_HDR_TXT,
+                txt, fontname=bold_name, fontsize=FONT_SEC, color=C_HDR_TXT,
                 align=fitz.TEXT_ALIGN_RIGHT if rtl else fitz.TEXT_ALIGN_LEFT,
                 overlay=True,
             )
@@ -737,7 +844,8 @@ class DataEngine:
 
         def _draw_row(pg, y, cells, col_w, n_cols, is_header, row_idx=0):
             h  = HDR_H if is_header else ROW_H
-            fn = "dvb" if is_header else "dvr"
+            reg_name, bold_name = _font_names()
+            fn = bold_name if is_header else reg_name
             fs = FONT_HDR if is_header else FONT_DAT
             tc = C_HDR_TXT if is_header else C_DAT_TXT
             for c_idx, text in enumerate(cells):
@@ -820,10 +928,16 @@ class DataEngine:
     def _write_pdf(self, df: pl.DataFrame, path: str) -> None:
         """Write DataFrame as a PDF table using PyMuPDF — full Unicode/Arabic support."""
         import pymupdf as fitz
+        import unicodedata
+        import arabic_reshaper
+        from bidi.algorithm import get_display
 
-        # DejaVu Sans ships with the Replit NixOS image and covers Arabic + Latin
-        FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        FONT_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        # ═══════════════════════════════════════════════════════════════
+        # Font discovery — search multiple locations, tolerate missing
+        # ═══════════════════════════════════════════════════════════════
+        FONT_REGULAR, FONT_BOLD = _get_fonts()
+        if FONT_REGULAR is None:
+            logger.error("No regular font available — PDF will use built-in Helvetica (Latin only)")
 
         n_cols = len(df.columns)
         n_rows = min(len(df), 2000)
@@ -851,13 +965,19 @@ class DataEngine:
 
         def _new_page(document: fitz.Document) -> fitz.Page:
             pg = document.new_page(width=PAGE_W, height=PAGE_H)
-            pg.insert_font(fontname="dvr", fontfile=FONT_REGULAR)
-            pg.insert_font(fontname="dvb", fontfile=FONT_BOLD)
+            reg_ok = _try_insert_font(pg, "dvr", FONT_REGULAR)
+            bold_ok = _try_insert_font(pg, "dvb", FONT_BOLD)
+            if not reg_ok:
+                logger.warning("Regular font unavailable — using Helvetica for PDF text")
+            if not bold_ok:
+                logger.warning("Bold font unavailable — using Helvetica-Bold for PDF headers")
             return pg
 
-        import unicodedata
-        import arabic_reshaper
-        from bidi.algorithm import get_display
+        def _font_names() -> tuple[str, str]:
+            """Return the actual font names to use (may be built-ins)."""
+            reg = "dvr" if FONT_REGULAR else "helv"
+            bold = "dvb" if FONT_BOLD else ("dvb" if FONT_REGULAR else "hebo")
+            return reg, bold
 
         def _is_rtl(text: str) -> bool:
             """Return True if the text is predominantly RTL (Arabic/Hebrew)."""
@@ -888,7 +1008,8 @@ class DataEngine:
 
         def _draw_row(pg: fitz.Page, y: float, cells, is_header: bool, row_idx: int = 0) -> None:
             h          = HDR_H if is_header else ROW_H
-            fn         = "dvb" if is_header else "dvr"
+            reg_name, bold_name = _font_names()
+            fn         = bold_name if is_header else reg_name
             fs         = FONT_HDR if is_header else FONT_DAT
             txt_color  = C_HDR_TXT if is_header else C_DAT_TXT
             for c_idx, text in enumerate(cells):
