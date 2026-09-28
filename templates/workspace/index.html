@@ -1,4 +1,4 @@
-<!-- templates/files/index.html -->
+<!-- templates/workspace/index.html -->
 {% extends "base.html" %}
 
 {% block title %}
@@ -36,15 +36,9 @@
     border-color: rgba(99, 102, 241, 0.4);
     box-shadow: 0 12px 25px -5px rgba(99, 102, 241, 0.15);
   }
-  .file-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
+  .file-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .file-card.filtered-out { display: none !important; }
-  .file-card.disabled-tool {
-    opacity: 0.35;
-    filter: grayscale(0.7);
-    pointer-events: none;
-  }
+
   @keyframes pulse-border {
     0%, 100% { border-color: rgba(99, 102, 241, 0.4); }
     50% { border-color: rgba(99, 102, 241, 0.8); }
@@ -68,9 +62,7 @@
   x-init="init()"
 >
 
-  <!-- ═══════════════════════════════════════════════════════════════════
-       HTMX HIDDEN TARGETS (للتوافق مع دوال الرفع/الحذف/التحديث)
-  ═══════════════════════════════════════════════════════════════════ -->
+  <!-- HTMX HIDDEN TARGETS -->
   <div id="file-list-container" class="hidden" aria-hidden="true">
     {% include "workspace/_files_panel.html" ignore missing %}
   </div>
@@ -79,18 +71,12 @@
   <div id="url-import-result" class="hidden" aria-hidden="true"></div>
 
 
-  <!-- ═══════════════════════════════════════════════════════════════════
-       MAIN AREA
-  ═══════════════════════════════════════════════════════════════════ -->
   <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         HEADER (Logo + File Badge + Tool Badge)
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- HEADER -->
     <header class="flex-shrink-0 glass-panel border-b border-slate-800/60">
       <div class="h-14 flex items-center gap-3 px-4 md:px-5">
 
-        <!-- Logo -->
         <div class="flex items-center gap-3 cursor-pointer" @click="goHome()">
           <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400
                       flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
@@ -124,8 +110,7 @@
           </div>
           <button @click="closeTool()"
             class="w-5 h-5 flex items-center justify-center rounded-md
-                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0"
-            title="إلغاء الأداة">
+                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
             </svg>
@@ -149,15 +134,13 @@
           </div>
           <button @click="clearFile()"
             class="w-5 h-5 flex items-center justify-center rounded-md
-                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0"
-            title="إلغاء تحديد الملف">
+                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
             </svg>
           </button>
         </div>
 
-        <!-- Right Status -->
         <div class="ms-auto flex items-center gap-2">
           <div x-show="!selectedFileId && !activeTool"
                class="text-[10px] text-slate-500 hidden sm:block">
@@ -179,16 +162,12 @@
     </header>
 
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         CONTENT AREA (Scrollable)
-    ═══════════════════════════════════════════════════════════════ -->
+    <!-- CONTENT AREA -->
     <section class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6">
       <div class="max-w-[1600px] mx-auto space-y-6">
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             STORAGE STATUS BAR
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- STORAGE STATUS -->
         <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400
                     p-3 bg-slate-900/40 rounded-xl border border-slate-800/60">
           <div class="flex flex-wrap items-center gap-3">
@@ -216,9 +195,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             UPLOAD ZONE
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- UPLOAD ZONE -->
         <div
           class="glass-panel p-4 sm:p-6 rounded-2xl transition-all duration-200"
           x-on:dragover.prevent="dragging = true"
@@ -296,9 +273,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             URL IMPORT
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- URL IMPORT -->
         <div class="glass-panel p-4 sm:p-6 rounded-2xl border border-indigo-800/30">
           <div class="flex items-center gap-3 mb-3">
             <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
@@ -352,7 +327,6 @@
             </button>
           </div>
 
-          <!-- URL Import Progress -->
           <div x-show="importingUrl || importStatus" x-cloak class="mt-4 space-y-3">
             <div>
               <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
@@ -416,12 +390,9 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             TOOLS GRID (يظهر عندما لا تكون هناك أداة نشطة)
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- TOOLS GRID -->
         <div x-show="!activeTool" x-transition.opacity>
 
-          <!-- Hero -->
           <div class="relative py-6 md:py-8 mb-6 text-center overflow-hidden">
             <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96
                         bg-brand-600/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -443,7 +414,6 @@
             </div>
           </div>
 
-          <!-- Filter Tabs -->
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4
                       border-b border-slate-800/80 pb-4 mb-6">
             <div>
@@ -465,7 +435,6 @@
             </div>
           </div>
 
-          <!-- Tools Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <template x-for="tool in filteredTools" :key="tool.id">
               <div
@@ -504,9 +473,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             ACTIVE TOOL BANNER (يظهر عندما تكون هناك أداة نشطة)
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- ACTIVE TOOL BANNER -->
         <div x-show="activeTool && !selectedFileId" x-cloak x-transition.opacity
              class="rounded-2xl p-4 border-2 animated-border"
              :class="activeTool ? 'bg-indigo-950/30 border-indigo-600/50' : ''">
@@ -537,9 +504,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             CONVERTER PANEL (HTMX target)
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- CONVERTER PANEL (HTMX target) -->
         <div x-show="activeTool && selectedFileId" x-cloak x-transition.opacity>
           <div class="glass-panel rounded-2xl p-4 sm:p-6 relative overflow-hidden
                       border border-brand-500/30 shadow-2xl">
@@ -548,9 +513,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             FILTERS & SEARCH
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- FILES HEADER + FILTERS -->
         <div x-show="!selectedFileId" x-transition.opacity>
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
@@ -605,9 +568,7 @@
         </div>
 
 
-        <!-- ═══════════════════════════════════════════════════════════════
-             FILES GRID
-        ═══════════════════════════════════════════════════════════════ -->
+        <!-- FILES GRID -->
         <div x-show="!selectedFileId" x-transition.opacity>
 
           {% if files %}
@@ -623,7 +584,6 @@
                 ? 'filtered-out'
                 : ''"
             >
-              <!-- File type + status -->
               <div class="flex items-start justify-between">
                 <span class="text-xs font-bold px-2 py-1 rounded-lg
                   {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20
@@ -657,7 +617,6 @@
                 </div>
               </div>
 
-              <!-- Name & size -->
               <div class="min-w-0">
                 <p class="text-sm font-medium text-white truncate" title="{{ f.original_name }}">
                   {{ f.original_name }}
@@ -667,7 +626,6 @@
                 </p>
               </div>
 
-              <!-- Meta -->
               {% if f.meta %}
               <div class="text-xs text-slate-500 flex gap-3 flex-wrap">
                 {% if f.meta.rows %}<span>{{ "{:,}".format(f.meta.rows) }} صف</span>{% endif %}
@@ -696,7 +654,7 @@
                   تحميل
                 </button>
 
-                <!-- زر التحويل الموحّد -->
+                <!-- زر الاختيار: يظهر فقط بعد اختيار أداة -->
                 <button
                   x-show="activeTool"
                   x-cloak
@@ -705,15 +663,6 @@
                          bg-brand-600 hover:bg-brand-500 text-white
                          transition-colors font-medium shadow-md shadow-brand-600/20">
                   ✓ اختر
-                </button>
-
-                <button
-                  x-show="!activeTool"
-                  @click="quickConvert({{ f.id }}, '{{ f.original_name|e }}', '{{ f.format|lower if f.format else '' }}')"
-                  class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
-                         bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-400
-                         transition-colors font-medium border border-indigo-800/40">
-                  تحويل
                 </button>
 
                 <button @click="deleteFile({{ f.id }})"
@@ -727,9 +676,8 @@
             {% endfor %}
           </div>
 
-          <!-- No compatible files message -->
-          <div x-show="activeTool" x-cloak
-               class="hidden text-center py-12 rounded-2xl border-2 border-dashed border-slate-800">
+          <div x-show="activeTool && !hasCompatibleFiles" x-cloak
+               class="text-center py-12 rounded-2xl border-2 border-dashed border-slate-800 mt-4">
             <i class="fa-solid fa-filter-circle-xmark text-4xl text-slate-600 mb-3"></i>
             <p class="text-slate-400 text-sm">
               لا توجد ملفات متوافقة مع هذه الأداة.
@@ -741,7 +689,6 @@
             </p>
           </div>
 
-          <!-- Pagination -->
           {% if total_pages > 1 %}
           <div class="flex items-center justify-center gap-2 mt-6">
             {% for p in range(1, total_pages + 1) %}
@@ -755,7 +702,6 @@
           {% endif %}
 
           {% else %}
-          <!-- Empty state -->
           <div class="glass-panel rounded-2xl p-16 text-center">
             <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800/60
                         flex items-center justify-center">
@@ -784,9 +730,7 @@
 </div>
 
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     FOOTER
-═══════════════════════════════════════════════════════════════════ -->
+<!-- FOOTER -->
 <footer class="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
   <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-3">
     <p>© 2026 FlexiConvert - جميع الحقوق محفوظة</p>
@@ -807,9 +751,7 @@
 <script>
 function filesWorkspace() {
   return {
-    // ═══════════════════════════════════════════════════════════════════
     // STATE — Storage / Upload
-    // ═══════════════════════════════════════════════════════════════════
     dragging: false,
     uploading: false,
     uploadProgress: 0,
@@ -818,9 +760,7 @@ function filesWorkspace() {
     totalFiles: {{ total or 0 }},
     totalSize: '{{ total_size_human if total_size_human else "0 B" }}',
 
-    // ═══════════════════════════════════════════════════════════════════
     // STATE — URL Import
-    // ═══════════════════════════════════════════════════════════════════
     fileUrl: '',
     importingUrl: false,
     importProgress: 0,
@@ -835,19 +775,14 @@ function filesWorkspace() {
       { id: 'saving',      label: 'حفظ' },
     ],
 
-    // ═══════════════════════════════════════════════════════════════════
     // STATE — Converter / Tools
-    // ═══════════════════════════════════════════════════════════════════
     selectedFileId: null,
     selectedFileName: '',
     activeTool: null,
     activeCategory: 'all',
     isDeleting: false,
-    _navigating: false,
 
-    // ═══════════════════════════════════════════════════════════════════
     // TOOLS CONFIG
-    // ═══════════════════════════════════════════════════════════════════
     toolCategories: [
       { id: 'all',         label: 'الكل' },
       { id: 'to-pdf',      label: 'تحويل إلى PDF' },
@@ -857,114 +792,78 @@ function filesWorkspace() {
     ],
 
     tools: [
-      {
-        id: 'excel-to-pdf', title: 'Excel to PDF', category: 'to-pdf',
+      { id: 'excel-to-pdf', title: 'Excel to PDF', category: 'to-pdf',
         icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.',
-        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'],
-      },
-      {
-        id: 'pdf-to-excel', title: 'PDF to Excel', category: 'from-pdf',
+        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
+      { id: 'pdf-to-excel', title: 'PDF to Excel', category: 'from-pdf',
         icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
         desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.',
-        inputFormats: ['pdf'],
-      },
-      {
-        id: 'word-to-excel', title: 'Word to Excel', category: 'excel',
+        inputFormats: ['pdf'] },
+      { id: 'word-to-excel', title: 'Word to Excel', category: 'excel',
         icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
         desc: 'تحويل النصوص والبيانات من Word إلى Excel.',
-        inputFormats: ['docx', 'doc'],
-      },
-      {
-        id: 'pdf-to-word', title: 'PDF to Word', category: 'from-pdf',
+        inputFormats: ['docx', 'doc'] },
+      { id: 'pdf-to-word', title: 'PDF to Word', category: 'from-pdf',
         icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
         desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.',
-        inputFormats: ['pdf'],
-      },
-      {
-        id: 'excel-to-word', title: 'Excel to Word', category: 'excel',
+        inputFormats: ['pdf'] },
+      { id: 'excel-to-word', title: 'Excel to Word', category: 'excel',
         icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تصدير بيانات Excel إلى ملف Word منظم.',
-        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'],
-      },
-      {
-        id: 'word-to-pdf', title: 'Word to PDF', category: 'to-pdf',
+        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
+      { id: 'word-to-pdf', title: 'Word to PDF', category: 'to-pdf',
         icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
         desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.',
-        inputFormats: ['docx', 'doc'],
-      },
-      {
-        id: 'img-to-pdf', title: 'Img to PDF', category: 'to-pdf',
+        inputFormats: ['docx', 'doc'] },
+      { id: 'img-to-pdf', title: 'Img to PDF', category: 'to-pdf',
         icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
         desc: 'تجميع الصور داخل مستند PDF واحد.',
-        inputFormats: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'],
-      },
-      {
-        id: 'xls-to-pdf', title: 'Xls to PDF', category: 'to-pdf',
+        inputFormats: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] },
+      { id: 'xls-to-pdf', title: 'Xls to PDF', category: 'to-pdf',
         icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تحويل صيغ XLS القديمة إلى PDF.',
-        inputFormats: ['xls'],
-      },
-      {
-        id: 'png-to-pdf', title: 'PNG to PDF', category: 'to-pdf',
+        inputFormats: ['xls'] },
+      { id: 'png-to-pdf', title: 'PNG to PDF', category: 'to-pdf',
         icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
         desc: 'تحويل صور PNG عالية الدقة إلى PDF.',
-        inputFormats: ['png'],
-      },
-      {
-        id: 'png-to-excel', title: 'PNG to Excel', category: 'word-image',
+        inputFormats: ['png'] },
+      { id: 'png-to-excel', title: 'PNG to Excel', category: 'word-image',
         icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
         desc: 'استخراج الجداول من صور PNG إلى Excel.',
-        inputFormats: ['png'],
-      },
-      {
-        id: 'xlsx-to-pdf', title: 'Xlsx to PDF', category: 'to-pdf',
+        inputFormats: ['png'] },
+      { id: 'xlsx-to-pdf', title: 'Xlsx to PDF', category: 'to-pdf',
         icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تحويل XLSX الحديث إلى PDF متناسق.',
-        inputFormats: ['xlsx'],
-      },
-      {
-        id: 'ppt-to-pdf', title: 'PPT to PDF', category: 'to-pdf',
+        inputFormats: ['xlsx'] },
+      { id: 'ppt-to-pdf', title: 'PPT to PDF', category: 'to-pdf',
         icon: 'fa-file-powerpoint', iconColor: 'text-orange-400', bgColor: 'bg-orange-500/10',
         desc: 'تحويل عروض PowerPoint إلى PDF.',
-        inputFormats: ['pptx', 'ppt'],
-      },
-      {
-        id: 'pdf-to-jpg', title: 'PDF to JPG', category: 'from-pdf',
+        inputFormats: ['pptx', 'ppt'] },
+      { id: 'pdf-to-jpg', title: 'PDF to JPG', category: 'from-pdf',
         icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
         desc: 'استخراج صفحات PDF إلى صور JPG.',
-        inputFormats: ['pdf'],
-      },
-      {
-        id: 'jpg-to-excel', title: 'JPG to Excel', category: 'word-image',
+        inputFormats: ['pdf'] },
+      { id: 'jpg-to-excel', title: 'JPG to Excel', category: 'word-image',
         icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
         desc: 'تحويل الجداول المصورة JPG إلى Excel.',
-        inputFormats: ['jpg', 'jpeg'],
-      },
-      {
-        id: 'pdf-to-png', title: 'PDF to PNG', category: 'from-pdf',
+        inputFormats: ['jpg', 'jpeg'] },
+      { id: 'pdf-to-png', title: 'PDF to PNG', category: 'from-pdf',
         icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
         desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.',
-        inputFormats: ['pdf'],
-      },
-      {
-        id: 'excel-to-csv', title: 'Excel to CSV', category: 'excel',
+        inputFormats: ['pdf'] },
+      { id: 'excel-to-csv', title: 'Excel to CSV', category: 'excel',
         icon: 'fa-file-csv', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تحويل Excel إلى صيغة CSV.',
-        inputFormats: ['xlsx', 'xls', 'xlsm'],
-      },
-      {
-        id: 'jpg-to-pdf', title: 'JPG to PDF', category: 'to-pdf',
+        inputFormats: ['xlsx', 'xls', 'xlsm'] },
+      { id: 'jpg-to-pdf', title: 'JPG to PDF', category: 'to-pdf',
         icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
         desc: 'تحويل صور JPG إلى مستند PDF.',
-        inputFormats: ['jpg', 'jpeg'],
-      },
-      {
-        id: 'excel-to-jpg', title: 'Excel to JPG', category: 'excel',
+        inputFormats: ['jpg', 'jpeg'] },
+      { id: 'excel-to-jpg', title: 'Excel to JPG', category: 'excel',
         icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
         desc: 'تحويل الجداول والرسوم إلى صورة JPG.',
-        inputFormats: ['xlsx', 'xls', 'xlsm'],
-      },
+        inputFormats: ['xlsx', 'xls', 'xlsm'] },
     ],
 
     get filteredTools() {
@@ -983,9 +882,11 @@ function filesWorkspace() {
       return labels[this.importStage] || '⏳ جاري العمل...';
     },
 
-    // ═══════════════════════════════════════════════════════════════════
+    get hasCompatibleFiles() {
+      return document.querySelectorAll('.file-card:not(.filtered-out)').length > 0;
+    },
+
     // INIT
-    // ═══════════════════════════════════════════════════════════════════
     init() {
       this.resetImportState();
 
@@ -993,14 +894,14 @@ function filesWorkspace() {
       const urlFileId = params.get('file_id');
       const urlTool = params.get('tool');
 
-      // استرجاع الأداة من URL
+      // لا نقرأ tab إطلاقاً
       if (urlTool) {
         const tool = this.tools.find(t => t.id === urlTool);
         if (tool) this.activeTool = tool;
       }
 
-      // استرجاع الملف المحدد من URL
-      if (urlFileId) {
+      // file_id يُستعاد فقط إذا كانت هناك أداة نشطة
+      if (urlFileId && this.activeTool) {
         const id = parseInt(urlFileId);
         const card = document.querySelector(`[data-file-id="${id}"]`);
         this.selectedFileId = id;
@@ -1011,9 +912,8 @@ function filesWorkspace() {
         }
       }
 
-      // open_file_id من الـ backend
       {% if open_file_id %}
-      if (!this.selectedFileId) {
+      if (!this.selectedFileId && this.activeTool) {
         const el = document.querySelector(`[data-file-id="{{ open_file_id }}"]`);
         if (el) {
           this.selectedFileId = {{ open_file_id }};
@@ -1022,12 +922,10 @@ function filesWorkspace() {
       }
       {% endif %}
 
-      // تحميل لوحة التحويل إذا كان لدينا أداة + ملف
       if (this.activeTool && this.selectedFileId) {
         this.$nextTick(() => this._loadConverterPanel(this.activeTool, this.selectedFileId));
       }
 
-      // استمع لأحداث التخزين
       window.addEventListener('storage', (e) => {
         if (e.key === 'flexiconvert-files-updated') this.updateStats();
       });
@@ -1054,21 +952,14 @@ function filesWorkspace() {
       }
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // TOOLS ACTIONS
-    // ═══════════════════════════════════════════════════════════════════
     filterCategory(catId) {
       this.activeCategory = catId;
     },
 
-    /**
-     * فتح أداة → تصبح نشطة → تُفلتر الملفات حسب الصيغ المتوافقة.
-     * لا يتم تحميل لوحة التحويل حتى يختار المستخدم ملفاً.
-     */
     openTool(tool) {
       this.activeTool = tool;
 
-      // إذا كان الملف المحدد غير متوافق مع الأداة الجديدة → ألغِ تحديده
       if (this.selectedFileId) {
         const card = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
         const fmt = card?.dataset.fileFormat || '';
@@ -1077,7 +968,6 @@ function filesWorkspace() {
         }
       }
 
-      // تحديث URL
       const url = new URL(window.location);
       url.searchParams.set('tool', tool.id);
       if (this.selectedFileId) {
@@ -1085,9 +975,9 @@ function filesWorkspace() {
       } else {
         url.searchParams.delete('file_id');
       }
+      url.searchParams.delete('tab');
       window.history.pushState({}, '', url);
 
-      // تمرير إلى الملفات
       this.$nextTick(() => {
         document.querySelector('#files-grid')
           ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1102,6 +992,7 @@ function filesWorkspace() {
       const url = new URL(window.location);
       url.searchParams.delete('tool');
       url.searchParams.delete('file_id');
+      url.searchParams.delete('tab');
       window.history.pushState({}, '', url);
 
       const panel = document.getElementById('converter-panel');
@@ -1116,9 +1007,7 @@ function filesWorkspace() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
-    // ═══════════════════════════════════════════════════════════════════
-    // FILE ↔ TOOL COMPATIBILITY
-    // ═══════════════════════════════════════════════════════════════════
+    // COMPATIBILITY
     isFileCompatibleWithTool(format) {
       if (!this.activeTool) return true;
       if (!format) return false;
@@ -1126,65 +1015,13 @@ function filesWorkspace() {
       return this.activeTool.inputFormats.includes(fmt);
     },
 
-    // ═══════════════════════════════════════════════════════════════════
-    // FILE SELECTION / CONVERSION
-    // ═══════════════════════════════════════════════════════════════════
-    /**
-     * عند الضغط على "✓ اختر" في بطاقة ملف (بعد اختيار أداة).
-     */
+    // SELECTION / CONVERSION
     selectFileAndConvert(id, name) {
       if (!this.activeTool) {
-        // لا توجد أداة → اختر أداة أولاً
         this._showToast('اختر أداة تحويل أولاً', 'info');
         return;
       }
       this.selectFile(id, name);
-    },
-
-    /**
-     * عند الضغط على "تحويل" بدون أداة نشطة → اقترح أداة افتراضية.
-     */
-    quickConvert(id, name, format) {
-      const suggested = this._suggestToolFor(format);
-      if (!suggested) {
-        this._showToast('لا توجد أداة مناسبة لهذا النوع', 'error');
-        return;
-      }
-      this.selectedFileId = id;
-      this.selectedFileName = name;
-      this.openTool(suggested);
-      this.$nextTick(() => {
-        this._loadConverterPanel(suggested, id);
-        document.querySelector('#converter-panel')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    },
-
-    _suggestToolFor(format) {
-      const fmt = String(format || '').toLowerCase();
-      if (!fmt) return null;
-      // اقترح أداة تتوافق مع الصيغة
-      const map = {
-        'xlsx': 'excel-to-pdf',
-        'xls':  'xls-to-pdf',
-        'xlsm': 'excel-to-pdf',
-        'xlsb': 'excel-to-pdf',
-        'ods':  'excel-to-pdf',
-        'csv':  'excel-to-pdf',
-        'docx': 'word-to-pdf',
-        'doc':  'word-to-pdf',
-        'pdf':  'pdf-to-excel',
-        'pptx': 'ppt-to-pdf',
-        'ppt':  'ppt-to-pdf',
-        'png':  'png-to-pdf',
-        'jpg':  'jpg-to-pdf',
-        'jpeg': 'jpg-to-pdf',
-        'webp': 'img-to-pdf',
-        'bmp':  'img-to-pdf',
-        'gif':  'img-to-pdf',
-      };
-      const toolId = map[fmt];
-      return toolId ? this.tools.find(t => t.id === toolId) : null;
     },
 
     selectFile(id, name) {
@@ -1194,9 +1031,9 @@ function filesWorkspace() {
       const url = new URL(window.location);
       url.searchParams.set('file_id', id);
       if (this.activeTool) url.searchParams.set('tool', this.activeTool.id);
+      url.searchParams.delete('tab');
       window.history.pushState({}, '', url);
 
-      // حمّل لوحة التحويل في نفس الصفحة
       if (this.activeTool) {
         this.$nextTick(() => {
           this._loadConverterPanel(this.activeTool, id);
@@ -1218,9 +1055,7 @@ function filesWorkspace() {
       if (panel) panel.innerHTML = '';
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // PANEL LOADING (HTMX)
-    // ═══════════════════════════════════════════════════════════════════
     _loadConverterPanel(tool, fileId) {
       const panel = document.getElementById('converter-panel');
       if (!panel) return;
@@ -1241,9 +1076,7 @@ function filesWorkspace() {
       });
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // URL IMPORT
-    // ═══════════════════════════════════════════════════════════════════
     resetImportState() {
       this.importProgress = 0;
       this.importStage = 'validating';
@@ -1339,11 +1172,7 @@ function filesWorkspace() {
 
         this.totalFiles += 1;
 
-        // ✅ لا reload — فقط حدّث القائمة عبر HTMX ثم أعد تحميل الصفحة
-        // لتحديث بطاقات الملفات (بدون فقدان الحالة)
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        setTimeout(() => window.location.reload(), 1500);
 
       } catch (error) {
         clearInterval(progressTimer);
@@ -1368,9 +1197,7 @@ function filesWorkspace() {
       }
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // UPLOAD
-    // ═══════════════════════════════════════════════════════════════════
     handleDrop(event) {
       this.dragging = false;
       const files = event.dataTransfer.files;
@@ -1416,7 +1243,6 @@ function filesWorkspace() {
 
         await this.updateStats();
 
-        // إذا كان هناك redirect من السيرفر، احترمه
         const hasRedirect = result.html && result.html.includes('window.location.href');
         if (hasRedirect) {
           const match = result.html.match(/window\.location\.href\s*=\s*"([^"]+)"/);
@@ -1426,7 +1252,6 @@ function filesWorkspace() {
           }
         }
 
-        // وإلا → أعد تحميل الصفحة لتحديث البطاقات
         setTimeout(() => window.location.reload(), 600);
 
       } catch (error) {
@@ -1468,9 +1293,7 @@ function filesWorkspace() {
       });
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // STATS / REFRESH
-    // ═══════════════════════════════════════════════════════════════════
     async updateStats() {
       try {
         const response = await fetch('/files/storage-stats');
@@ -1486,9 +1309,7 @@ function filesWorkspace() {
       window.location.reload();
     },
 
-    // ═══════════════════════════════════════════════════════════════════
     // FILE ACTIONS
-    // ═══════════════════════════════════════════════════════════════════
     downloadFile(fileId) {
       window.open(`/files/${fileId}/download`, '_blank');
     },
@@ -1515,7 +1336,6 @@ function filesWorkspace() {
 
         if (this.selectedFileId === fileId) this.clearFile();
 
-        // إزالة البطاقة من DOM
         const card = document.querySelector(`[data-file-id="${fileId}"]`);
         if (card) {
           card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
@@ -1537,9 +1357,7 @@ function filesWorkspace() {
       }
     },
 
-    // ═══════════════════════════════════════════════════════════════════
-    // UI HELPERS
-    // ═══════════════════════════════════════════════════════════════════
+    // TOAST
     _showToast(message, type = 'info') {
       const oldToast = document.querySelector('.custom-toast');
       if (oldToast) oldToast.remove();
@@ -1565,15 +1383,6 @@ function filesWorkspace() {
     },
   };
 }
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  // استمع لأحداث التنقل (للتوافق مع أي كود قديم)
-  window.addEventListener('navigate-to-converter', function (e) {
-    console.log('📡 Navigate event (legacy):', e.detail);
-  });
-});
 </script>
 
 {% endblock %}
