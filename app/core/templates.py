@@ -792,6 +792,75 @@ def translate_filter(text: str, lang: str = 'ar') -> str:
 
 
 # ============================================================
+# ✅ NEW: DATE / DATETIME FILTERS
+# ============================================================
+
+def format_date(value: Any, fmt: str = '%Y-%m-%d') -> str:
+    """
+    Format a date/datetime/ISO-string safely.
+    
+    Accepts:
+        - datetime objects
+        - ISO format strings (e.g. "2026-09-28T15:57:19.544782+00:00")
+        - Unix timestamps (int/float)
+        - None (returns '-')
+    
+    Example:
+        {{ file.created_at|format_date }}
+        {{ file.created_at|format_date('%Y-%m-%d %H:%M') }}
+        {{ file.created_at|format_date('%d/%m/%Y') }}
+    """
+    if value is None:
+        return '-'
+    
+    # datetime object
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    
+    # string (ISO format or plain date)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return '-'
+        try:
+            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+            return dt.strftime(fmt)
+        except (ValueError, AttributeError):
+            # Fallback: return first 10 chars if it looks like a date
+            return s[:10] if len(s) >= 10 else s
+    
+    # timestamp
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value).strftime(fmt)
+        except (ValueError, OSError):
+            return str(value)
+    
+    return str(value)
+
+
+def format_datetime(value: Any, fmt: str = '%Y-%m-%d %H:%M') -> str:
+    """
+    Format a datetime with time component.
+    
+    Example:
+        {{ file.created_at|format_datetime }}
+        {{ file.created_at|format_datetime('%Y-%m-%d %H:%M:%S') }}
+    """
+    return format_date(value, fmt)
+
+
+def format_time(value: Any, fmt: str = '%H:%M') -> str:
+    """
+    Format only the time component.
+    
+    Example:
+        {{ file.created_at|format_time }}
+    """
+    return format_date(value, fmt)
+
+
+# ============================================================
 # CUSTOM TESTS
 # ============================================================
 
@@ -873,6 +942,7 @@ class CustomTemplates(Jinja2Templates):
     
     def _add_filters(self):
         """Add custom filters to the environment."""
+        # Existing filters
         self.env.filters['escapejs'] = escapejs
         self.env.filters['tojson_safe'] = tojson_safe
         self.env.filters['timesince'] = timesince
@@ -883,6 +953,12 @@ class CustomTemplates(Jinja2Templates):
         self.env.filters['t'] = translate_filter
         self.env.filters['translate'] = translate_filter
         
+        # ✅ NEW: date/time filters
+        self.env.filters['format_date'] = format_date
+        self.env.filters['format_datetime'] = format_datetime
+        self.env.filters['format_time'] = format_time
+        
+        # JSON filters
         self.env.filters['json'] = lambda v: json.dumps(v, ensure_ascii=False, default=str)
         self.env.filters['pretty_json'] = lambda v: json.dumps(v, ensure_ascii=False, indent=2, default=str)
     
@@ -903,6 +979,9 @@ class CustomTemplates(Jinja2Templates):
             'range': lambda start, end: range(start, end),
             'dict_get': lambda d, key, default=None: d.get(key, default) if d else default,
             'list_get': lambda l, index, default=None: l[index] if l and 0 <= index < len(l) else default,
+            # ✅ NEW: expose format_date as global too
+            'format_date': format_date,
+            'format_datetime': format_datetime,
         })
     
     def _add_tests(self):
@@ -960,6 +1039,10 @@ class CustomTemplates(Jinja2Templates):
             'get_supported_languages': get_supported_languages,
             'is_rtl_language': is_rtl_language,
             'DEFAULT_TRANSLATIONS': DEFAULT_TRANSLATIONS,
+            # ✅ NEW: date helpers available globally in every template
+            'format_date': format_date,
+            'format_datetime': format_datetime,
+            'format_time': format_time,
         }
         
         merged_context = {**default_context, **context}
@@ -1069,6 +1152,10 @@ __all__ = [
     'format_size',
     'file_icon',
     'truncate_text',
+    # ✅ NEW
+    'format_date',
+    'format_datetime',
+    'format_time',
     'is_image',
     'is_video',
     'is_audio',
