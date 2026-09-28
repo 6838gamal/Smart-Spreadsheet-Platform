@@ -6,9 +6,6 @@
 {% block content %}
 {% set t = get_texts(lang) %}
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     CUSTOM STYLES
-═══════════════════════════════════════════════════════════════════════════ -->
 <style>
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
@@ -49,154 +46,22 @@
 >
 
   <!-- ═══════════════════════════════════════════════════════════════════════
-       SIDEBAR (Files Panel)
+       HTMX TARGET (مخفي — للتوافق مع دوال الحذف/الرفع)
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <aside
-    class="flex-shrink-0 flex flex-col glass-panel border-e border-slate-800/60
-           transition-[width] duration-300 ease-out"
-    :class="filePanelOpen ? 'w-72' : 'w-14'"
-  >
+  <div id="file-list-container" class="hidden" aria-hidden="true">
+    {% include "workspace/_files_panel.html" %}
+  </div>
 
-    <!-- Header -->
-    <div class="h-14 flex items-center gap-2 px-3 border-b border-slate-800/60">
-      <button
-        @click="filePanelOpen = !filePanelOpen"
-        class="w-8 h-8 flex items-center justify-center rounded-lg
-               text-slate-400 hover:text-white hover:bg-slate-800/60
-               transition-colors flex-shrink-0"
-        :title="filePanelOpen ? 'إغلاق الملفات' : 'فتح الملفات'"
-      >
-        <svg class="w-4 h-4 transition-transform duration-300"
-             :class="!filePanelOpen ? 'rotate-180' : ''"
-             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 19l-7-7 7-7"/>
-        </svg>
-      </button>
-
-      <div x-show="filePanelOpen" x-transition.opacity class="min-w-0 flex-1">
-        <div class="text-sm font-semibold text-white truncate">Workspace</div>
-        <div class="text-[10px] text-slate-500 mt-0.5">ملفاتك وبياناتك</div>
-      </div>
-
-      <span x-show="filePanelOpen" x-transition.opacity
-        class="flex-shrink-0 min-w-6 h-5 px-1.5
-               inline-flex items-center justify-center
-               rounded-full bg-brand-500/10 text-brand-400
-               text-[10px] font-medium border border-brand-500/20">
-        {{ files|length }}
-      </span>
-    </div>
-
-
-    <!-- Content -->
-    <div x-show="filePanelOpen" x-transition.opacity class="flex-1 min-h-0 flex flex-col overflow-hidden">
-
-      <!-- Upload -->
-      <div class="p-3 pb-2">
-        <label class="group flex items-center justify-center gap-2
-                      w-full h-9 px-3 rounded-xl
-                      bg-brand-600 hover:bg-brand-500
-                      text-white text-xs font-medium
-                      cursor-pointer shadow-lg shadow-brand-600/30
-                      transition-all active:scale-[0.99]">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>
-          </svg>
-          <span>رفع ملف</span>
-          <input type="file" multiple class="hidden"
-            x-ref="uploadInput"
-            @change="uploadFiles($event)"
-            accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"/>
-        </label>
-        <div id="upload-status" class="h-4 mt-1.5 text-[10px] text-center text-slate-500"></div>
-      </div>
-
-      <!-- Search -->
-      <div class="px-3 pb-3">
-        <div class="relative">
-          <svg class="absolute start-2.5 top-1/2 -translate-y-1/2
-                     w-3.5 h-3.5 text-slate-500 pointer-events-none"
-               fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"
-              d="m21 21-4.35-4.35m2.1-5.15a7.25 7.25 0 1 1-14.5 0 7.25 7.25 0 0 1 14.5 0Z"/>
-          </svg>
-          <input type="text" placeholder="البحث في الملفات…"
-            x-model="fileSearch"
-            @input.debounce.300ms="filterFiles()"
-            class="w-full h-8 ps-8 pe-2.5
-                   bg-slate-900/60 border border-slate-700/60
-                   rounded-lg text-xs text-white placeholder-slate-500
-                   focus:outline-none focus:ring-2 focus:ring-brand-500/30
-                   focus:border-brand-500 transition"/>
-        </div>
-      </div>
-
-      <!-- Section Header -->
-      <div class="px-3 pb-1.5">
-        <div class="flex items-center justify-between
-                    text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          <span>ملفاتي</span>
-        </div>
-      </div>
-
-      <!-- Files List -->
-      <div id="file-list-container" class="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
-        {% include "workspace/_files_panel.html" %}
-      </div>
-
-    </div>
-
-
-    <!-- Collapsed Sidebar -->
-    <div x-show="!filePanelOpen" x-transition.opacity
-         class="flex-1 flex flex-col items-center pt-3 gap-2 overflow-hidden">
-
-      <label class="w-8 h-8 rounded-lg flex items-center justify-center
-                    bg-brand-500/10 text-brand-400
-                    hover:bg-brand-500/20 cursor-pointer transition"
-             title="رفع ملف">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>
-        </svg>
-        <input type="file" multiple class="hidden"
-          @change="uploadFiles($event)"
-          accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"/>
-      </label>
-
-      <div class="w-6 border-t border-slate-800/60 my-1"></div>
-
-      {% for f in files[:7] %}
-      <button
-        @click="filePanelOpen = true; selectFile({{ f.id }}, '{{ f.original_name|replace("'", "\\'") }}')"
-        class="relative w-8 h-8 rounded-lg flex items-center justify-center
-               text-[9px] font-bold transition-all hover:scale-105
-               {% if f.format in ['xlsx','xls','xlsm','xlsb'] %}
-                 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20
-               {% elif f.format == 'csv' %}
-                 bg-blue-500/10 text-blue-400 border border-blue-500/20
-               {% elif f.format == 'json' %}
-                 bg-amber-500/10 text-amber-400 border border-amber-500/20
-               {% elif f.format == 'pdf' %}
-                 bg-red-500/10 text-red-400 border border-red-500/20
-               {% else %}
-                 bg-slate-800 text-slate-300 border border-slate-700
-               {% endif %}"
-        title="{{ f.original_name }}">
-        {{ f.format[:2]|upper }}
-      </button>
-      {% endfor %}
-    </div>
-
-  </aside>
+  <div id="upload-status" class="hidden" aria-hidden="true"></div>
 
 
   <!-- ═══════════════════════════════════════════════════════════════════════
        MAIN AREA
-  ═══════════════════════════════════════════════════════════════════════ -->
+  ═══════════════════════════════════════════════════════════════════════════ -->
   <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
     <!-- ═══════════════════════════════════════════════════════════════════
-         HEADER (Logo + File Badge) — ثابت
+         HEADER (Logo + File Badge)
     ═══════════════════════════════════════════════════════════════════ -->
     <header class="flex-shrink-0 glass-panel border-b border-slate-800/60">
       <div class="h-14 flex items-center gap-3 px-4 md:px-5">
@@ -246,7 +111,7 @@
           </button>
         </div>
 
-        <!-- Right Actions -->
+        <!-- Right Status -->
         <div class="ms-auto flex items-center gap-2">
           <div x-show="!selectedFileId && !activeTool" class="text-[10px] text-slate-500 hidden sm:block">
             اختر أداة تحويل للبدء
@@ -272,7 +137,7 @@
       <div class="max-w-[1600px] mx-auto min-h-full">
 
         <!-- ═══════════════════════════════════════════════════════════════
-             VIEW 1: TOOLS GRID (اختيار نوع التحويل)
+             VIEW 1: TOOLS GRID
         ═══════════════════════════════════════════════════════════════ -->
         <div x-show="!activeTool" x-transition.opacity>
 
@@ -370,14 +235,12 @@
           <div class="glass-panel rounded-2xl p-6 sm:p-8 relative overflow-hidden
                       border border-brand-500/30 shadow-2xl">
 
-            <!-- Close Button -->
             <button @click="closeTool()"
               class="absolute top-4 left-4 p-2 text-slate-400 hover:text-white
                      bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all">
               <i class="fa-solid fa-xmark text-lg"></i>
             </button>
 
-            <!-- Tool Header -->
             <div class="flex items-center gap-4 mb-6">
               <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl text-white shadow-md"
                    :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
@@ -391,10 +254,7 @@
               </div>
             </div>
 
-            <!-- HTMX Panel Container -->
-            <div id="converter-panel" class="min-h-[300px]">
-              <!-- يتم تحميل لوحة التحويل هنا عبر HTMX -->
-            </div>
+            <div id="converter-panel" class="min-h-[300px]"></div>
 
           </div>
         </div>
@@ -425,7 +285,6 @@
 
 
 {% block scripts %}
-<!-- FontAwesome (للأيقونات) -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <script>
@@ -436,11 +295,9 @@ function workspace() {
     // ═══════════════════════════════════════════════════════════════════
     selectedFileId: null,
     selectedFileName: '',
-    filePanelOpen: true,
     fileSearch: '',
     isDeleting: false,
 
-    // ✅ الأداة النشطة (بدلاً من activeTab)
     activeTool: null,
     activeCategory: 'all',
 
@@ -456,24 +313,24 @@ function workspace() {
     ],
 
     tools: [
-      { id: 'excel-to-pdf',        title: 'Excel to PDF',        category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.' },
-      { id: 'pdf-to-excel',        title: 'PDF to Excel',        category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.' },
-      { id: 'word-to-excel',       title: 'Word to Excel',       category: 'excel',      icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل النصوص والبيانات من Word إلى Excel.' },
-      { id: 'pdf-to-word',         title: 'PDF to Word',         category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.' },
-      { id: 'excel-to-word',       title: 'Excel to Word',       category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تصدير بيانات Excel إلى ملف Word منظم.' },
-      { id: 'word-to-pdf',         title: 'Word to PDF',         category: 'to-pdf',     icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.' },
-      { id: 'img-to-pdf',          title: 'Img to PDF',          category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تجميع الصور داخل مستند PDF واحد.' },
-      { id: 'xls-to-pdf',          title: 'Xls to PDF',          category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل صيغ XLS القديمة إلى PDF.' },
-      { id: 'png-to-pdf',          title: 'PNG to PDF',          category: 'to-pdf',     icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور PNG عالية الدقة إلى PDF.' },
-      { id: 'png-to-excel',        title: 'PNG to Excel',        category: 'word-image', icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'استخراج الجداول من صور PNG إلى Excel.' },
-      { id: 'xlsx-to-pdf',         title: 'Xlsx to PDF',         category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل XLSX الحديث إلى PDF متناسق.' },
-      { id: 'ppt-to-pdf',          title: 'PPT to PDF',          category: 'to-pdf',     icon: 'fa-file-powerpoint', iconColor: 'text-orange-500',  bgColor: 'bg-orange-500/10',  desc: 'تحويل عروض PowerPoint إلى PDF.' },
-      { id: 'pdf-to-jpg',          title: 'PDF to JPG',          category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج صفحات PDF إلى صور JPG.' },
-      { id: 'jpg-to-excel',        title: 'JPG to Excel',        category: 'word-image', icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل الجداول المصورة JPG إلى Excel.' },
-      { id: 'pdf-to-png',          title: 'PDF to PNG',          category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.' },
-      { id: 'excel-to-csv',        title: 'Excel to CSV',        category: 'excel',      icon: 'fa-file-csv',        iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل Excel إلى صيغة CSV.' },
-      { id: 'jpg-to-pdf',          title: 'JPG to PDF',          category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور JPG إلى مستند PDF.' },
-      { id: 'excel-to-jpg',        title: 'Excel to JPG',        category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل الجداول والرسوم إلى صورة JPG.' },
+      { id: 'excel-to-pdf',  title: 'Excel to PDF',  category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.' },
+      { id: 'pdf-to-excel',  title: 'PDF to Excel',  category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.' },
+      { id: 'word-to-excel', title: 'Word to Excel', category: 'excel',      icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل النصوص والبيانات من Word إلى Excel.' },
+      { id: 'pdf-to-word',   title: 'PDF to Word',   category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.' },
+      { id: 'excel-to-word', title: 'Excel to Word', category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تصدير بيانات Excel إلى ملف Word منظم.' },
+      { id: 'word-to-pdf',   title: 'Word to PDF',   category: 'to-pdf',     icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.' },
+      { id: 'img-to-pdf',    title: 'Img to PDF',    category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تجميع الصور داخل مستند PDF واحد.' },
+      { id: 'xls-to-pdf',    title: 'Xls to PDF',    category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل صيغ XLS القديمة إلى PDF.' },
+      { id: 'png-to-pdf',    title: 'PNG to PDF',    category: 'to-pdf',     icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور PNG عالية الدقة إلى PDF.' },
+      { id: 'png-to-excel',  title: 'PNG to Excel',  category: 'word-image', icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'استخراج الجداول من صور PNG إلى Excel.' },
+      { id: 'xlsx-to-pdf',   title: 'Xlsx to PDF',   category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل XLSX الحديث إلى PDF متناسق.' },
+      { id: 'ppt-to-pdf',    title: 'PPT to PDF',    category: 'to-pdf',     icon: 'fa-file-powerpoint', iconColor: 'text-orange-500',  bgColor: 'bg-orange-500/10',  desc: 'تحويل عروض PowerPoint إلى PDF.' },
+      { id: 'pdf-to-jpg',    title: 'PDF to JPG',    category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج صفحات PDF إلى صور JPG.' },
+      { id: 'jpg-to-excel',  title: 'JPG to Excel',  category: 'word-image', icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل الجداول المصورة JPG إلى Excel.' },
+      { id: 'pdf-to-png',    title: 'PDF to PNG',    category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.' },
+      { id: 'excel-to-csv',  title: 'Excel to CSV',  category: 'excel',      icon: 'fa-file-csv',        iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل Excel إلى صيغة CSV.' },
+      { id: 'jpg-to-pdf',    title: 'JPG to PDF',    category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور JPG إلى مستند PDF.' },
+      { id: 'excel-to-jpg',  title: 'Excel to JPG',  category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل الجداول والرسوم إلى صورة JPG.' },
     ],
 
     get filteredTools() {
@@ -492,7 +349,6 @@ function workspace() {
 
       console.log('🔍 URL params - file_id:', urlFileId, 'tool:', urlTool);
 
-      // ✅ تحديد الملف
       if (urlFileId) {
         this.selectedFileId = parseInt(urlFileId);
         const fileCard = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
@@ -511,7 +367,6 @@ function workspace() {
       }
       {% endif %}
 
-      // ✅ تحديد الأداة من URL
       if (urlTool) {
         const tool = this.tools.find(t => t.id === urlTool);
         if (tool) {
@@ -546,7 +401,6 @@ function workspace() {
     openTool(tool, fromInit = false) {
       this.activeTool = tool;
 
-      // ✅ تحديث URL
       const url = new URL(window.location);
       url.searchParams.set('tool', tool.id);
       if (this.selectedFileId) {
@@ -556,7 +410,6 @@ function workspace() {
         window.history.pushState({}, '', url);
       }
 
-      // ✅ تحميل لوحة التحويل عبر HTMX
       this.$nextTick(() => {
         this._loadConverterPanel(tool, this.selectedFileId);
       });
@@ -564,7 +417,6 @@ function workspace() {
 
     closeTool() {
       this.activeTool = null;
-
       const url = new URL(window.location);
       url.searchParams.delete('tool');
       window.history.pushState({}, '', url);
@@ -584,7 +436,6 @@ function workspace() {
       const panel = document.getElementById('converter-panel');
       if (!panel) return;
 
-      // ✅ بناء URL حسب الأداة والملف
       let url = `/workspace/panel/convert?tool=${tool.id}`;
       if (fileId) url += `&file_id=${fileId}`;
 
@@ -613,7 +464,6 @@ function workspace() {
       url.searchParams.set('file_id', id);
       window.history.pushState({}, '', url);
 
-      // ✅ إذا كانت أداة نشطة، أعد تحميل لوحتها بالملف الجديد
       if (this.activeTool) {
         this._loadConverterPanel(this.activeTool, id);
       }
@@ -724,10 +574,6 @@ function workspace() {
       for (const file of files) formData.append('files', file);
 
       const status = document.getElementById('upload-status');
-      if (status) {
-        status.textContent = `جارٍ رفع ${files.length} ملف…`;
-        status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-500';
-      }
 
       try {
         const res = await fetch('/files/upload', {
@@ -747,11 +593,7 @@ function workspace() {
         if (hasRedirect) {
           const match = responseText.match(/window\.location\.href\s*=\s*"([^"]+)"/);
           if (match && match[1]) {
-            if (status) {
-              status.textContent = '✅ تم رفع الملف — جارٍ التوجيه…';
-              status.className = 'h-4 mt-1.5 text-[10px] text-center text-emerald-400';
-            }
-            setTimeout(() => { window.location.href = match[1]; }, 500);
+            setTimeout(() => { window.location.href = match[1]; }, 300);
             return;
           }
         }
@@ -764,19 +606,9 @@ function workspace() {
         const uploadedFileId = this.getUploadedFileId(responseText);
         if (uploadedFileId) {
           this.selectedFileId = uploadedFileId;
-          // إذا كانت أداة نشطة، حدّث لوحتها
           if (this.activeTool) {
             this._loadConverterPanel(this.activeTool, uploadedFileId);
           }
-        }
-
-        if (status) {
-          status.textContent = files.length === 1 ? '✅ تم رفع الملف' : `✅ تم رفع ${files.length} ملفات`;
-          status.className = 'h-4 mt-1.5 text-[10px] text-center text-emerald-400';
-          setTimeout(() => {
-            status.textContent = '';
-            status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-500';
-          }, 3000);
         }
 
         this._showToast(
@@ -785,14 +617,6 @@ function workspace() {
         );
       } catch (error) {
         console.error('File upload failed:', error);
-        if (status) {
-          status.textContent = '❌ فشل رفع الملف';
-          status.className = 'h-4 mt-1.5 text-[10px] text-center text-red-400';
-          setTimeout(() => {
-            status.textContent = '';
-            status.className = 'h-4 mt-1.5 text-[10px] text-center text-slate-500';
-          }, 3000);
-        }
         this._showToast(error.message || 'فشل رفع الملف', 'error');
       } finally {
         e.target.value = '';
