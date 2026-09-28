@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import logging
 import time
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,13 +47,62 @@ def _get_pipeline(doc_type: str):
     return _PIPELINES.get(doc_type, _generic_pipeline)
 
 
+# ═══════════════════════════════════════════════════════════════
+# Helper — download file from storage to a local temp path
+# ═══════════════════════════════════════════════════════════════
+
+async def _download_to_temp(
+    db: AsyncSession,
+    file_id: int,
+    owner_id: Optional[int] = None,
+    fallback_path: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Download file content from storage to a local temp file.
+
+    Returns the local path on success, None on failure.
+    Caller is responsible for deleting the temp file.
+    """
+    try:
+        from app.application.files.service import FileService
+        svc = FileService(db)
+
+        # Need owner_id for authorization inside get_file_content
+        if owner_id is None:
+            file_row = await db.get(File, file_id)
+            if not file_row:
+                logger.error(f"_download_to_temp: File {file_id} not found in DB")
+                return None
+            owner_id = file_row.owner_id
+
+        content = await svc.get_file_content(file_id, owner_id)
+        if not content:
+            logger.error(f"_download_to_temp: no content for file {file_id}")
+            return None
+
+        # Determine suffix from format
+        file_row = await db.get(File, file_id)
+        fmt = (file_row.format or "").lower().lstrip(".") if file_row else ""
+        suffix = f".{fmt}" if fmt else ""
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.write(content)
+        tmp.close()
+        logger.info(f"📥 Downloaded file {file_id} to {tmp.name} ({len(content)} bytes)")
+        return tmp.name
+
+    except Exception as exc:
+        logger.error(f"_download_to_temp failed for file {file_id}: {exc}")
+        return None
+
+
 # ── Job handler (registered with the queue) ───────────────────────────────────
 
 @register_handler("analysis")
 async def handle_analysis_job(payload: dict) -> dict:
     """Entry point called by the job worker."""
     file_id: int = payload["file_id"]
-    file_path: str = payload["file_path"]
+    original_path: str = payload.get("file_path", "")
     file_format: str = payload.get("file_format", "")
     analysis_id: int = payload["analysis_id"]
 
@@ -66,25 +116,54 @@ async def handle_analysis_job(payload: dict) -> dict:
         analysis.updated_at = datetime.now(timezone.utc)
         await db.commit()
 
+        # ═══════════════════════════════════════════════════════════
+        # Download file locally BEFORE any processing
+        # ═══════════════════════════════════════════════════════════
+        local_path: Optional[str] = None
+        try:
+            # Get owner_id from the File row (also gives us format)
+            file_row = await db.get(File, file_id)
+            owner_id = file_row.owner_id if file_row else None
+            if not file_format and file_row and file_row.format:
+                file_format = file_row.format
+
+            local_path = await _download_to_temp(
+                db, file_id, owner_id=owner_id, fallback_path=original_path
+            )
+            if not local_path:
+                raise RuntimeError(
+                    f"Could not download file {file_id} from storage"
+                )
+        except Exception as dl_exc:
+            logger.error(f"❌ Download failed for file {file_id}: {dl_exc}")
+            analysis.status = AnalysisStatus.FAILED
+            analysis.error_message = f"download failed: {dl_exc}"[:500]
+            analysis.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+            raise
+
+        # ═══════════════════════════════════════════════════════════
+        # Process using the LOCAL path
+        # ═══════════════════════════════════════════════════════════
         t0 = time.monotonic()
         try:
             # ── Step 1: Classify ──────────────────────────────────────────
-            text_for_classify = _quick_text(file_path, file_format)
-            clf_result = _classifier.classify(text_for_classify, Path(file_path).name)
+            text_for_classify = _quick_text(local_path, file_format)
+            clf_result = _classifier.classify(text_for_classify, Path(local_path).name)
 
             analysis.doc_type = clf_result.doc_type
             analysis.doc_type_confidence = clf_result.confidence
             analysis.language = clf_result.language
             await db.commit()
 
-            # ── Step 2: Run pipeline ──────────────────────────────────────
+            # ── Step 2: Run pipeline (with local path) ────────────────────
             pipeline = _get_pipeline(clf_result.doc_type)
             ctx = PipelineContext(
                 file_id=file_id,
-                file_path=file_path,
+                file_path=local_path,              # ← المسار المحلي
                 file_format=file_format,
                 analysis_id=analysis_id,
-                extra={"doc_type": clf_result.doc_type},
+                extra={"doc_type": clf_result.doc_type, "original_path": original_path},
             )
             ctx = pipeline.run(ctx)
 
@@ -193,6 +272,17 @@ async def handle_analysis_job(payload: dict) -> dict:
             analysis.updated_at = datetime.now(timezone.utc)
             await db.commit()
             raise
+
+        finally:
+            # ═══════════════════════════════════════════════════════════
+            # Always clean up the local temp file
+            # ═══════════════════════════════════════════════════════════
+            if local_path:
+                try:
+                    Path(local_path).unlink(missing_ok=True)
+                    logger.debug(f"🧹 Cleaned up temp file {local_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp file {local_path}: {e}")
 
 
 def _quick_text(file_path: str, file_format: str) -> str:
