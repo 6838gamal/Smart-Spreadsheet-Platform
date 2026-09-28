@@ -7,7 +7,7 @@
 {% set t = get_texts(lang) %}
 
 <!-- ═══════════════════════════════════════════════════════════════════════
-     CUSTOM STYLES (Glassmorphism + Scrollbar)
+     CUSTOM STYLES
 ═══════════════════════════════════════════════════════════════════════════ -->
 <style>
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -21,20 +21,11 @@
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
-  .light .glass-panel {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-  }
   .glass-card {
     background: rgba(30, 41, 59, 0.4);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .light .glass-card {
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
   }
   .glass-card:hover {
     transform: translateY(-4px);
@@ -58,33 +49,26 @@
 >
 
   <!-- ═══════════════════════════════════════════════════════════════════════
-       WORKSPACE SIDEBAR (Files Panel) — Glassmorphism
+       SIDEBAR (Files Panel)
   ═══════════════════════════════════════════════════════════════════════════ -->
-
   <aside
-    class="flex-shrink-0 flex flex-col
-           border-e border-slate-800/60
-           glass-panel
+    class="flex-shrink-0 flex flex-col glass-panel border-e border-slate-800/60
            transition-[width] duration-300 ease-out"
     :class="filePanelOpen ? 'w-72' : 'w-14'"
   >
 
-    <!-- Sidebar Header -->
+    <!-- Header -->
     <div class="h-14 flex items-center gap-2 px-3 border-b border-slate-800/60">
       <button
         @click="filePanelOpen = !filePanelOpen"
         class="w-8 h-8 flex items-center justify-center rounded-lg
-               text-slate-400 hover:text-white
-               hover:bg-slate-800/60
+               text-slate-400 hover:text-white hover:bg-slate-800/60
                transition-colors flex-shrink-0"
         :title="filePanelOpen ? 'إغلاق الملفات' : 'فتح الملفات'"
-        aria-label="تبديل لوحة الملفات"
       >
-        <svg
-          class="w-4 h-4 transition-transform duration-300"
-          :class="!filePanelOpen ? 'rotate-180' : ''"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
+        <svg class="w-4 h-4 transition-transform duration-300"
+             :class="!filePanelOpen ? 'rotate-180' : ''"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 19l-7-7 7-7"/>
         </svg>
       </button>
@@ -94,73 +78,58 @@
         <div class="text-[10px] text-slate-500 mt-0.5">ملفاتك وبياناتك</div>
       </div>
 
-      <span
-        x-show="filePanelOpen" x-transition.opacity
+      <span x-show="filePanelOpen" x-transition.opacity
         class="flex-shrink-0 min-w-6 h-5 px-1.5
                inline-flex items-center justify-center
                rounded-full bg-brand-500/10 text-brand-400
-               text-[10px] font-medium border border-brand-500/20"
-      >
+               text-[10px] font-medium border border-brand-500/20">
         {{ files|length }}
       </span>
     </div>
 
 
-    <!-- Sidebar Content -->
+    <!-- Content -->
     <div x-show="filePanelOpen" x-transition.opacity class="flex-1 min-h-0 flex flex-col overflow-hidden">
 
       <!-- Upload -->
       <div class="p-3 pb-2">
-        <label
-          class="group flex items-center justify-center gap-2
-                 w-full h-9 px-3 rounded-xl
-                 bg-brand-600 hover:bg-brand-500
-                 text-white text-xs font-medium
-                 cursor-pointer shadow-lg shadow-brand-600/30
-                 transition-all active:scale-[0.99]"
-        >
+        <label class="group flex items-center justify-center gap-2
+                      w-full h-9 px-3 rounded-xl
+                      bg-brand-600 hover:bg-brand-500
+                      text-white text-xs font-medium
+                      cursor-pointer shadow-lg shadow-brand-600/30
+                      transition-all active:scale-[0.99]">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>
           </svg>
           <span>رفع ملف</span>
-          <input
-            type="file" multiple class="hidden"
+          <input type="file" multiple class="hidden"
             x-ref="uploadInput"
             @change="uploadFiles($event)"
-            accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
-          />
+            accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"/>
         </label>
-
         <div id="upload-status" class="h-4 mt-1.5 text-[10px] text-center text-slate-500"></div>
       </div>
-
 
       <!-- Search -->
       <div class="px-3 pb-3">
         <div class="relative">
-          <svg
-            class="absolute start-2.5 top-1/2 -translate-y-1/2
-                   w-3.5 h-3.5 text-slate-500 pointer-events-none"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
+          <svg class="absolute start-2.5 top-1/2 -translate-y-1/2
+                     w-3.5 h-3.5 text-slate-500 pointer-events-none"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"
               d="m21 21-4.35-4.35m2.1-5.15a7.25 7.25 0 1 1-14.5 0 7.25 7.25 0 0 1 14.5 0Z"/>
           </svg>
-          <input
-            type="text" placeholder="البحث في الملفات…"
+          <input type="text" placeholder="البحث في الملفات…"
             x-model="fileSearch"
             @input.debounce.300ms="filterFiles()"
             class="w-full h-8 ps-8 pe-2.5
-                   bg-slate-900/60
-                   border border-slate-700/60
-                   rounded-lg text-xs text-white
-                   placeholder-slate-500
+                   bg-slate-900/60 border border-slate-700/60
+                   rounded-lg text-xs text-white placeholder-slate-500
                    focus:outline-none focus:ring-2 focus:ring-brand-500/30
-                   focus:border-brand-500 transition"
-          />
+                   focus:border-brand-500 transition"/>
         </div>
       </div>
-
 
       <!-- Section Header -->
       <div class="px-3 pb-1.5">
@@ -170,12 +139,8 @@
         </div>
       </div>
 
-
       <!-- Files List -->
-      <div
-        id="file-list-container"
-        class="flex-1 min-h-0 overflow-y-auto px-2 pb-3"
-      >
+      <div id="file-list-container" class="flex-1 min-h-0 overflow-y-auto px-2 pb-3">
         {% include "workspace/_files_panel.html" %}
       </div>
 
@@ -183,24 +148,19 @@
 
 
     <!-- Collapsed Sidebar -->
-    <div
-      x-show="!filePanelOpen" x-transition.opacity
-      class="flex-1 flex flex-col items-center pt-3 gap-2 overflow-hidden"
-    >
-      <label
-        class="w-8 h-8 rounded-lg flex items-center justify-center
-               bg-brand-500/10 text-brand-400
-               hover:bg-brand-500/20 cursor-pointer transition"
-        title="رفع ملف"
-      >
+    <div x-show="!filePanelOpen" x-transition.opacity
+         class="flex-1 flex flex-col items-center pt-3 gap-2 overflow-hidden">
+
+      <label class="w-8 h-8 rounded-lg flex items-center justify-center
+                    bg-brand-500/10 text-brand-400
+                    hover:bg-brand-500/20 cursor-pointer transition"
+             title="رفع ملف">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>
         </svg>
-        <input
-          type="file" multiple class="hidden"
+        <input type="file" multiple class="hidden"
           @change="uploadFiles($event)"
-          accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
-        />
+          accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.pdf,.pptx,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"/>
       </label>
 
       <div class="w-6 border-t border-slate-800/60 my-1"></div>
@@ -221,8 +181,7 @@
                {% else %}
                  bg-slate-800 text-slate-300 border border-slate-700
                {% endif %}"
-        title="{{ f.original_name }}"
-      >
+        title="{{ f.original_name }}">
         {{ f.format[:2]|upper }}
       </button>
       {% endfor %}
@@ -232,66 +191,55 @@
 
 
   <!-- ═══════════════════════════════════════════════════════════════════════
-       MAIN WORKSPACE
-  ═══════════════════════════════════════════════════════════════════════════ -->
-
+       MAIN AREA
+  ═══════════════════════════════════════════════════════════════════════ -->
   <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
-
     <!-- ═══════════════════════════════════════════════════════════════════
-         WORKSPACE HEADER (نفس المنطق، تصميم زجاجي جديد)
-    ═══════════════════════════════════════════════════════════════════════ -->
+         HEADER (Logo + File Badge) — ثابت
+    ═══════════════════════════════════════════════════════════════════ -->
     <header class="flex-shrink-0 glass-panel border-b border-slate-800/60">
-
-      <!-- Top Context Bar -->
       <div class="h-14 flex items-center gap-3 px-4 md:px-5">
 
-        <!-- Logo + Brand (from new design) -->
-        <div class="flex items-center gap-3 cursor-pointer" @click="clearFile()">
-          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+        <!-- Logo -->
+        <div class="flex items-center gap-3 cursor-pointer" @click="goHome()">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400
+                      flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </div>
           <div>
-            <span class="font-bold text-base tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
-              FlexiConvert
-            </span>
+            <span class="font-bold text-base tracking-tight
+                         bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400
+                         bg-clip-text text-transparent">FlexiConvert</span>
             <span class="text-[10px] text-indigo-400 block font-medium -mt-0.5">مساحة العمل</span>
           </div>
         </div>
 
-        <!-- Divider -->
         <div class="h-8 w-px bg-slate-800/60 mx-1 hidden sm:block"></div>
 
         <!-- Selected File Badge -->
-        <div
-          x-show="selectedFileId" x-cloak
-          class="hidden sm:flex items-center gap-2
-                 min-w-0 max-w-[280px]
+        <div x-show="selectedFileId" x-cloak
+          class="hidden sm:flex items-center gap-2 min-w-0 max-w-[280px]
                  px-2.5 py-1.5 rounded-lg
-                 bg-slate-900/60 border border-slate-700/60"
-        >
+                 bg-slate-900/60 border border-slate-700/60">
           <div class="w-6 h-6 rounded-md bg-emerald-500/10 text-emerald-400
-                      flex items-center justify-center flex-shrink-0
-                      border border-emerald-500/20">
+                      flex items-center justify-center flex-shrink-0 border border-emerald-500/20">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"
                 d="M6 3h9l3 3v15H6V3Zm9 0v4h4M9 12h6M9 16h6M9 8h2"/>
             </svg>
           </div>
           <div class="min-w-0">
-            <div x-text="selectedFileName"
-              class="text-xs font-medium text-slate-200 truncate"></div>
+            <div x-text="selectedFileName" class="text-xs font-medium text-slate-200 truncate"></div>
             <div class="text-[9px] text-slate-500">الملف المحدد</div>
           </div>
-          <button
-            @click="clearFile()"
+          <button @click="clearFile()"
             class="w-5 h-5 flex items-center justify-center rounded-md
                    text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0"
-            title="إلغاء تحديد الملف"
-          >
+            title="إلغاء تحديد الملف">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
             </svg>
@@ -300,62 +248,17 @@
 
         <!-- Right Actions -->
         <div class="ms-auto flex items-center gap-2">
-          <div x-show="!selectedFileId" class="text-[10px] text-slate-500 hidden sm:block">
-            اختر ملفاً للبدء
+          <div x-show="!selectedFileId && !activeTool" class="text-[10px] text-slate-500 hidden sm:block">
+            اختر أداة تحويل للبدء
           </div>
-          <div x-show="selectedFileId" x-cloak class="flex items-center gap-1.5 text-[10px] text-emerald-400">
+          <div x-show="selectedFileId || activeTool" x-cloak
+               class="flex items-center gap-1.5 text-[10px] text-emerald-400">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>نشط</span>
+            <span x-text="activeTool ? 'أداة نشطة' : 'نشط'"></span>
           </div>
         </div>
 
       </div>
-
-
-      <!-- ═══════════════════════════════════════════════════════════════════
-           TOOL NAVIGATION TABS (المحافظة على جميع التبويبات السبعة)
-      ═══════════════════════════════════════════════════════════════════ -->
-      <nav class="px-3 md:px-4 pb-2 overflow-x-auto" aria-label="أدوات مساحة العمل">
-        <div class="inline-flex items-center gap-0.5 p-1 rounded-xl
-                    bg-slate-900/60 border border-slate-800/60">
-
-          {% set tabs = [
-            ('home',      'الرئيسية', 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6'),
-            ('view',      'استعراض',  'M15 12a3 3 0 11-6 0 3 3 0 016 0ZM2.5 12C3.8 7.9 7.5 5 12 5s8.2 2.9 9.5 7c-1.3 4.1-5 7-9.5 7s-8.2-2.9-9.5-7Z'),
-            ('analyze',   'تحليل',    'M9.7 17h4.6M12 3v1m6.4 1.6-.7.7M21 12h-1M4 12H3m3.3-5.7-.7-.7m2.8 9.9a5 5 0 1 0 7.1 0l-.5-.5a3.4 3.4 0 0 1-1-2.4v-.5a2 2 0 1 0-4 0v.5c0 .9-.4 1.8-1 2.4l-.5.5Z'),
-            ('convert',   'تحويل',    'M8 7h12m0 0-4-4m4 4-4 4M16 17H4m0 0 4 4m-4-4 4-4'),
-            ('clean',     'تنظيف',    'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m6 9 2 2 4-4'),
-            ('merge',     'دمج',      'M17 14v6m-3-3h6M6 10h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2Zm10 0h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2ZM6 20h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2Z'),
-            ('analytics', 'إحصائيات', 'M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2Zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2Z')
-          ] %}
-
-          {% for tab_id, tab_label, tab_icon in tabs %}
-          <button
-            @click="switchTab('{{ tab_id }}')"
-            :disabled="['view','analyze'].includes('{{ tab_id }}') && !selectedFileId"
-            class="group relative flex items-center gap-1.5
-                   px-3 py-1.5 rounded-lg
-                   text-[11px] font-medium whitespace-nowrap
-                   transition-all duration-200
-                   disabled:opacity-35 disabled:cursor-not-allowed"
-            :class="activeTab === '{{ tab_id }}'
-              ? 'bg-gradient-to-r from-brand-600 to-indigo-500 text-white shadow-lg shadow-brand-600/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'"
-          >
-            <svg
-              class="w-3.5 h-3.5 flex-shrink-0 transition-colors"
-              :class="activeTab === '{{ tab_id }}' ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="{{ tab_icon }}"/>
-            </svg>
-            <span>{{ tab_label }}</span>
-          </button>
-          {% endfor %}
-
-        </div>
-      </nav>
-
     </header>
 
 
@@ -364,12 +267,138 @@
     ═══════════════════════════════════════════════════════════════════ -->
     <section
       id="workspace-panel"
-      class="flex-1 min-h-0 overflow-y-auto
-             p-3 sm:p-4 md:p-5 lg:p-6
-             bg-slate-950"
+      class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6 bg-slate-950"
     >
       <div class="max-w-[1600px] mx-auto min-h-full">
-        {% include "workspace/_panel_home.html" %}
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             VIEW 1: TOOLS GRID (اختيار نوع التحويل)
+        ═══════════════════════════════════════════════════════════════ -->
+        <div x-show="!activeTool" x-transition.opacity>
+
+          <!-- Hero -->
+          <div class="relative py-6 md:py-10 mb-8 text-center overflow-hidden">
+            <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96
+                        bg-brand-600/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute top-10 right-10 w-72 h-72
+                        bg-purple-600/15 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="relative z-10 max-w-3xl mx-auto space-y-4">
+              <span class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold
+                           bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                <i class="fa-solid fa-bolt text-yellow-400"></i>
+                تحويل سريع، آمن، ومجاني 100%
+              </span>
+              <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+                حول ملفاتك بين
+                <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400
+                             bg-clip-text text-transparent">كافة الصيغ</span>
+                بضغطة واحدة
+              </h1>
+              <p class="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto">
+                اختر أداة التحويل المناسبة من الأسفل، ارفع ملفك، واحصل على النتيجة فوراً.
+              </p>
+            </div>
+          </div>
+
+          <!-- Filter Tabs -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4
+                      border-b border-slate-800/80 pb-4 mb-6">
+            <div>
+              <h2 class="text-xl font-bold text-white">أدوات التحويل المتاحة</h2>
+              <p class="text-slate-400 text-xs mt-1">اختر الأداة المطلوبة للبدء</p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <template x-for="cat in toolCategories" :key="cat.id">
+                <button
+                  @click="filterCategory(cat.id)"
+                  class="px-3.5 py-2 rounded-xl text-xs font-medium transition-all"
+                  :class="activeCategory === cat.id
+                    ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/30'
+                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 border border-slate-800'"
+                  x-text="cat.label"
+                ></button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Tools Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <template x-for="tool in filteredTools" :key="tool.id">
+              <div
+                @click="openTool(tool)"
+                class="glass-card p-5 rounded-2xl cursor-pointer flex flex-col justify-between group"
+              >
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-xl flex items-center justify-center
+                                text-lg transition-transform group-hover:scale-110"
+                         :class="tool.bgColor + ' ' + tool.iconColor">
+                      <i :class="'fa-solid ' + tool.icon"></i>
+                    </div>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full
+                                 bg-slate-800 text-slate-300 border border-slate-700">مجاني</span>
+                  </div>
+                  <h3 class="text-base font-bold text-white group-hover:text-brand-400 transition-colors"
+                      x-text="tool.title"></h3>
+                  <p class="text-xs text-slate-400 line-clamp-2 leading-relaxed"
+                     x-text="tool.desc"></p>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800/60
+                            flex items-center justify-between text-xs text-brand-400 font-medium">
+                  <span>ابدأ التحويل</span>
+                  <i class="fa-solid fa-arrow-left transition-transform group-hover:-translate-x-1"></i>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- No Results -->
+          <div x-show="filteredTools.length === 0" class="text-center py-12">
+            <i class="fa-solid fa-folder-open text-4xl text-slate-600 mb-3"></i>
+            <p class="text-slate-400 text-sm">لا توجد أدوات مطابقة</p>
+          </div>
+
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             VIEW 2: CONVERTER WORKSPACE
+        ═══════════════════════════════════════════════════════════════ -->
+        <div x-show="activeTool" x-cloak x-transition.opacity>
+          <div class="glass-panel rounded-2xl p-6 sm:p-8 relative overflow-hidden
+                      border border-brand-500/30 shadow-2xl">
+
+            <!-- Close Button -->
+            <button @click="closeTool()"
+              class="absolute top-4 left-4 p-2 text-slate-400 hover:text-white
+                     bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all">
+              <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <!-- Tool Header -->
+            <div class="flex items-center gap-4 mb-6">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl text-white shadow-md"
+                   :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
+                <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
+              </div>
+              <div>
+                <h2 class="text-xl font-bold text-white"
+                    x-text="activeTool ? activeTool.title : ''"></h2>
+                <p class="text-xs text-slate-400"
+                   x-text="activeTool ? activeTool.desc : ''"></p>
+              </div>
+            </div>
+
+            <!-- HTMX Panel Container -->
+            <div id="converter-panel" class="min-h-[300px]">
+              <!-- يتم تحميل لوحة التحويل هنا عبر HTMX -->
+            </div>
+
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -379,7 +408,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════
-     FOOTER (من التصميم الجديد)
+     FOOTER
 ═══════════════════════════════════════════════════════════════════════════ -->
 <footer class="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
   <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -396,57 +425,98 @@
 
 
 {% block scripts %}
+<!-- FontAwesome (للأيقونات) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <script>
 function workspace() {
   return {
-    activeTab: '{{ open_panel or "home" }}',
+    // ═══════════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════════
     selectedFileId: null,
     selectedFileName: '',
     filePanelOpen: true,
     fileSearch: '',
     isDeleting: false,
 
+    // ✅ الأداة النشطة (بدلاً من activeTab)
+    activeTool: null,
+    activeCategory: 'all',
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TOOLS DATA
+    // ═══════════════════════════════════════════════════════════════════
+    toolCategories: [
+      { id: 'all',         label: 'الكل' },
+      { id: 'to-pdf',      label: 'تحويل إلى PDF' },
+      { id: 'from-pdf',    label: 'تحويل من PDF' },
+      { id: 'excel',       label: 'أدوات Excel' },
+      { id: 'word-image',  label: 'Word والصور' },
+    ],
+
+    tools: [
+      { id: 'excel-to-pdf',        title: 'Excel to PDF',        category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.' },
+      { id: 'pdf-to-excel',        title: 'PDF to Excel',        category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.' },
+      { id: 'word-to-excel',       title: 'Word to Excel',       category: 'excel',      icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل النصوص والبيانات من Word إلى Excel.' },
+      { id: 'pdf-to-word',         title: 'PDF to Word',         category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.' },
+      { id: 'excel-to-word',       title: 'Excel to Word',       category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تصدير بيانات Excel إلى ملف Word منظم.' },
+      { id: 'word-to-pdf',         title: 'Word to PDF',         category: 'to-pdf',     icon: 'fa-file-word',       iconColor: 'text-blue-500',    bgColor: 'bg-blue-500/10',    desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.' },
+      { id: 'img-to-pdf',          title: 'Img to PDF',          category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تجميع الصور داخل مستند PDF واحد.' },
+      { id: 'xls-to-pdf',          title: 'Xls to PDF',          category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل صيغ XLS القديمة إلى PDF.' },
+      { id: 'png-to-pdf',          title: 'PNG to PDF',          category: 'to-pdf',     icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور PNG عالية الدقة إلى PDF.' },
+      { id: 'png-to-excel',        title: 'PNG to Excel',        category: 'word-image', icon: 'fa-image',           iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'استخراج الجداول من صور PNG إلى Excel.' },
+      { id: 'xlsx-to-pdf',         title: 'Xlsx to PDF',         category: 'to-pdf',     icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل XLSX الحديث إلى PDF متناسق.' },
+      { id: 'ppt-to-pdf',          title: 'PPT to PDF',          category: 'to-pdf',     icon: 'fa-file-powerpoint', iconColor: 'text-orange-500',  bgColor: 'bg-orange-500/10',  desc: 'تحويل عروض PowerPoint إلى PDF.' },
+      { id: 'pdf-to-jpg',          title: 'PDF to JPG',          category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'استخراج صفحات PDF إلى صور JPG.' },
+      { id: 'jpg-to-excel',        title: 'JPG to Excel',        category: 'word-image', icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل الجداول المصورة JPG إلى Excel.' },
+      { id: 'pdf-to-png',          title: 'PDF to PNG',          category: 'from-pdf',   icon: 'fa-file-pdf',        iconColor: 'text-red-500',     bgColor: 'bg-red-500/10',     desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.' },
+      { id: 'excel-to-csv',        title: 'Excel to CSV',        category: 'excel',      icon: 'fa-file-csv',        iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل Excel إلى صيغة CSV.' },
+      { id: 'jpg-to-pdf',          title: 'JPG to PDF',          category: 'to-pdf',     icon: 'fa-file-image',      iconColor: 'text-purple-500',  bgColor: 'bg-purple-500/10',  desc: 'تحويل صور JPG إلى مستند PDF.' },
+      { id: 'excel-to-jpg',        title: 'Excel to JPG',        category: 'excel',      icon: 'fa-file-excel',      iconColor: 'text-emerald-500', bgColor: 'bg-emerald-500/10', desc: 'تحويل الجداول والرسوم إلى صورة JPG.' },
+    ],
+
+    get filteredTools() {
+      if (this.activeCategory === 'all') return this.tools;
+      return this.tools.filter(t => t.category === this.activeCategory);
+    },
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════════
     init() {
       const params = new URLSearchParams(window.location.search);
       const urlFileId = params.get('file_id');
-      const urlTab = params.get('tab');
+      const urlTool = params.get('tool');
 
-      console.log('🔍 URL params - file_id:', urlFileId, 'tab:', urlTab);
+      console.log('🔍 URL params - file_id:', urlFileId, 'tool:', urlTool);
 
+      // ✅ تحديد الملف
       if (urlFileId) {
         this.selectedFileId = parseInt(urlFileId);
-
         const fileCard = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
         if (fileCard) {
           this.selectedFileName = fileCard.dataset.fileName || '';
-          console.log('✅ Found file in DOM:', this.selectedFileName);
         } else {
           this.fetchFileName(this.selectedFileId);
         }
-
-        if (urlTab && ['home', 'view', 'analyze', 'convert', 'clean', 'merge', 'analytics'].includes(urlTab)) {
-          this.activeTab = urlTab;
-        } else {
-          this.activeTab = 'convert';
-        }
-
-        this.$nextTick(() => {
-          this._loadPanel(this.activeTab, this.selectedFileId);
-        });
-
-        return;
       }
 
       {% if open_file_id %}
       const el = document.querySelector(`[data-file-id="{{ open_file_id }}"]`);
-      if (el) {
+      if (el && !this.selectedFileId) {
         this.selectedFileName = el.dataset.fileName || '';
         this.selectedFileId = {{ open_file_id }};
       }
       {% endif %}
 
-      if (this.activeTab && this.activeTab !== 'home') {
-        this._loadPanel(this.activeTab, this.selectedFileId);
+      // ✅ تحديد الأداة من URL
+      if (urlTool) {
+        const tool = this.tools.find(t => t.id === urlTool);
+        if (tool) {
+          this.$nextTick(() => this.openTool(tool, true));
+        }
       }
     },
 
@@ -466,58 +536,110 @@ function workspace() {
     },
 
 
-    switchTab(tab) {
-      if (['view', 'analyze'].includes(tab) && !this.selectedFileId) return;
+    // ═══════════════════════════════════════════════════════════════════
+    // TOOLS ACTIONS
+    // ═══════════════════════════════════════════════════════════════════
+    filterCategory(catId) {
+      this.activeCategory = catId;
+    },
 
-      this.activeTab = tab;
+    openTool(tool, fromInit = false) {
+      this.activeTool = tool;
+
+      // ✅ تحديث URL
+      const url = new URL(window.location);
+      url.searchParams.set('tool', tool.id);
+      if (this.selectedFileId) {
+        url.searchParams.set('file_id', this.selectedFileId);
+      }
+      if (!fromInit) {
+        window.history.pushState({}, '', url);
+      }
+
+      // ✅ تحميل لوحة التحويل عبر HTMX
+      this.$nextTick(() => {
+        this._loadConverterPanel(tool, this.selectedFileId);
+      });
+    },
+
+    closeTool() {
+      this.activeTool = null;
 
       const url = new URL(window.location);
-      url.searchParams.set('tab', tab);
-      if (this.selectedFileId) url.searchParams.set('file_id', this.selectedFileId);
+      url.searchParams.delete('tool');
       window.history.pushState({}, '', url);
+    },
 
-      this._loadPanel(tab);
+    goHome() {
+      this.closeTool();
+      this.clearFile();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
 
+    // ═══════════════════════════════════════════════════════════════════
+    // PANEL LOADING (HTMX)
+    // ═══════════════════════════════════════════════════════════════════
+    _loadConverterPanel(tool, fileId) {
+      const panel = document.getElementById('converter-panel');
+      if (!panel) return;
+
+      // ✅ بناء URL حسب الأداة والملف
+      let url = `/workspace/panel/convert?tool=${tool.id}`;
+      if (fileId) url += `&file_id=${fileId}`;
+
+      panel.classList.add('opacity-60', 'pointer-events-none', 'transition-opacity');
+
+      htmx.ajax('GET', url, {
+        target: '#converter-panel',
+        swap: 'innerHTML'
+      }).then(() => {
+        panel.classList.remove('opacity-60', 'pointer-events-none');
+      }).catch(() => {
+        panel.classList.remove('opacity-60', 'pointer-events-none');
+        this._showToast('فشل تحميل لوحة التحويل', 'error');
+      });
+    },
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FILE ACTIONS
+    // ═══════════════════════════════════════════════════════════════════
     selectFile(id, name) {
       this.selectedFileId = id;
       this.selectedFileName = name;
-      this.activeTab = 'view';
 
       const url = new URL(window.location);
-      url.searchParams.set('tab', 'view');
       url.searchParams.set('file_id', id);
       window.history.pushState({}, '', url);
 
-      this._loadPanel('view');
+      // ✅ إذا كانت أداة نشطة، أعد تحميل لوحتها بالملف الجديد
+      if (this.activeTool) {
+        this._loadConverterPanel(this.activeTool, id);
+      }
     },
-
 
     clearFile() {
       this.selectedFileId = null;
       this.selectedFileName = '';
-      this.activeTab = 'home';
 
       const url = new URL(window.location);
-      url.searchParams.set('tab', 'home');
       url.searchParams.delete('file_id');
       window.history.pushState({}, '', url);
 
-      this._loadPanel('home');
+      if (this.activeTool) {
+        this._loadConverterPanel(this.activeTool, null);
+      }
     },
 
 
     getUploadedFileId(responseText) {
       const match = responseText.match(/selected_file_id["']?\s*:\s*(\d+)/);
       if (match && match[1]) return parseInt(match[1]);
-
       const eventMatch = responseText.match(/file-uploaded.*?detail:.*?fileId:\s*(\d+)/);
       if (eventMatch && eventMatch[1]) return parseInt(eventMatch[1]);
-
       const redirectMatch = responseText.match(/file_id=(\d+)/);
       if (redirectMatch && redirectMatch[1]) return parseInt(redirectMatch[1]);
-
       return null;
     },
 
@@ -559,6 +681,9 @@ function workspace() {
     },
 
 
+    // ═══════════════════════════════════════════════════════════════════
+    // UI HELPERS
+    // ═══════════════════════════════════════════════════════════════════
     _showToast(message, type = 'info') {
       const oldToast = document.querySelector('.custom-toast');
       if (oldToast) oldToast.remove();
@@ -579,37 +704,6 @@ function workspace() {
         toast.style.transform = 'translateY(1rem)';
         setTimeout(() => toast.remove(), 300);
       }, 3000);
-    },
-
-
-    _loadPanel(tab, fileIdOverride) {
-      const fid = fileIdOverride || this.selectedFileId;
-      let url;
-
-      switch (tab) {
-        case 'view':      url = `/workspace/panel/view/${fid}`; break;
-        case 'analyze':   url = `/workspace/panel/analyze/${fid}`; break;
-        case 'convert':   url = fid ? `/workspace/panel/convert?file_id=${fid}` : '/workspace/panel/convert'; break;
-        case 'clean':     url = fid ? `/workspace/panel/clean?file_id=${fid}` : '/workspace/panel/clean'; break;
-        case 'merge':     url = '/workspace/panel/merge'; break;
-        case 'analytics': url = '/workspace/panel/analytics'; break;
-        default:          url = '/workspace/panel/home'; break;
-      }
-
-      const panel = document.getElementById('workspace-panel');
-      if (!panel) return;
-
-      panel.classList.add('opacity-60', 'pointer-events-none', 'transition-opacity');
-
-      htmx.ajax('GET', url, {
-        target: '#workspace-panel',
-        swap: 'innerHTML'
-      }).then(() => {
-        panel.classList.remove('opacity-60', 'pointer-events-none');
-      }).catch(() => {
-        panel.classList.remove('opacity-60', 'pointer-events-none');
-        this._showToast('فشل تحميل المحتوى', 'error');
-      });
     },
 
 
@@ -668,9 +762,12 @@ function workspace() {
         });
 
         const uploadedFileId = this.getUploadedFileId(responseText);
-        if (uploadedFileId && this.activeTab === 'convert') {
+        if (uploadedFileId) {
           this.selectedFileId = uploadedFileId;
-          this._loadPanel('convert', uploadedFileId);
+          // إذا كانت أداة نشطة، حدّث لوحتها
+          if (this.activeTool) {
+            this._loadConverterPanel(this.activeTool, uploadedFileId);
+          }
         }
 
         if (status) {
