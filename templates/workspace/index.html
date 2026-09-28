@@ -11,7 +11,7 @@
 
 {% block content %}
 
-{% set t = get_texts(lang if lang else 'ar') %}
+{% set t = get_texts(lang if lang is defined and lang else 'ar') %}
 
 <style>
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -53,6 +53,36 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  /* Step indicator */
+  .step-dot {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9999px;
+    font-size: 12px; font-weight: 700;
+    transition: all 0.3s ease;
+  }
+  .step-dot.active {
+    background: rgb(79 70 229);
+    color: white;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.2);
+  }
+  .step-dot.done {
+    background: rgb(16 185 129);
+    color: white;
+  }
+  .step-dot.pending {
+    background: rgba(51, 65, 85, 0.6);
+    color: rgb(148 163 184);
+    border: 1px solid rgba(71, 85, 105, 0.5);
+  }
+  .step-line {
+    flex: 1;
+    height: 2px;
+    background: rgba(51, 65, 85, 0.6);
+    transition: background 0.3s ease;
+  }
+  .step-line.done { background: rgb(16 185 129); }
 </style>
 
 
@@ -73,10 +103,13 @@
 
   <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
-    <!-- HEADER -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         HEADER
+    ═══════════════════════════════════════════════════════════════ -->
     <header class="flex-shrink-0 glass-panel border-b border-slate-800/60">
       <div class="h-14 flex items-center gap-3 px-4 md:px-5">
 
+        <!-- Logo -->
         <div class="flex items-center gap-3 cursor-pointer" @click="goHome()">
           <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400
                       flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
@@ -95,66 +128,57 @@
 
         <div class="h-8 w-px bg-slate-800/60 mx-1 hidden sm:block"></div>
 
-        <!-- Selected Tool Badge -->
-        <div x-show="activeTool" x-cloak
-          class="hidden md:flex items-center gap-2 min-w-0 max-w-[220px]
-                 px-2.5 py-1.5 rounded-lg bg-indigo-950/40 border border-indigo-700/40">
-          <div class="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-               :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
-            <i class="text-xs" :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
+        <!-- Step Indicator -->
+        <div class="hidden md:flex items-center gap-2 flex-1 max-w-md">
+          <!-- Step 1 -->
+          <div class="flex items-center gap-2">
+            <div class="step-dot" :class="currentStep === 1 ? 'active' : (currentStep > 1 ? 'done' : 'pending')">
+              <span x-show="currentStep > 1"><i class="fa-solid fa-check text-[10px]"></i></span>
+              <span x-show="currentStep <= 1">1</span>
+            </div>
+            <span class="text-xs font-medium hidden lg:block"
+                  :class="currentStep === 1 ? 'text-indigo-400' : (currentStep > 1 ? 'text-emerald-400' : 'text-slate-500')">
+              الأداة
+            </span>
           </div>
-          <div class="min-w-0">
-            <div x-text="activeTool ? activeTool.title : ''"
-                 class="text-xs font-medium text-slate-200 truncate"></div>
-            <div class="text-[9px] text-indigo-400">الأداة النشطة</div>
+          <div class="step-line" :class="currentStep > 1 ? 'done' : ''"></div>
+          <!-- Step 2 -->
+          <div class="flex items-center gap-2">
+            <div class="step-dot" :class="currentStep === 2 ? 'active' : (currentStep > 2 ? 'done' : 'pending')">
+              <span x-show="currentStep > 2"><i class="fa-solid fa-check text-[10px]"></i></span>
+              <span x-show="currentStep <= 2">2</span>
+            </div>
+            <span class="text-xs font-medium hidden lg:block"
+                  :class="currentStep === 2 ? 'text-indigo-400' : (currentStep > 2 ? 'text-emerald-400' : 'text-slate-500')">
+              الملف
+            </span>
           </div>
-          <button @click="closeTool()"
-            class="w-5 h-5 flex items-center justify-center rounded-md
-                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
-            </svg>
-          </button>
+          <div class="step-line" :class="currentStep > 2 ? 'done' : ''"></div>
+          <!-- Step 3 -->
+          <div class="flex items-center gap-2">
+            <div class="step-dot" :class="currentStep === 3 ? 'active' : 'pending'">3</div>
+            <span class="text-xs font-medium hidden lg:block"
+                  :class="currentStep === 3 ? 'text-indigo-400' : 'text-slate-500'">
+              التحويل
+            </span>
+          </div>
         </div>
 
-        <!-- Selected File Badge -->
-        <div x-show="selectedFileId" x-cloak
-          class="hidden sm:flex items-center gap-2 min-w-0 max-w-[240px]
-                 px-2.5 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/60">
-          <div class="w-6 h-6 rounded-md bg-emerald-500/10 text-emerald-400
-                      flex items-center justify-center flex-shrink-0 border border-emerald-500/20">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"
-                d="M6 3h9l3 3v15H6V3Zm9 0v4h4M9 12h6M9 16h6M9 8h2"/>
-            </svg>
-          </div>
-          <div class="min-w-0">
-            <div x-text="selectedFileName" class="text-xs font-medium text-slate-200 truncate"></div>
-            <div class="text-[9px] text-slate-500">الملف المحدد</div>
-          </div>
-          <button @click="clearFile()"
-            class="w-5 h-5 flex items-center justify-center rounded-md
-                   text-slate-500 hover:bg-slate-800 hover:text-white transition flex-shrink-0">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6 6 18"/>
-            </svg>
-          </button>
-        </div>
-
+        <!-- Right Status -->
         <div class="ms-auto flex items-center gap-2">
-          <div x-show="!selectedFileId && !activeTool"
+          <div x-show="currentStep === 1"
                class="text-[10px] text-slate-500 hidden sm:block">
             اختر أداة تحويل للبدء
           </div>
-          <div x-show="selectedFileId && activeTool" x-cloak
-               class="flex items-center gap-1.5 text-[10px] text-emerald-400">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>جاهز للتحويل</span>
-          </div>
-          <div x-show="activeTool && !selectedFileId" x-cloak
+          <div x-show="currentStep === 2" x-cloak
                class="flex items-center gap-1.5 text-[10px] text-amber-400">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
             <span>اختر ملفاً</span>
+          </div>
+          <div x-show="currentStep === 3" x-cloak
+               class="flex items-center gap-1.5 text-[10px] text-emerald-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>جاهز للتحويل</span>
           </div>
         </div>
 
@@ -162,237 +186,19 @@
     </header>
 
 
-    <!-- CONTENT AREA -->
+    <!-- ═══════════════════════════════════════════════════════════════
+         CONTENT AREA
+    ═══════════════════════════════════════════════════════════════ -->
     <section class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6">
       <div class="max-w-[1600px] mx-auto space-y-6">
 
 
-        <!-- STORAGE STATUS -->
-        <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400
-                    p-3 bg-slate-900/40 rounded-xl border border-slate-800/60">
-          <div class="flex flex-wrap items-center gap-3">
-            <span>☁️</span>
-            <span>
-              <span class="font-medium text-slate-300">{{ t.storage_provider or 'مزود التخزين' }}:</span>
-              <span class="text-indigo-400" x-text="storageProvider"></span>
-            </span>
-            <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
-            <span>
-              <span class="font-medium text-slate-300">{{ t.total_files or 'إجمالي الملفات' }}:</span>
-              <span x-text="totalFiles"></span>
-            </span>
-            <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
-            <span>
-              <span class="font-medium text-slate-300">{{ t.total_size or 'الحجم الكلي' }}:</span>
-              <span x-text="totalSize"></span>
-            </span>
-          </div>
-          <button @click="refreshFiles()"
-            class="text-xs px-3 py-1 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/60
-                   text-indigo-400 border border-indigo-800/40 transition-colors">
-            ↻ {{ t.refresh or 'تحديث' }}
-          </button>
-        </div>
+        <!-- ═══════════════════════════════════════════════════════════
+             SCREEN 1: اختيار الأداة
+        ═══════════════════════════════════════════════════════════ -->
+        <div x-show="currentStep === 1" x-transition.opacity>
 
-
-        <!-- UPLOAD ZONE -->
-        <div
-          class="glass-panel p-4 sm:p-6 rounded-2xl transition-all duration-200"
-          x-on:dragover.prevent="dragging = true"
-          x-on:dragleave.prevent="dragging = false"
-          x-on:drop.prevent="handleDrop($event)"
-          :class="dragging ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : ''"
-        >
-          <div
-            class="border-2 border-dashed border-slate-700 rounded-2xl p-6 sm:p-8 text-center transition-all duration-200"
-            :class="dragging ? 'border-indigo-500 bg-indigo-950/20 scale-[1.01]' : 'hover:border-slate-600'"
-          >
-            <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-indigo-950/40
-                        flex items-center justify-center border border-indigo-800/40">
-              <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-            </div>
-
-            <p class="text-slate-200 font-semibold mb-1">
-              {{ t.drag_drop or 'اسحب وأفلت الملفات هنا' }}
-            </p>
-            <p class="text-xs text-slate-400 mb-5">
-              {{ t.file_limit or 'الحد الأقصى 100MB لكل ملف' }}
-              <span class="block mt-1 text-emerald-400">☁️ {{ t.stored_in_cloud or 'مخزن في السحابة' }}</span>
-            </p>
-
-            <label class="inline-flex items-center justify-center gap-2 cursor-pointer
-                          px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white
-                          font-medium text-sm transition-colors shadow-lg shadow-brand-600/30">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              {{ t.choose_files or 'اختر الملفات' }}
-              <input
-                type="file"
-                multiple
-                class="hidden"
-                x-ref="fileInput"
-                @change="uploadFiles($event)"
-                accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.doc,.pdf,.pptx,.ppt,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
-              />
-            </label>
-
-            <p x-show="dragging" x-cloak class="mt-4 text-xs font-semibold text-indigo-400">
-              {{ t.drop_to_upload or 'أفلت الملفات للرفع' }}
-            </p>
-          </div>
-
-          <!-- Uploading Status -->
-          <div x-show="uploading" x-cloak
-               class="mt-4 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
-                          flex items-center justify-center">
-                <svg class="animate-spin w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
-                  <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              </div>
-              <div class="flex-1">
-                <p class="text-sm font-medium text-slate-300">
-                  {{ t.uploading_to_cloud or 'جاري الرفع إلى السحابة…' }}
-                </p>
-                <p class="text-xs text-slate-500 mt-0.5"
-                   x-text="uploadCount > 1 ? uploadCount + ' ملفات' : 'ملف واحد'"></p>
-              </div>
-            </div>
-            <div class="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
-                   :style="'width:' + uploadProgress + '%'"></div>
-            </div>
-          </div>
-        </div>
-
-
-        <!-- URL IMPORT -->
-        <div class="glass-panel p-4 sm:p-6 rounded-2xl border border-indigo-800/30">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
-                        flex items-center justify-center text-indigo-400">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200">
-                {{ t.import_from_url or 'استيراد ملف من رابط' }}
-              </h3>
-              <p class="text-xs text-slate-500">
-                {{ t.import_url_desc or 'أدخل رابط ملف مباشر وسيتم سحبه إلى المنصة' }}
-              </p>
-            </div>
-          </div>
-
-          <div class="flex flex-col sm:flex-row gap-3">
-            <input
-              type="url"
-              x-model="fileUrl"
-              placeholder="{{ t.enter_file_url or 'https://example.com/file.pdf' }}"
-              class="flex-1 px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-900/60
-                     text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500
-                     focus:border-transparent transition"
-              @keydown.enter="importFromUrl()"
-              :disabled="importingUrl"
-            />
-            <button
-              @click="importFromUrl()"
-              :disabled="!fileUrl || importingUrl"
-              class="px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700
-                     disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm
-                     font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
-            >
-              <span x-show="!importingUrl">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              </span>
-              <span x-show="importingUrl" x-cloak>
-                <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>
-              </span>
-              <span x-text="importingUrl ? 'جاري السحب...' : 'سحب الملف'"></span>
-            </button>
-          </div>
-
-          <div x-show="importingUrl || importStatus" x-cloak class="mt-4 space-y-3">
-            <div>
-              <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                <span x-text="importProgressLabel"></span>
-                <span x-text="importProgress + '%'"></span>
-              </div>
-              <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all duration-500 ease-out"
-                  :class="importStatus === 'error'
-                    ? 'bg-red-500'
-                    : importStatus === 'success'
-                      ? 'bg-emerald-500'
-                      : 'bg-gradient-to-r from-indigo-500 to-violet-500'"
-                  :style="'width:' + importProgress + '%'"
-                ></div>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between text-[10px] text-slate-500">
-              <template x-for="stage in importStages" :key="stage.id">
-                <div class="flex items-center gap-1.5 flex-1">
-                  <span class="w-1.5 h-1.5 rounded-full"
-                        :class="importStage === stage.id
-                          ? 'bg-indigo-500 animate-pulse'
-                          : isStageDone(stage.id)
-                            ? 'bg-emerald-500'
-                            : 'bg-slate-700'"></span>
-                  <span :class="importStage === stage.id ? 'text-indigo-400 font-medium' : ''"
-                        x-text="stage.label"></span>
-                  <div x-show="stage.id !== 'saving'"
-                       class="flex-1 h-px bg-slate-800 mx-2"></div>
-                </div>
-              </template>
-            </div>
-
-            <div
-              class="p-3 rounded-lg text-sm border"
-              :class="importStatus === 'success'
-                ? 'border-emerald-700/40 bg-emerald-950/30 text-emerald-400'
-                : importStatus === 'error'
-                  ? 'border-red-700/40 bg-red-950/30 text-red-400'
-                  : 'border-indigo-700/40 bg-indigo-950/30 text-indigo-400'"
-            >
-              <div class="flex items-center gap-2">
-                <span x-show="importStatus === 'success'" class="text-lg">✅</span>
-                <span x-show="importStatus === 'error'" class="text-lg">❌</span>
-                <span x-show="!importStatus || importStatus === 'progress'" class="text-lg">⏳</span>
-                <span x-text="importMessage"></span>
-              </div>
-              <div x-show="importStatus === 'success' && importedFile" x-cloak
-                   class="mt-2 text-xs text-emerald-400">
-                <span class="font-medium">اسم الملف:</span>
-                <span x-text="importedFile?.filename"></span>
-                <span class="mx-2">•</span>
-                <span class="font-medium">الصيغة:</span>
-                <span x-text="importedFile?.format || 'غير معروف'"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-
-        <!-- TOOLS GRID -->
-        <div x-show="!activeTool" x-transition.opacity>
-
+          <!-- Hero -->
           <div class="relative py-6 md:py-8 mb-6 text-center overflow-hidden">
             <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96
                         bg-brand-600/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -409,11 +215,12 @@
                              bg-clip-text text-transparent">المناسبة</span>
               </h1>
               <p class="text-slate-400 text-sm max-w-2xl mx-auto">
-                ثم اختر الملف المطابق من قائمتك، وستُفتح لوحة التحويل مباشرةً.
+                بعد اختيار الأداة ستنتقل لاختيار الملف المطلوب.
               </p>
             </div>
           </div>
 
+          <!-- Filter Tabs -->
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4
                       border-b border-slate-800/80 pb-4 mb-6">
             <div>
@@ -435,6 +242,7 @@
             </div>
           </div>
 
+          <!-- Tools Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <template x-for="tool in filteredTools" :key="tool.id">
               <div
@@ -473,104 +281,316 @@
         </div>
 
 
-        <!-- ACTIVE TOOL BANNER -->
-        <div x-show="activeTool && !selectedFileId" x-cloak x-transition.opacity
-             class="rounded-2xl p-4 border-2 animated-border"
-             :class="activeTool ? 'bg-indigo-950/30 border-indigo-600/50' : ''">
-          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-                 :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
-              <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
-                  🎯 الأداة النشطة
-                </span>
+        <!-- ═══════════════════════════════════════════════════════════
+             SCREEN 2: اختيار الملف المصدر
+        ═══════════════════════════════════════════════════════════ -->
+        <div x-show="currentStep === 2" x-cloak x-transition.opacity class="space-y-6">
+
+          <!-- Active Tool Banner -->
+          <div class="rounded-2xl p-4 border-2 animated-border bg-indigo-950/30 border-indigo-600/50">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                   :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
+                <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
               </div>
-              <h3 class="text-lg font-bold text-white"
-                  x-text="activeTool ? activeTool.title : ''"></h3>
-              <p class="text-xs text-slate-400 mt-0.5">
-                اختر ملفاً من القائمة أدناه — الملفات المتوافقة فقط ظاهرة.
-              </p>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                    🎯 الأداة المختارة
+                  </span>
+                </div>
+                <h3 class="text-lg font-bold text-white"
+                    x-text="activeTool ? activeTool.title : ''"></h3>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  اختر ملفاً من القائمة أدناه، أو ارفع ملفاً جديداً — الملفات المتوافقة فقط تظهر.
+                </p>
+              </div>
+              <button @click="closeTool()"
+                class="px-4 py-2 rounded-xl text-xs font-medium
+                       bg-slate-800 hover:bg-slate-700 text-slate-300
+                       border border-slate-700 transition-colors whitespace-nowrap
+                       flex items-center gap-2">
+                <i class="fa-solid fa-arrow-right"></i>
+                <span>تغيير الأداة</span>
+              </button>
             </div>
-            <button @click="closeTool()"
-              class="px-4 py-2 rounded-xl text-xs font-medium
-                     bg-slate-800 hover:bg-slate-700 text-slate-300
-                     border border-slate-700 transition-colors whitespace-nowrap">
-              تغيير الأداة
+          </div>
+
+
+          <!-- Storage Status -->
+          <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400
+                      p-3 bg-slate-900/40 rounded-xl border border-slate-800/60">
+            <div class="flex flex-wrap items-center gap-3">
+              <span>☁️</span>
+              <span>
+                <span class="font-medium text-slate-300">{{ t.storage_provider or 'مزود التخزين' }}:</span>
+                <span class="text-indigo-400" x-text="storageProvider"></span>
+              </span>
+              <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
+              <span>
+                <span class="font-medium text-slate-300">{{ t.total_files or 'إجمالي الملفات' }}:</span>
+                <span x-text="totalFiles"></span>
+              </span>
+              <span class="w-px h-4 bg-slate-700 hidden sm:block"></span>
+              <span>
+                <span class="font-medium text-slate-300">{{ t.total_size or 'الحجم الكلي' }}:</span>
+                <span x-text="totalSize"></span>
+              </span>
+            </div>
+            <button @click="refreshFiles()"
+              class="text-xs px-3 py-1 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/60
+                     text-indigo-400 border border-indigo-800/40 transition-colors">
+              ↻ {{ t.refresh or 'تحديث' }}
             </button>
           </div>
-        </div>
 
 
-        <!-- CONVERTER PANEL (HTMX target) -->
-        <div x-show="activeTool && selectedFileId" x-cloak x-transition.opacity>
-          <div class="glass-panel rounded-2xl p-4 sm:p-6 relative overflow-hidden
-                      border border-brand-500/30 shadow-2xl">
-            <div id="converter-panel" class="min-h-[200px]"></div>
-          </div>
-        </div>
+          <!-- Upload Zone -->
+          <div
+            class="glass-panel p-4 sm:p-6 rounded-2xl transition-all duration-200"
+            x-on:dragover.prevent="dragging = true"
+            x-on:dragleave.prevent="dragging = false"
+            x-on:drop.prevent="handleDrop($event)"
+            :class="dragging ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : ''"
+          >
+            <div
+              class="border-2 border-dashed border-slate-700 rounded-2xl p-6 sm:p-8 text-center transition-all duration-200"
+              :class="dragging ? 'border-indigo-500 bg-indigo-950/20 scale-[1.01]' : 'hover:border-slate-600'"
+            >
+              <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-indigo-950/40
+                          flex items-center justify-center border border-indigo-800/40">
+                <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
 
+              <p class="text-slate-200 font-semibold mb-1">
+                {{ t.drag_drop or 'اسحب وأفلت الملفات هنا' }}
+              </p>
+              <p class="text-xs text-slate-400 mb-5">
+                {{ t.file_limit or 'الحد الأقصى 100MB لكل ملف' }}
+                <span class="block mt-1 text-emerald-400">☁️ {{ t.stored_in_cloud or 'مخزن في السحابة' }}</span>
+              </p>
 
-        <!-- FILES HEADER + FILTERS -->
-        <div x-show="!selectedFileId" x-transition.opacity>
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div>
-              <h2 class="text-lg font-bold text-white">
-                <span x-show="!activeTool">ملفاتك</span>
-                <span x-show="activeTool" x-cloak>
-                  ملفات متوافقة مع
-                  <span class="text-brand-400" x-text="activeTool?.title"></span>
-                </span>
-              </h2>
-              <p class="text-slate-400 text-xs mt-1">
-                <span x-show="!activeTool">جميع الملفات المرفوعة</span>
-                <span x-show="activeTool" x-cloak>
-                  فقط الملفات المطابقة لصيغة الأداة
-                </span>
+              <label class="inline-flex items-center justify-center gap-2 cursor-pointer
+                            px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white
+                            font-medium text-sm transition-colors shadow-lg shadow-brand-600/30">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                {{ t.choose_files or 'اختر الملفات' }}
+                <input
+                  type="file"
+                  multiple
+                  class="hidden"
+                  x-ref="fileInput"
+                  @change="uploadFiles($event)"
+                  accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json,.xml,.yaml,.yml,.parquet,.feather,.sqlite,.db,.sql,.docx,.doc,.pdf,.pptx,.ppt,.html,.htm,.jpg,.jpeg,.png,.bmp,.gif,.webp,.svg"
+                />
+              </label>
+
+              <p x-show="dragging" x-cloak class="mt-4 text-xs font-semibold text-indigo-400">
+                {{ t.drop_to_upload or 'أفلت الملفات للرفع' }}
               </p>
             </div>
 
-            <form method="get" class="flex gap-2 flex-wrap">
-              <input
-                type="text"
-                name="search"
-                value="{{ search }}"
-                placeholder="{{ t.search_files or 'البحث في الملفات…' }}"
-                class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
-                       text-slate-100 text-sm focus:outline-none focus:ring-2
-                       focus:ring-indigo-500 transition min-w-[160px]"
-              />
-              <select name="fmt"
-                class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
-                       text-slate-100 text-sm focus:outline-none focus:ring-2
-                       focus:ring-indigo-500 transition">
-                <option value="">جميع الصيغ</option>
-                {% for ext in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'docx', 'parquet', 'xml', 'yaml', 'ods'] %}
-                <option value="{{ ext }}" {% if ext == fmt %}selected{% endif %}>{{ ext|upper }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit"
-                class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white
-                       text-sm font-medium transition-colors">
-                بحث
-              </button>
-              {% if search or fmt %}
-              <a href="/files"
-                 class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300
-                        text-sm font-medium transition-colors border border-slate-700">
-                مسح
-              </a>
-              {% endif %}
-            </form>
+            <!-- Uploading Status -->
+            <div x-show="uploading" x-cloak
+                 class="mt-4 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
+                            flex items-center justify-center">
+                  <svg class="animate-spin w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
+                    <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-slate-300">
+                    {{ t.uploading_to_cloud or 'جاري الرفع إلى السحابة…' }}
+                  </p>
+                  <p class="text-xs text-slate-500 mt-0.5"
+                     x-text="uploadCount > 1 ? uploadCount + ' ملفات' : 'ملف واحد'"></p>
+                </div>
+              </div>
+              <div class="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                     :style="'width:' + uploadProgress + '%'"></div>
+              </div>
+            </div>
           </div>
-        </div>
 
 
-        <!-- FILES GRID -->
-        <div x-show="!selectedFileId" x-transition.opacity>
+          <!-- URL Import -->
+          <div class="glass-panel p-4 sm:p-6 rounded-2xl border border-indigo-800/30">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-800/40
+                          flex items-center justify-center text-indigo-400">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-slate-200">
+                  {{ t.import_from_url or 'استيراد ملف من رابط' }}
+                </h3>
+                <p class="text-xs text-slate-500">
+                  {{ t.import_url_desc or 'أدخل رابط ملف مباشر وسيتم سحبه إلى المنصة' }}
+                </p>
+              </div>
+            </div>
 
+            <div class="flex flex-col sm:flex-row gap-3">
+              <input
+                type="url"
+                x-model="fileUrl"
+                placeholder="{{ t.enter_file_url or 'https://example.com/file.pdf' }}"
+                class="flex-1 px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-900/60
+                       text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500
+                       focus:border-transparent transition"
+                @keydown.enter="importFromUrl()"
+                :disabled="importingUrl"
+              />
+              <button
+                @click="importFromUrl()"
+                :disabled="!fileUrl || importingUrl"
+                class="px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700
+                       disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm
+                       font-medium transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+              >
+                <span x-show="!importingUrl">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </span>
+                <span x-show="importingUrl" x-cloak>
+                  <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                </span>
+                <span x-text="importingUrl ? 'جاري السحب...' : 'سحب الملف'"></span>
+              </button>
+            </div>
+
+            <div x-show="importingUrl || importStatus" x-cloak class="mt-4 space-y-3">
+              <div>
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                  <span x-text="importProgressLabel"></span>
+                  <span x-text="importProgress + '%'"></span>
+                </div>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500 ease-out"
+                    :class="importStatus === 'error'
+                      ? 'bg-red-500'
+                      : importStatus === 'success'
+                        ? 'bg-emerald-500'
+                        : 'bg-gradient-to-r from-indigo-500 to-violet-500'"
+                    :style="'width:' + importProgress + '%'"
+                  ></div>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between text-[10px] text-slate-500">
+                <template x-for="stage in importStages" :key="stage.id">
+                  <div class="flex items-center gap-1.5 flex-1">
+                    <span class="w-1.5 h-1.5 rounded-full"
+                          :class="importStage === stage.id
+                            ? 'bg-indigo-500 animate-pulse'
+                            : isStageDone(stage.id)
+                              ? 'bg-emerald-500'
+                              : 'bg-slate-700'"></span>
+                    <span :class="importStage === stage.id ? 'text-indigo-400 font-medium' : ''"
+                          x-text="stage.label"></span>
+                    <div x-show="stage.id !== 'saving'"
+                         class="flex-1 h-px bg-slate-800 mx-2"></div>
+                  </div>
+                </template>
+              </div>
+
+              <div
+                class="p-3 rounded-lg text-sm border"
+                :class="importStatus === 'success'
+                  ? 'border-emerald-700/40 bg-emerald-950/30 text-emerald-400'
+                  : importStatus === 'error'
+                    ? 'border-red-700/40 bg-red-950/30 text-red-400'
+                    : 'border-indigo-700/40 bg-indigo-950/30 text-indigo-400'"
+              >
+                <div class="flex items-center gap-2">
+                  <span x-show="importStatus === 'success'" class="text-lg">✅</span>
+                  <span x-show="importStatus === 'error'" class="text-lg">❌</span>
+                  <span x-show="!importStatus || importStatus === 'progress'" class="text-lg">⏳</span>
+                  <span x-text="importMessage"></span>
+                </div>
+                <div x-show="importStatus === 'success' && importedFile" x-cloak
+                     class="mt-2 text-xs text-emerald-400">
+                  <span class="font-medium">اسم الملف:</span>
+                  <span x-text="importedFile?.filename"></span>
+                  <span class="mx-2">•</span>
+                  <span class="font-medium">الصيغة:</span>
+                  <span x-text="importedFile?.format || 'غير معروف'"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Files Header + Filters -->
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 class="text-lg font-bold text-white">
+                  ملفات متوافقة مع
+                  <span class="text-brand-400" x-text="activeTool?.title"></span>
+                </h2>
+                <p class="text-slate-400 text-xs mt-1">
+                  فقط الملفات المطابقة لصيغة الأداة
+                </p>
+              </div>
+
+              <form method="get" class="flex gap-2 flex-wrap">
+                <input type="hidden" name="tool" :value="activeTool?.id || ''" />
+                <input
+                  type="text"
+                  name="search"
+                  value="{{ search|default('') }}"
+                  placeholder="{{ t.search_files or 'البحث في الملفات…' }}"
+                  class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
+                         text-slate-100 text-sm focus:outline-none focus:ring-2
+                         focus:ring-indigo-500 transition min-w-[160px]"
+                />
+                <select name="fmt"
+                  class="px-3 py-2 rounded-lg border border-slate-700 bg-slate-900/60
+                         text-slate-100 text-sm focus:outline-none focus:ring-2
+                         focus:ring-indigo-500 transition">
+                  <option value="">جميع الصيغ</option>
+                  {% for ext in ['xlsx', 'xls', 'csv', 'json', 'pdf', 'docx', 'parquet', 'xml', 'yaml', 'ods'] %}
+                  <option value="{{ ext }}" {% if fmt is defined and ext == fmt %}selected{% endif %}>{{ ext|upper }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit"
+                  class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white
+                         text-sm font-medium transition-colors">
+                  بحث
+                </button>
+                {% if (search is defined and search) or (fmt is defined and fmt) %}
+                <a href="?tool={{ activeTool_id|default('') }}"
+                   class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300
+                          text-sm font-medium transition-colors border border-slate-700">
+                  مسح
+                </a>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+
+
+          <!-- Files Grid -->
           {% if files %}
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                id="files-grid">
@@ -638,7 +658,6 @@
               </div>
               {% endif %}
 
-              <!-- Actions -->
               <div class="flex gap-1.5 mt-auto pt-2 border-t border-slate-800/60">
                 <a href="/files/{{ f.id }}" target="_blank"
                   class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
@@ -654,10 +673,7 @@
                   تحميل
                 </button>
 
-                <!-- زر الاختيار: يظهر فقط بعد اختيار أداة -->
                 <button
-                  x-show="activeTool"
-                  x-cloak
                   @click="selectFileAndConvert({{ f.id }}, '{{ f.original_name|e }}')"
                   class="flex-1 text-center text-xs py-1.5 px-2 rounded-lg
                          bg-brand-600 hover:bg-brand-500 text-white
@@ -676,7 +692,8 @@
             {% endfor %}
           </div>
 
-          <div x-show="activeTool && !hasCompatibleFiles" x-cloak
+          <!-- No compatible files message -->
+          <div x-show="!hasCompatibleFiles" x-cloak
                class="text-center py-12 rounded-2xl border-2 border-dashed border-slate-800 mt-4">
             <i class="fa-solid fa-filter-circle-xmark text-4xl text-slate-600 mb-3"></i>
             <p class="text-slate-400 text-sm">
@@ -689,10 +706,10 @@
             </p>
           </div>
 
-          {% if total_pages > 1 %}
+          {% if total_pages is defined and total_pages > 1 %}
           <div class="flex items-center justify-center gap-2 mt-6">
             {% for p in range(1, total_pages + 1) %}
-            <a href="?page={{ p }}{% if search %}&search={{ search }}{% endif %}{% if fmt %}&fmt={{ fmt }}{% endif %}"
+            <a href="?tool={{ activeTool_id|default('') }}&page={{ p }}{% if search is defined and search %}&search={{ search }}{% endif %}{% if fmt is defined and fmt %}&fmt={{ fmt }}{% endif %}"
               class="w-9 h-9 flex items-center justify-center rounded-lg text-sm font-medium transition-colors
                 {% if p == page %}bg-brand-600 text-white{% else %}bg-slate-900/60 border border-slate-800 text-slate-300 hover:bg-slate-800{% endif %}">
               {{ p }}
@@ -718,6 +735,70 @@
             </p>
           </div>
           {% endif %}
+
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════
+             SCREEN 3: لوحة التحويل
+        ═══════════════════════════════════════════════════════════ -->
+        <div x-show="currentStep === 3" x-cloak x-transition.opacity class="space-y-4">
+
+          <!-- Tool + File Info Bar -->
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3
+                      p-3 rounded-xl bg-slate-900/40 border border-slate-800/60">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                   :class="activeTool ? activeTool.bgColor + ' ' + activeTool.iconColor : ''">
+                <i :class="activeTool ? 'fa-solid ' + activeTool.icon : ''"></i>
+              </div>
+              <div class="min-w-0">
+                <p class="text-xs text-slate-500">الأداة</p>
+                <p class="text-sm font-semibold text-white truncate"
+                   x-text="activeTool?.title"></p>
+              </div>
+            </div>
+
+            <div class="w-px h-10 bg-slate-800 hidden sm:block"></div>
+
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20
+                          flex items-center justify-center flex-shrink-0 text-emerald-400">
+                <i class="fa-solid fa-file text-sm"></i>
+              </div>
+              <div class="min-w-0">
+                <p class="text-xs text-slate-500">الملف</p>
+                <p class="text-sm font-semibold text-white truncate"
+                   :title="selectedFileName"
+                   x-text="selectedFileName"></p>
+              </div>
+            </div>
+
+            <div class="flex gap-2 flex-shrink-0 w-full sm:w-auto">
+              <button @click="clearFile()"
+                class="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-medium
+                       bg-slate-800 hover:bg-slate-700 text-slate-300
+                       border border-slate-700 transition-colors whitespace-nowrap
+                       flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                <span>تغيير الملف</span>
+              </button>
+              <button @click="closeTool()"
+                class="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-medium
+                       bg-slate-800 hover:bg-slate-700 text-slate-300
+                       border border-slate-700 transition-colors whitespace-nowrap
+                       flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-house text-[10px]"></i>
+                <span>البداية</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Converter Panel (HTMX target) -->
+          <div class="glass-panel rounded-2xl p-4 sm:p-6 relative overflow-hidden
+                      border border-brand-500/30 shadow-2xl">
+            <div id="converter-panel" class="min-h-[300px]"></div>
+          </div>
 
         </div>
 
@@ -751,16 +832,20 @@
 <script>
 function filesWorkspace() {
   return {
-    // STATE — Storage / Upload
+    // ═══════════════════════════════════════════════════════════════════
+    // STORAGE / UPLOAD
+    // ═══════════════════════════════════════════════════════════════════
     dragging: false,
     uploading: false,
     uploadProgress: 0,
     uploadCount: 0,
-    storageProvider: '{{ settings.STORAGE_PROVIDER if settings and settings.STORAGE_PROVIDER else "Supabase" }}',
+    storageProvider: '{{ settings.STORAGE_PROVIDER if settings is defined and settings and settings.STORAGE_PROVIDER else "Supabase" }}',
     totalFiles: {{ total or 0 }},
     totalSize: '{{ total_size_human if total_size_human else "0 B" }}',
 
-    // STATE — URL Import
+    // ═══════════════════════════════════════════════════════════════════
+    // URL IMPORT
+    // ═══════════════════════════════════════════════════════════════════
     fileUrl: '',
     importingUrl: false,
     importProgress: 0,
@@ -775,14 +860,18 @@ function filesWorkspace() {
       { id: 'saving',      label: 'حفظ' },
     ],
 
-    // STATE — Converter / Tools
+    // ═══════════════════════════════════════════════════════════════════
+    // CONVERTER / TOOLS
+    // ═══════════════════════════════════════════════════════════════════
     selectedFileId: null,
     selectedFileName: '',
     activeTool: null,
     activeCategory: 'all',
     isDeleting: false,
 
+    // ═══════════════════════════════════════════════════════════════════
     // TOOLS CONFIG
+    // ═══════════════════════════════════════════════════════════════════
     toolCategories: [
       { id: 'all',         label: 'الكل' },
       { id: 'to-pdf',      label: 'تحويل إلى PDF' },
@@ -871,6 +960,15 @@ function filesWorkspace() {
       return this.tools.filter(t => t.category === this.activeCategory);
     },
 
+    /**
+     * ✅ منطق الشاشات الثلاث — مشتق تلقائياً من الحالة
+     */
+    get currentStep() {
+      if (this.selectedFileId && this.activeTool) return 3;
+      if (this.activeTool) return 2;
+      return 1;
+    },
+
     get importProgressLabel() {
       const labels = {
         'validating':  '🔄 جاري التحقق من الرابط...',
@@ -883,10 +981,59 @@ function filesWorkspace() {
     },
 
     get hasCompatibleFiles() {
-      return document.querySelectorAll('.file-card:not(.filtered-out)').length > 0;
+      const cards = document.querySelectorAll('#files-grid .file-card:not(.filtered-out)');
+      return cards.length > 0;
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    // LOCALSTORAGE — استعادة آخر تحويل
+    // ═══════════════════════════════════════════════════════════════════
+    _STORAGE_KEY: 'flexiconvert-last-conversion',
+
+    _saveState() {
+      try {
+        if (this.activeTool) {
+          const state = {
+            toolId: this.activeTool.id,
+            fileId: this.selectedFileId || null,
+            fileName: this.selectedFileName || null,
+            ts: Date.now(),
+          };
+          localStorage.setItem(this._STORAGE_KEY, JSON.stringify(state));
+        } else {
+          localStorage.removeItem(this._STORAGE_KEY);
+        }
+      } catch (e) {
+        console.warn('localStorage save failed:', e);
+      }
+    },
+
+    _loadState() {
+      try {
+        const raw = localStorage.getItem(this._STORAGE_KEY);
+        if (!raw) return null;
+        const state = JSON.parse(raw);
+        // تجاهل الحالات الأقدم من 7 أيام
+        if (state.ts && Date.now() - state.ts > 7 * 24 * 60 * 60 * 1000) {
+          localStorage.removeItem(this._STORAGE_KEY);
+          return null;
+        }
+        return state;
+      } catch (e) {
+        console.warn('localStorage load failed:', e);
+        return null;
+      }
+    },
+
+    _clearState() {
+      try {
+        localStorage.removeItem(this._STORAGE_KEY);
+      } catch (e) { /* noop */ }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
     // INIT
+    // ═══════════════════════════════════════════════════════════════════
     init() {
       this.resetImportState();
 
@@ -894,13 +1041,26 @@ function filesWorkspace() {
       const urlFileId = params.get('file_id');
       const urlTool = params.get('tool');
 
-      // لا نقرأ tab إطلاقاً
+      // ─── أولوية 1: من URL ───────────────────────────────────────
       if (urlTool) {
         const tool = this.tools.find(t => t.id === urlTool);
         if (tool) this.activeTool = tool;
       }
 
-      // file_id يُستعاد فقط إذا كانت هناك أداة نشطة
+      // ─── أولوية 2: من localStorage إذا لم يكن هناك شيء في URL ──
+      if (!this.activeTool) {
+        const saved = this._loadState();
+        if (saved?.toolId) {
+          const tool = this.tools.find(t => t.id === saved.toolId);
+          if (tool) {
+            this.activeTool = tool;
+            // لا نستعيد file_id من localStorage تلقائياً — فقط الأداة
+            // إلا إذا كان الرابط يحدده صراحة
+          }
+        }
+      }
+
+      // ─── file_id: فقط إذا كان في URL ────────────────────────────
       if (urlFileId && this.activeTool) {
         const id = parseInt(urlFileId);
         const card = document.querySelector(`[data-file-id="${id}"]`);
@@ -912,7 +1072,7 @@ function filesWorkspace() {
         }
       }
 
-      {% if open_file_id %}
+      {% if open_file_id is defined and open_file_id %}
       if (!this.selectedFileId && this.activeTool) {
         const el = document.querySelector(`[data-file-id="{{ open_file_id }}"]`);
         if (el) {
@@ -922,9 +1082,14 @@ function filesWorkspace() {
       }
       {% endif %}
 
-      if (this.activeTool && this.selectedFileId) {
+      // تحميل اللوحة إذا كنا على Screen 3
+      if (this.currentStep === 3) {
         this.$nextTick(() => this._loadConverterPanel(this.activeTool, this.selectedFileId));
       }
+
+      // احفظ الحالة عند أي تغيير
+      this.$watch('activeTool', () => this._saveState());
+      this.$watch('selectedFileId', () => this._saveState());
 
       window.addEventListener('storage', (e) => {
         if (e.key === 'flexiconvert-files-updated') this.updateStats();
@@ -952,7 +1117,9 @@ function filesWorkspace() {
       }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // TOOLS ACTIONS
+    // ═══════════════════════════════════════════════════════════════════
     filterCategory(catId) {
       this.activeCategory = catId;
     },
@@ -960,6 +1127,7 @@ function filesWorkspace() {
     openTool(tool) {
       this.activeTool = tool;
 
+      // إذا كان الملف المحدد غير متوافق مع الأداة الجديدة → ألغِ تحديده
       if (this.selectedFileId) {
         const card = document.querySelector(`[data-file-id="${this.selectedFileId}"]`);
         const fmt = card?.dataset.fileFormat || '';
@@ -970,17 +1138,14 @@ function filesWorkspace() {
 
       const url = new URL(window.location);
       url.searchParams.set('tool', tool.id);
-      if (this.selectedFileId) {
-        url.searchParams.set('file_id', this.selectedFileId);
-      } else {
-        url.searchParams.delete('file_id');
-      }
+      url.searchParams.delete('file_id');  // نبدأ من جديد — بدون ملف
       url.searchParams.delete('tab');
       window.history.pushState({}, '', url);
 
+      this._saveState();
+
       this.$nextTick(() => {
-        document.querySelector('#files-grid')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     },
 
@@ -998,6 +1163,8 @@ function filesWorkspace() {
       const panel = document.getElementById('converter-panel');
       if (panel) panel.innerHTML = '';
 
+      this._clearState();
+
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
@@ -1007,7 +1174,9 @@ function filesWorkspace() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // COMPATIBILITY
+    // ═══════════════════════════════════════════════════════════════════
     isFileCompatibleWithTool(format) {
       if (!this.activeTool) return true;
       if (!format) return false;
@@ -1015,7 +1184,9 @@ function filesWorkspace() {
       return this.activeTool.inputFormats.includes(fmt);
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // SELECTION / CONVERSION
+    // ═══════════════════════════════════════════════════════════════════
     selectFileAndConvert(id, name) {
       if (!this.activeTool) {
         this._showToast('اختر أداة تحويل أولاً', 'info');
@@ -1034,11 +1205,12 @@ function filesWorkspace() {
       url.searchParams.delete('tab');
       window.history.pushState({}, '', url);
 
+      this._saveState();
+
       if (this.activeTool) {
         this.$nextTick(() => {
           this._loadConverterPanel(this.activeTool, id);
-          document.querySelector('#converter-panel')
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         });
       }
     },
@@ -1053,9 +1225,13 @@ function filesWorkspace() {
 
       const panel = document.getElementById('converter-panel');
       if (panel) panel.innerHTML = '';
+
+      this._saveState();
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // PANEL LOADING (HTMX)
+    // ═══════════════════════════════════════════════════════════════════
     _loadConverterPanel(tool, fileId) {
       const panel = document.getElementById('converter-panel');
       if (!panel) return;
@@ -1076,7 +1252,9 @@ function filesWorkspace() {
       });
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // URL IMPORT
+    // ═══════════════════════════════════════════════════════════════════
     resetImportState() {
       this.importProgress = 0;
       this.importStage = 'validating';
@@ -1172,7 +1350,10 @@ function filesWorkspace() {
 
         this.totalFiles += 1;
 
-        setTimeout(() => window.location.reload(), 1500);
+        // أعد تحميل الصفحة بعد ثانيتين (مع الحفاظ على الأداة الحالية في URL)
+        const url = new URL(window.location);
+        if (this.activeTool) url.searchParams.set('tool', this.activeTool.id);
+        setTimeout(() => { window.location.href = url.toString(); }, 1500);
 
       } catch (error) {
         clearInterval(progressTimer);
@@ -1197,7 +1378,9 @@ function filesWorkspace() {
       }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // UPLOAD
+    // ═══════════════════════════════════════════════════════════════════
     handleDrop(event) {
       this.dragging = false;
       const files = event.dataTransfer.files;
@@ -1252,7 +1435,10 @@ function filesWorkspace() {
           }
         }
 
-        setTimeout(() => window.location.reload(), 600);
+        // أعد تحميل الصفحة مع الحفاظ على الأداة الحالية
+        const url = new URL(window.location);
+        if (this.activeTool) url.searchParams.set('tool', this.activeTool.id);
+        setTimeout(() => { window.location.href = url.toString(); }, 600);
 
       } catch (error) {
         console.error('Upload failed:', error);
@@ -1293,7 +1479,9 @@ function filesWorkspace() {
       });
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // STATS / REFRESH
+    // ═══════════════════════════════════════════════════════════════════
     async updateStats() {
       try {
         const response = await fetch('/files/storage-stats');
@@ -1309,7 +1497,9 @@ function filesWorkspace() {
       window.location.reload();
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // FILE ACTIONS
+    // ═══════════════════════════════════════════════════════════════════
     downloadFile(fileId) {
       window.open(`/files/${fileId}/download`, '_blank');
     },
@@ -1357,7 +1547,9 @@ function filesWorkspace() {
       }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
     // TOAST
+    // ═══════════════════════════════════════════════════════════════════
     _showToast(message, type = 'info') {
       const oldToast = document.querySelector('.custom-toast');
       if (oldToast) oldToast.remove();
