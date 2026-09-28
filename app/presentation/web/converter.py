@@ -32,6 +32,50 @@ router = APIRouter()
 
 
 # ═══════════════════════════════════════════════════════════════
+# Tool → Target Format Mapping
+# ═══════════════════════════════════════════════════════════════
+
+TARGET_BY_TOOL: dict[str, str] = {
+    # Excel → PDF
+    "excel-to-pdf":  "pdf",
+    "xls-to-pdf":    "pdf",
+    "xlsx-to-pdf":   "pdf",
+
+    # PDF → Excel/Word/Images
+    "pdf-to-excel":  "xlsx",
+    "pdf-to-word":   "docx",
+    "pdf-to-jpg":    "jpg",
+    "pdf-to-png":    "png",
+
+    # Word → Excel/PDF
+    "word-to-excel": "xlsx",
+    "word-to-pdf":   "pdf",
+
+    # Excel → Word/CSV/JPG
+    "excel-to-word": "docx",
+    "excel-to-csv":  "csv",
+    "excel-to-jpg":  "jpg",
+
+    # Images → PDF/Excel
+    "img-to-pdf":    "pdf",
+    "png-to-pdf":    "pdf",
+    "jpg-to-pdf":    "pdf",
+    "png-to-excel":  "xlsx",
+    "jpg-to-excel":  "xlsx",
+
+    # PPT → PDF
+    "ppt-to-pdf":    "pdf",
+}
+
+
+def _target_from_tool(tool_id: Optional[str]) -> str:
+    """Resolve target format from tool id (returns '' if unknown)."""
+    if not tool_id:
+        return ""
+    return TARGET_BY_TOOL.get(tool_id, "")
+
+
+# ═══════════════════════════════════════════════════════════════
 # Helper functions
 # ═══════════════════════════════════════════════════════════════
 
@@ -97,7 +141,6 @@ def _extract_files(file_list) -> list:
 async def _local_file(file_service: FileService, file_id: int, user_id: int, fmt: Optional[str] = None):
     """
     يُنزّل الملف من التخزين إلى مسار محلي مؤقت ويُعيده.
-
     يُنظّف الملف تلقائياً عند الخروج من الـ context.
 
     Usage:
@@ -186,7 +229,7 @@ def file_to_dict_simple(file: File) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
-# CONVERTER PANEL (HTMX) - يستخدم داخل مساحة العمل
+# CONVERTER PANEL (HTMX) — يستخدم داخل مساحة العمل
 # ═══════════════════════════════════════════════════════════════
 
 @router.get("/workspace/panel/convert", response_class=HTMLResponse)
@@ -195,10 +238,11 @@ async def converter_panel(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     file_id: Optional[int] = Query(None),
+    tool: Optional[str] = Query(None),
 ):
     """Get converter panel partial for workspace (HTMX)."""
     try:
-        logger.info(f"🔄 Converter panel requested, file_id: {file_id}")
+        logger.info(f"🔄 Converter panel requested, file_id: {file_id}, tool: {tool}")
 
         file_repo = FileRepository(db)
         all_files = await file_repo.get_by_owner(current_user.id, limit=100)
@@ -228,10 +272,16 @@ async def converter_panel(
                     selected_file_id = file_id
                     break
 
+        # اشتق الصيغة الهدف من الأداة
+        target_format = _target_from_tool(tool)
+
         # Get translations
         translations = get_texts(current_user.default_lang or 'ar')
 
-        logger.info(f"📁 Files count: {len(files_dict)}, Selected: {selected_file_id}")
+        logger.info(
+            f"📁 Files count: {len(files_dict)}, Selected: {selected_file_id}, "
+            f"Tool: {tool}, Target: {target_format}"
+        )
 
         return templates.TemplateResponse(
             request,
@@ -243,6 +293,8 @@ async def converter_panel(
                 "selected_file_id": selected_file_id,
                 "selected_file": selected_file,
                 "translations": translations,
+                "tool_id": tool or "",
+                "target_format": target_format,
                 "t": lambda text, **kwargs: translations.get(text, text).format(**kwargs) if kwargs else translations.get(text, text),
             },
         )
