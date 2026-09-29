@@ -320,6 +320,44 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "js_pages_unit":         {"ar": "صفحة",                      "en": "pages"},
     "js_file_name_lbl":      {"ar": "اسم الملف",                 "en": "File name"},
     "js_format_lbl":         {"ar": "الصيغة",                    "en": "Format"},
+
+    # ── Tool descriptions (18 tools) ──────────────────────────────────────────
+    "desc_excel_to_pdf":  {"ar": "تحويل جداول البيانات Excel إلى ملفات PDF احترافية.",
+                           "en": "Convert Excel spreadsheets to professional PDF files."},
+    "desc_pdf_to_excel":  {"ar": "استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.",
+                           "en": "Extract tables from PDF into editable Excel sheets."},
+    "desc_word_to_excel": {"ar": "تحويل النصوص والبيانات من Word إلى Excel.",
+                           "en": "Convert text and data from Word to Excel."},
+    "desc_pdf_to_word":   {"ar": "تحويل مستندات PDF إلى Word قابلة للتعديل.",
+                           "en": "Convert PDF documents to editable Word files."},
+    "desc_excel_to_word": {"ar": "تصدير بيانات Excel إلى ملف Word منظم.",
+                           "en": "Export Excel data into a structured Word document."},
+    "desc_word_to_pdf":   {"ar": "تحويل مستندات DOCX إلى PDF سهل القراءة.",
+                           "en": "Convert DOCX documents to easy-to-read PDF."},
+    "desc_img_to_pdf":    {"ar": "تجميع الصور داخل مستند PDF واحد.",
+                           "en": "Combine images into a single PDF document."},
+    "desc_xls_to_pdf":    {"ar": "تحويل صيغ XLS القديمة إلى PDF.",
+                           "en": "Convert legacy XLS files to PDF."},
+    "desc_png_to_pdf":    {"ar": "تحويل صور PNG عالية الدقة إلى PDF.",
+                           "en": "Convert high-resolution PNG images to PDF."},
+    "desc_png_to_excel":  {"ar": "استخراج الجداول من صور PNG إلى Excel.",
+                           "en": "Extract tables from PNG images into Excel."},
+    "desc_xlsx_to_pdf":   {"ar": "تحويل XLSX الحديث إلى PDF متناسق.",
+                           "en": "Convert modern XLSX files to consistent PDF."},
+    "desc_ppt_to_pdf":    {"ar": "تحويل عروض PowerPoint إلى PDF.",
+                           "en": "Convert PowerPoint presentations to PDF."},
+    "desc_pdf_to_jpg":    {"ar": "استخراج صفحات PDF إلى صور JPG.",
+                           "en": "Extract PDF pages as JPG images."},
+    "desc_jpg_to_excel":  {"ar": "تحويل الجداول المصورة JPG إلى Excel.",
+                           "en": "Convert JPG table images into Excel."},
+    "desc_pdf_to_png":    {"ar": "حفظ صفحات PDF كصور PNG عالية الجودة.",
+                           "en": "Save PDF pages as high-quality PNG images."},
+    "desc_excel_to_csv":  {"ar": "تحويل Excel إلى صيغة CSV.",
+                           "en": "Convert Excel to CSV format."},
+    "desc_jpg_to_pdf":    {"ar": "تحويل صور JPG إلى مستند PDF.",
+                           "en": "Convert JPG images to a PDF document."},
+    "desc_excel_to_jpg":  {"ar": "تحويل الجداول والرسوم إلى صورة JPG.",
+                           "en": "Convert tables and charts to a JPG image."},
 }
 
 
@@ -373,7 +411,6 @@ class Texts:
 
     def __getattr__(self, key: str) -> str:
         """dot-style t.key — falls back to the key name if missing."""
-        # Avoid recursion during unpickling / copy
         if key.startswith("__") and key.endswith("__"):
             raise AttributeError(key)
         result = self._resolve(key, None)
@@ -390,7 +427,7 @@ class Texts:
         return len(_TRANSLATIONS)
 
     def __bool__(self) -> bool:
-        return True  # a Texts instance is always truthy
+        return True
 
     # ── dict-like views ───────────────────────────────────────────────────────
     def keys(self):
