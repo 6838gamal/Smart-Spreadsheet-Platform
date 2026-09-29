@@ -35,7 +35,7 @@
   x-data="convertPanel()"
   x-init="init()"
   class="max-w-2xl mx-auto py-2"
-  dir="rtl"
+  dir="{{ direction if direction is defined else 'rtl' }}"
 >
 
   <!-- ═══════════════════════════════════════════════════════════
@@ -55,11 +55,11 @@
             </svg>
           </span>
           <h2 class="text-base sm:text-lg font-bold text-slate-800 dark:text-white truncate">
-            {{ t.converter or 'تحويل الملف' }}
+            {{ t.get('convert_file') }}
           </h2>
         </div>
         <p class="text-xs sm:text-sm text-slate-400 dark:text-slate-500">
-          {{ t.converter_description or 'حوّل ملفك بضغطة واحدة' }}
+          {{ t.get('converter_description') }}
         </p>
       </div>
 
@@ -92,7 +92,7 @@
       </div>
       <div class="min-w-0 flex-1 text-start">
         <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {{ t.source_file or 'الملف المصدر' }}
+          {{ t.get('source_file') }}
         </p>
         <p class="text-sm font-bold text-slate-800 dark:text-white truncate mt-0.5"
            x-text="fileName"></p>
@@ -109,7 +109,7 @@
       <span class="text-lg" x-text="targetEmoji"></span>
       <div class="text-start">
         <p class="text-[10px] text-slate-400 dark:text-slate-500">
-          {{ t.target_format or 'صيغة الهدف' }}
+          {{ t.get('target_format') }}
         </p>
         <p class="text-sm font-bold text-brand-600 dark:text-brand-400"
            x-text="'.' + targetFormat.toUpperCase()"></p>
@@ -135,14 +135,14 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
       </svg>
-      <span>{{ t.start_conversion or 'بدء التحويل' }}</span>
+      <span>{{ t.get('start_conversion') }}</span>
     </span>
     <span x-show="converting" x-cloak class="flex items-center justify-center gap-2">
       <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
       </svg>
-      <span>{{ t.converting or 'جارٍ التحويل…' }}</span>
+      <span>{{ t.get('converting') }}</span>
     </span>
   </button>
 
@@ -168,7 +168,7 @@
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-sm font-bold text-slate-800 dark:text-white">
-              {{ t.converting or 'جارٍ تحويل الملف' }}
+              {{ t.get('converting_title') }}
             </p>
             <p class="text-xs text-slate-400 dark:text-slate-500 mt-1 truncate" x-text="fileName"></p>
           </div>
@@ -188,7 +188,7 @@
       </div>
       <div class="flex items-center justify-between mt-2">
         <span class="text-[10px] font-medium text-slate-400 dark:text-slate-500"
-              x-text="progressMsg || '{{ t.processing or 'جاري المعالجة…' }}'"></span>
+              x-text="progressMsg || '{{ t.get('processing') }}'"></span>
         <span class="text-[10px] font-bold text-brand-500" x-text="currentPct + '%'"></span>
       </div>
     </div>
@@ -210,7 +210,7 @@
           </template>
           <template x-if="!stageIsDone('read')"><span>1</span></template>
         </span>
-        <span>{{ t.reading or 'قراءة' }}</span>
+        <span>{{ t.get('reading') }}</span>
       </div>
 
       <div class="stage-line"></div>
@@ -224,7 +224,7 @@
           </template>
           <template x-if="!stageIsDone('analyze')"><span>2</span></template>
         </span>
-        <span>{{ t.analyzing or 'تحليل' }}</span>
+        <span>{{ t.get('analyzing') }}</span>
       </div>
 
       <div class="stage-line"></div>
@@ -238,7 +238,7 @@
           </template>
           <template x-if="!stageIsDone('convert')"><span>3</span></template>
         </span>
-        <span>{{ t.converting_short or 'تحويل' }}</span>
+        <span>{{ t.get('converting_short') }}</span>
       </div>
 
       <div class="stage-line"></div>
@@ -252,7 +252,7 @@
           </template>
           <template x-if="!stageIsDone('save')"><span>4</span></template>
         </span>
-        <span>{{ t.saving or 'حفظ' }}</span>
+        <span>{{ t.get('saving') }}</span>
       </div>
     </div>
 
@@ -275,7 +275,7 @@
         </svg>
       </div>
       <div class="flex-1 text-start min-w-0">
-        <p class="font-bold text-sm">{{ t.conversion_success or 'تم التحويل بنجاح!' }}</p>
+        <p class="font-bold text-sm">{{ t.get('conversion_success') }}</p>
         <p class="text-emerald-100 text-xs mt-0.5 truncate" x-text="successSubtitle"></p>
       </div>
     </div>
@@ -284,16 +284,16 @@
       <div class="grid grid-cols-3 gap-2">
         <div class="stat-card">
           <p class="stat-value" x-text="successData.rows ?? '—'"></p>
-          <p class="stat-label">{{ t.rows or 'صف' }}</p>
+          <p class="stat-label">{{ t.get('rows') }}</p>
         </div>
         <div class="stat-card">
           <p class="stat-value" x-text="successData.cols ?? '—'"></p>
-          <p class="stat-label">{{ t.columns or 'عمود' }}</p>
+          <p class="stat-label">{{ t.get('columns') }}</p>
         </div>
         <div class="stat-card">
           <p class="stat-value"
              x-text="successData.duration_ms ? (successData.duration_ms / 1000).toFixed(1) + 's' : '—'"></p>
-          <p class="stat-label">{{ t.time or 'المدة' }}</p>
+          <p class="stat-label">{{ t.get('time') }}</p>
         </div>
       </div>
 
@@ -303,11 +303,11 @@
           <path stroke-linecap="round" stroke-width="2"
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
         </svg>
-        {{ t.download_converted or 'تحميل الملف الناتج' }}
+        {{ t.get('download_converted') }}
       </a>
 
       <button type="button" @click="resetConvert()" class="new-conversion-button">
-        {{ t.new_conversion or 'تحويل ملف آخر' }}
+        {{ t.get('new_conversion') }}
         <span>←</span>
       </button>
     </div>
@@ -343,7 +343,7 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M4 4v5h5M20 20v-5h-5M5.5 9A7 7 0 0117 5.5L20 9M18.5 15A7 7 0 017 18.5L4 15"/>
       </svg>
-      {{ t.retry_conversion or 'حاول مجدداً' }}
+      {{ t.get('retry_conversion') }}
     </button>
 
   </div>
@@ -452,7 +452,32 @@
      ALPINE.JS
 ═══════════════════════════════════════════════════════════ -->
 <script>
+// ✅ تمرير الترجمات إلى JavaScript
+window.__CONVERT_I18N__ = {
+  startingConversion: {{ t.get('conv_starting')|tojson }},
+  readingFile: {{ t.get('conv_reading_file')|tojson }},
+  analyzingData: {{ t.get('conv_analyzing_data')|tojson }},
+  convertingData: {{ t.get('conv_converting_data')|tojson }},
+  savingFile: {{ t.get('conv_saving_file')|tojson }},
+  processingDefault: {{ t.get('conv_processing_default')|tojson }},
+  completedSuccess: {{ t.get('conv_completed_success')|tojson }},
+  errorTitle: {{ t.get('conv_error_title')|tojson }},
+  errorDetail: {{ t.get('conv_error_detail')|tojson }},
+  connectionLost: {{ t.get('conv_connection_lost')|tojson }},
+  connectionLostDetail: {{ t.get('conv_connection_lost_detail')|tojson }},
+  startFailed: {{ t.get('conv_start_failed')|tojson }},
+  startFailedDetail: {{ t.get('conv_start_failed_detail')|tojson }},
+  invalidResponse: {{ t.get('conv_invalid_response')|tojson }},
+  invalidResponseDetail: {{ t.get('conv_invalid_response_detail')|tojson }},
+  overallCompleted: {{ t.get('conv_overall_completed')|tojson }},
+  overallConverting: {{ t.get('conv_overall_converting')|tojson }},
+  overallReady: {{ t.get('conv_overall_ready')|tojson }},
+  overallStart: {{ t.get('conv_overall_start')|tojson }},
+};
+
 function convertPanel() {
+  const i18n = window.__CONVERT_I18N__;
+
   return {
 
     /* ─── State ──────────────────────────────────────────── */
@@ -480,12 +505,10 @@ function convertPanel() {
       console.log('🔄 [convertPanel] init');
       console.log('📌 fileId:', this.fileId, 'targetFormat:', this.targetFormat, 'toolId:', this.toolId);
 
-      // إذا لم تكن هناك صيغة هدف، احسبها من الأداة
       if (!this.targetFormat && this.toolId) {
         this.targetFormat = this._targetFromTool(this.toolId);
       }
 
-      // إذا كان هناك ملف + صيغة، ابدأ تلقائياً؟ لا — انتظر ضغط المستخدم
       if (!this.fileId) {
         console.warn('⚠️ No file selected');
       }
@@ -543,20 +566,20 @@ function convertPanel() {
     },
 
     get overallLabel() {
-      if (this.convStatus === 'success') return 'اكتمل';
-      if (this.convStatus === 'progress') return 'جاري التحويل';
-      if (this.targetFormat) return 'جاهز للتحويل';
-      return 'البدء';
+      if (this.convStatus === 'success') return i18n.overallCompleted;
+      if (this.convStatus === 'progress') return i18n.overallConverting;
+      if (this.targetFormat) return i18n.overallReady;
+      return i18n.overallStart;
     },
 
     get stageLabel() {
       const labels = {
-        read: 'جاري قراءة الملف…',
-        analyze: 'جاري تحليل البيانات…',
-        convert: 'جاري تحويل البيانات…',
-        save: 'جاري إنشاء وحفظ الملف…'
+        read: i18n.readingFile,
+        analyze: i18n.analyzingData,
+        convert: i18n.convertingData,
+        save: i18n.savingFile,
       };
-      return labels[this.stage] || 'جاري المعالجة…';
+      return labels[this.stage] || i18n.processingDefault;
     },
 
     /* ─── Stage helpers ─────────────────────────────────── */
@@ -579,7 +602,7 @@ function convertPanel() {
       this.converting = true;
       this.convStatus = 'progress';
       this.currentPct = 0;
-      this.progressMsg = 'بدء التحويل…';
+      this.progressMsg = i18n.startingConversion;
       this.stage = 'read';
       this.errorTitle = '';
       this.errorDetail = '';
@@ -610,7 +633,7 @@ function convertPanel() {
         es.addEventListener('done', ev => {
           let d = {};
           try { d = JSON.parse(ev.data || '{}'); }
-          catch { this.finishWithError('استجابة غير صالحة', 'تعذر قراءة نتيجة التحويل.'); return; }
+          catch { this.finishWithError(i18n.invalidResponse, i18n.invalidResponseDetail); return; }
 
           this.closeEventSource();
           this.converting = false;
@@ -618,15 +641,15 @@ function convertPanel() {
           if (d.ok) {
             this.currentPct = 100;
             this.stage = 'save';
-            this.progressMsg = 'اكتمل التحويل بنجاح';
+            this.progressMsg = i18n.completedSuccess;
             setTimeout(() => {
               this.successData = d;
               this.successSubtitle = `${d.src_name || this.fileName} → .${(d.target_fmt || this.targetFormat).toUpperCase()}`;
               this.convStatus = 'success';
             }, 350);
           } else {
-            this.errorTitle = d.title || 'خطأ في التحويل';
-            this.errorDetail = d.detail || 'تعذر إتمام عملية التحويل.';
+            this.errorTitle = d.title || i18n.errorTitle;
+            this.errorDetail = d.detail || i18n.errorDetail;
             this.convStatus = 'error';
           }
         });
@@ -635,15 +658,15 @@ function convertPanel() {
           this.closeEventSource();
           this.converting = false;
           if (this.convStatus !== 'success') {
-            this.errorTitle = 'انقطع الاتصال';
-            this.errorDetail = 'تعذر الاتصال بخدمة التحويل. تحقق من الاتصال وحاول مجدداً.';
+            this.errorTitle = i18n.connectionLost;
+            this.errorDetail = i18n.connectionLostDetail;
             this.convStatus = 'error';
           }
         };
       } catch (e) {
         this.converting = false;
-        this.errorTitle = 'تعذر بدء التحويل';
-        this.errorDetail = 'حدث خطأ أثناء إنشاء اتصال التحويل. حاول مجدداً.';
+        this.errorTitle = i18n.startFailed;
+        this.errorDetail = i18n.startFailedDetail;
         this.convStatus = 'error';
       }
     },
@@ -685,7 +708,6 @@ function convertPanel() {
       this.errorTitle = '';
       this.errorDetail = '';
 
-      // إبلاغ index.html للعودة إلى Screen 2 (اختيار ملف آخر لنفس الأداة)
       window.dispatchEvent(new CustomEvent('converter-reset'));
     },
 
