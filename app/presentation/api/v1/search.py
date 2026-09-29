@@ -14,9 +14,6 @@ File pipeline endpoints:
     GET    /api/v1/search/files/{id}/status  — pipeline status (pending/analyzing/ready/…)
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
-
-Debug:
-    GET    /api/v1/search/debug/import-check — verify background task import (TEMPORARY)
 """
 from __future__ import annotations
 import json
@@ -107,6 +104,11 @@ class FileStatusResponse(BaseModel):
     doc_type: str | None = None
     language: str | None = None
     error: str | None = None
+    # ✨ حقول جديدة لدعم شريط التقدم التفصيلي
+    text_length: int = 0
+    pipeline_used: str | None = None
+    processing_ms: int | None = None
+    updated_at: str | None = None
 
 
 class AnalyzeTriggerResponse(BaseModel):
@@ -682,6 +684,10 @@ async def file_pipeline_status(
         doc_type = None
         language = None
         analysis_error = None
+        text_length = 0
+        pipeline_used = None
+        processing_ms = None
+        updated_at_iso = None
 
         try:
             analysis = (await db.execute(
@@ -697,6 +703,11 @@ async def file_pipeline_status(
                 doc_type = getattr(analysis, "doc_type", None)
                 language = getattr(analysis, "language", None)
                 analysis_error = getattr(analysis, "error_message", None)
+                # ✨ حقول إضافية
+                text_length = len(analysis.raw_text) if analysis.raw_text else 0
+                pipeline_used = getattr(analysis, "pipeline_used", None)
+                processing_ms = getattr(analysis, "processing_ms", None)
+                updated_at_iso = analysis.updated_at.isoformat() if getattr(analysis, "updated_at", None) else None
         except Exception as e:
             logger.warning(f"Could not load analysis for file {file_id}: {e}")
 
@@ -712,7 +723,7 @@ async def file_pipeline_status(
         except Exception as e:
             logger.warning(f"Could not count chunks for file {file_id}: {e}")
 
-        # 4. Determine status (using safe string comparison)
+        # 4. Determine status
         if chunks > 0:
             status_str = "ready"
         elif analysis_status_str == "processing":
@@ -734,6 +745,11 @@ async def file_pipeline_status(
             doc_type=doc_type,
             language=language,
             error=analysis_error,
+            # ✨ حقول إضافية
+            text_length=text_length,
+            pipeline_used=pipeline_used,
+            processing_ms=processing_ms,
+            updated_at=updated_at_iso,
         )
 
     except HTTPException:
@@ -806,9 +822,7 @@ async def list_pending_files(
 ):
     """
     Return files that are NOT yet ready for search (pending/analyzing/failed).
-    Useful for a 'bulk analyze' feature in the UI.
     """
-    # Get all user files
     all_files = (await db.execute(
         select(File).where(File.owner_id == current_user.id).order_by(File.created_at.desc())
     )).scalars().all()
@@ -818,7 +832,6 @@ async def list_pending_files(
 
     file_ids = [f.id for f in all_files]
 
-    # Get indexed file IDs (files that have at least one chunk)
     indexed_ids = set((await db.execute(
         select(DocumentChunk.file_id).where(
             DocumentChunk.user_id == current_user.id,
@@ -826,7 +839,6 @@ async def list_pending_files(
         ).distinct()
     )).scalars().all())
 
-    # Get latest analyses per file
     analysis_rows = (await db.execute(
         select(DocumentAnalysis)
         .where(DocumentAnalysis.file_id.in_(file_ids))
@@ -841,7 +853,7 @@ async def list_pending_files(
     pending = []
     for f in all_files:
         if f.id in indexed_ids:
-            continue  # ready
+            continue
 
         a = latest_analysis.get(f.id)
         a_status = _safe_enum_value(a.status) if a else None
@@ -867,64 +879,3 @@ async def list_pending_files(
         "pending": pending,
         "total": len(pending),
     }
-
-
-# ── Debug ─────────────────────────────────────────────────────────────────────
-# ⚠️ TEMPORARY: remove after fixing the background task import issue.
-
-@router.get("/debug/import-check")
-async def debug_import_check():
-    """
-    Temporary debug endpoint to diagnose the background task import.
-
-    Returns:
-      - Current working directory
-      - PYTHONPATH
-      - Files present in app/services/pipeline/
-      - Import status + full traceback if failed
-    """
-    import traceback
-    import os
-    from pathlib import Path
-
-    result: dict = {
-        "cwd": os.getcwd(),
-        "python_path": os.environ.get("PYTHONPATH", ""),
-        "files_in_pipeline_dir": None,
-        "pipeline_manager_exists": None,
-        "task_file_exists": None,
-        "import_status": None,
-        "import_error": None,
-    }
-
-    # 1. List files in app/services/pipeline/
-    try:
-        pipeline_dir = Path("app/services/pipeline")
-        if pipeline_dir.exists():
-            result["files_in_pipeline_dir"] = sorted(
-                [f.name for f in pipeline_dir.iterdir()]
-            )
-            result["task_file_exists"] = (pipeline_dir / "analyze_and_index_task.py").exists()
-            result["pipeline_manager_exists"] = (pipeline_dir / "pipeline_manager.py").exists()
-        else:
-            result["files_in_pipeline_dir"] = "❌ DIRECTORY NOT FOUND"
-    except Exception as e:
-        result["files_in_pipeline_dir"] = f"ERROR: {e}"
-
-    # 2. Try importing the background task
-    try:
-        from app.services.pipeline.analyze_and_index_task import analyze_and_index_background  # noqa: F401
-        result["import_status"] = "✅ OK"
-    except Exception:
-        result["import_status"] = "❌ FAILED"
-        result["import_error"] = traceback.format_exc()
-
-    # 3. Also check pipeline_manager import
-    try:
-        from app.services.pipeline.pipeline_manager import handle_analysis_job  # noqa: F401
-        result["pipeline_manager_import"] = "✅ OK"
-    except Exception:
-        result["pipeline_manager_import"] = "❌ FAILED"
-        result["pipeline_manager_error"] = traceback.format_exc()
-
-    return result
