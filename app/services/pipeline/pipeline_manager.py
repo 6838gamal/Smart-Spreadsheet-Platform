@@ -167,9 +167,20 @@ async def handle_analysis_job(payload: dict) -> dict:
             )
             ctx = pipeline.run(ctx)
 
+            # ═══════════════════════════════════════════════════════
+            # Fallback: if the pipeline produced no text, use _quick_text
+            # ═══════════════════════════════════════════════════════
+            raw_text = (ctx.raw_text or "").strip()
+            if not raw_text:
+                logger.warning(
+                    f"⚠️ Pipeline '{pipeline.name}' returned no text for file {file_id}. "
+                    f"Falling back to _quick_text."
+                )
+                raw_text = _quick_text(local_path, file_format)
+
             # ── Step 3: Persist results ───────────────────────────────────
-            analysis.raw_text = ctx.raw_text[:50000] if ctx.raw_text else None
-            analysis.language = ctx.language
+            analysis.raw_text = raw_text[:50000] if raw_text else None
+            analysis.language = ctx.language or analysis.language
             analysis.page_count = ctx.page_count or analysis.page_count
             analysis.has_tables = ctx.has_tables
             analysis.has_images = ctx.has_images
@@ -242,16 +253,20 @@ async def handle_analysis_job(payload: dict) -> dict:
             try:
                 from app.services.search.search_service import search_service
                 file_row = await db.get(File, file_id)
-                await search_service.index_document(
-                    db,
-                    file_id=file_id,
-                    analysis_id=analysis_id,
-                    user_id=file_row.owner_id if file_row else 0,
-                    text=ctx.raw_text or "",
-                    doc_type=clf_result.doc_type,
-                    language=ctx.language,
-                    filename=file_row.original_name if file_row else "",
-                )
+                if raw_text:
+                    chunk_count = await search_service.index_document(
+                        db,
+                        file_id=file_id,
+                        analysis_id=analysis_id,
+                        user_id=file_row.owner_id if file_row else 0,
+                        text=raw_text,
+                        doc_type=clf_result.doc_type,
+                        language=ctx.language,
+                        filename=file_row.original_name if file_row else "",
+                    )
+                    logger.info(f"📇 Indexed {chunk_count} chunks for file {file_id}")
+                else:
+                    logger.warning(f"⚠️ No text to index for file {file_id}")
             except Exception as idx_exc:
                 logger.warning("Search indexing failed for file %d: %s", file_id, idx_exc)
 
@@ -285,21 +300,178 @@ async def handle_analysis_job(payload: dict) -> dict:
                     logger.warning(f"Failed to cleanup temp file {local_path}: {e}")
 
 
-def _quick_text(file_path: str, file_format: str) -> str:
-    """Extract a small amount of text quickly for classification."""
-    ext = file_format.lower().lstrip(".")
+# ═══════════════════════════════════════════════════════════════════════════
+# Background task — used by POST /api/v1/search/files/{id}/analyze
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def analyze_and_index_background(file_id: int, user_id: int) -> None:
+    """
+    Wrapper that runs the analysis pipeline in background.
+    Called by the FastAPI BackgroundTasks from the search API.
+
+    Creates (or reuses) a DocumentAnalysis record, then calls
+    handle_analysis_job() which does the full analysis + auto-indexing.
+    """
+    logger.info(f"🚀 [BG] analyze_and_index_background: file={file_id} user={user_id}")
+
+    analysis_id: int | None = None
+
     try:
-        if ext == "pdf":
+        # ── 1. Create (or reuse) a DocumentAnalysis row ──
+        async with AsyncSessionLocal() as db:
+            file = await db.get(File, file_id)
+            if not file:
+                logger.warning(f"⚠️ [BG] File {file_id} not found")
+                return
+
+            # Reuse existing completed analysis if available
+            from sqlalchemy import select
+            existing = (await db.execute(
+                select(DocumentAnalysis)
+                .where(DocumentAnalysis.file_id == file_id)
+                .order_by(DocumentAnalysis.id.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+
+            if existing and existing.status == AnalysisStatus.COMPLETED and existing.raw_text:
+                analysis_id = existing.id
+                logger.info(f"♻️ [BG] Reusing analysis #{analysis_id}")
+            else:
+                analysis = DocumentAnalysis(
+                    file_id=file_id,
+                    user_id=user_id,
+                    status=AnalysisStatus.PENDING,
+                )
+                db.add(analysis)
+                await db.commit()
+                await db.refresh(analysis)
+                analysis_id = analysis.id
+                logger.info(f"📝 [BG] Created DocumentAnalysis #{analysis_id}")
+
+            file_path = file.path
+            file_format = file.format
+
+        # ── 2. Call the real handler ──
+        result = await handle_analysis_job({
+            "file_id": file_id,
+            "file_path": file_path,
+            "file_format": file_format,
+            "analysis_id": analysis_id,
+        })
+
+        logger.info(f"🎉 [BG] Complete for file {file_id}: {result}")
+
+    except Exception as e:
+        logger.exception(f"❌ [BG] Failed for file {file_id}: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Text extraction helper — improved for PDF, Excel, DOCX, CSV, JSON, TXT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _quick_text(file_path: str, file_format: str) -> str:
+    """
+    Extract text from various file formats.
+    Used for classification and as a fallback when pipelines return no text.
+    """
+    ext = (file_format or "").lower().lstrip(".")
+
+    # ── PDF ──
+    if ext == "pdf":
+        # Try pdfplumber first
+        try:
             import pdfplumber
             with pdfplumber.open(file_path) as pdf:
-                pages = pdf.pages[:3]
-                return "\n".join(p.extract_text() or "" for p in pages)[:3000]
-        elif ext in {"docx", "doc"}:
+                pages = pdf.pages[:20]   # up to 20 pages
+                text = "\n".join(p.extract_text() or "" for p in pages)
+                if len(text.strip()) > 50:
+                    return text[:50000]
+        except Exception as e:
+            logger.debug(f"pdfplumber failed for {file_path}: {e}")
+
+        # Fallback: pypdf
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(file_path)
+            text = "\n".join((p.extract_text() or "") for p in reader.pages[:20])
+            if text.strip():
+                return text[:50000]
+        except Exception as e:
+            logger.debug(f"pypdf failed for {file_path}: {e}")
+
+        # Last resort: pdf2image + pytesseract (OCR) if available
+        try:
+            from pdf2image import convert_from_path
+            import pytesseract
+            images = convert_from_path(file_path, first_page=1, last_page=5)
+            text = "\n".join(pytesseract.image_to_string(img, lang="ara+eng") for img in images)
+            if text.strip():
+                return text[:50000]
+        except Exception as e:
+            logger.debug(f"OCR failed for {file_path}: {e}")
+
+        return ""
+
+    # ── DOCX / DOC ──
+    if ext in {"docx", "doc"}:
+        try:
             import docx
             doc = docx.Document(file_path)
-            return "\n".join(p.text for p in doc.paragraphs[:30])[:3000]
-        elif ext in {"txt"}:
-            return open(file_path, encoding="utf-8", errors="ignore").read(3000)
+            return "\n".join(p.text for p in doc.paragraphs)[:50000]
+        except Exception:
+            return ""
+
+    # ── Excel ──
+    if ext in {"xlsx", "xlsm", "xls"}:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+            lines = []
+            for sheet_name in wb.sheetnames[:5]:
+                ws = wb[sheet_name]
+                lines.append(f"=== {sheet_name} ===")
+                for row in ws.iter_rows(values_only=True):
+                    row_text = " | ".join(str(c) for c in row if c is not None)
+                    if row_text.strip():
+                        lines.append(row_text)
+            return "\n".join(lines)[:50000]
+        except Exception as e:
+            logger.debug(f"openpyxl failed for {file_path}: {e}")
+            return ""
+
+    # ── CSV / TSV / TXT / MD ──
+    if ext in {"csv", "tsv", "txt", "md", "rst"}:
+        try:
+            for enc in ("utf-8", "utf-8-sig", "cp1256", "latin-1"):
+                try:
+                    return open(file_path, encoding=enc, errors="ignore").read(50000)
+                except UnicodeDecodeError:
+                    continue
+        except Exception:
+            return ""
+
+    # ── JSON ──
+    if ext == "json":
+        try:
+            import json
+            with open(file_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return json.dumps(data, ensure_ascii=False, indent=2)[:50000]
+        except Exception:
+            return ""
+
+    # ── XML / HTML ──
+    if ext in {"xml", "html", "htm"}:
+        try:
+            text = open(file_path, encoding="utf-8", errors="ignore").read(50000)
+            import re
+            text = re.sub(r"<[^>]+>", " ", text)
+            return re.sub(r"\s+", " ", text).strip()[:50000]
+        except Exception:
+            return ""
+
+    # ── Fallback: try plain read ──
+    try:
+        return open(file_path, encoding="utf-8", errors="ignore").read(50000)
     except Exception:
-        pass
-    return ""
+        return ""
