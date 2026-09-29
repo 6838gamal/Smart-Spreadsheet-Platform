@@ -19,25 +19,90 @@
               @change="onFileSelect()"
               class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-500">
         <option value="all">📂 جميع الملفات ({{ files_info|length }})</option>
-        {% for f in files_info %}
-        <option value="{{ f.id }}">
-          {{ f.original_name }}
-          {% if f.is_indexed %}✅{% else %}⏳{% endif %}
-        </option>
-        {% endfor %}
+        <template x-for="f in files" :key="f.id">
+          <option :value="String(f.id)" 
+                  x-text="f.original_name + ' ' + statusEmoji(f.id)"></option>
+        </template>
       </select>
     </div>
 
     <!-- إحصائيات سريعة -->
     <div class="flex items-center gap-2 text-xs text-zinc-400 flex-shrink-0">
       <span class="hidden sm:inline">📊</span>
-      <span class="hidden sm:inline" x-text="indexed_count + ' ملفات مفهرسة'"></span>
+      <span class="hidden sm:inline" x-text="indexed_count + ' ملفات جاهزة'"></span>
       <span class="hidden md:inline">·</span>
       <span class="hidden md:inline" x-text="total_chunks + ' مقطع'"></span>
       <span x-show="hfConfigured" class="hidden lg:inline text-emerald-400 text-[10px]">✓ HF</span>
       <span x-show="!hfConfigured" class="hidden lg:inline text-amber-400 text-[10px]">⚠️ HF</span>
     </div>
   </header>
+
+  <!-- ── شريط حالة الملف المحدد ──────────────────────────────── -->
+  <div x-show="selectedFileId !== 'all'" 
+       x-cloak
+       class="mb-3 flex-shrink-0 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <!-- مؤشر ملون حسب الحالة -->
+        <span class="w-2 h-2 rounded-full"
+              :class="{
+                'bg-emerald-500': getSelectedFileStatus() === 'ready',
+                'bg-amber-500 animate-pulse': getSelectedFileStatus() === 'analyzing',
+                'bg-zinc-500': getSelectedFileStatus() === 'pending',
+                'bg-blue-500': getSelectedFileStatus() === 'analyzed_not_indexed',
+                'bg-red-500': getSelectedFileStatus() === 'failed',
+              }"></span>
+        
+        <span class="text-xs text-zinc-300" x-text="getSelectedFileLabel()"></span>
+        
+        <span x-show="getSelectedFileChunks() > 0" 
+              class="text-[10px] text-zinc-500"
+              x-text="'· ' + getSelectedFileChunks() + ' مقطع'"></span>
+      </div>
+
+      <!-- أزرار الإجراءات -->
+      <div class="flex items-center gap-2">
+        <button x-show="getSelectedFileStatus() === 'pending' || getSelectedFileStatus() === 'failed'"
+                @click="analyzeSelectedFile()"
+                :disabled="analyzing"
+                class="text-xs bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          <span x-text="getSelectedFileStatus() === 'failed' ? 'إعادة المحاولة' : 'تحليل الملف'"></span>
+        </button>
+
+        <button x-show="getSelectedFileStatus() === 'analyzing'"
+                disabled
+                class="text-xs bg-amber-600/30 text-amber-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-wait">
+          <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          جاري التحليل...
+        </button>
+
+        <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed'"
+                @click="analyzeSelectedFile()"
+                :disabled="analyzing"
+                class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5">
+          فهرسة الآن
+        </button>
+
+        <button x-show="getSelectedFileStatus() === 'ready'"
+                @click="analyzeSelectedFile()"
+                :disabled="analyzing"
+                title="إعادة التحليل"
+                class="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors p-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── منطقة المحادثة ──────────────────────────────────────────── -->
   <div class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col">
@@ -57,6 +122,7 @@
           </svg>
         </div>
 
+        <!-- ✅ حالة: ملفات جاهزة -->
         <div x-show="hasIndexedFiles">
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
@@ -97,15 +163,44 @@
           </div>
         </div>
 
-        <div x-show="!hasIndexedFiles">
+        <!-- ✅ حالة: ملفات موجودة لكن غير جاهزة -->
+        <div x-show="!hasIndexedFiles && hasFiles" x-cloak>
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
-            📭 لا توجد مستندات مفهرسة
+            📄 لديك <span x-text="files.length"></span> ملف لكن غير جاهز
           </h3>
           <p class="text-zinc-400 text-sm mb-5 max-w-md">
-            قم بفهرسة ملفاتك أولاً من خلال تحليلها في قسم ذكاء المستندات
+            يجب تحليل الملفات أولاً قبل أن تصبح قابلة للبحث. اختر ملفاً من الأعلى واضغط "تحليل الملف"، أو حلّل الكل مرة واحدة.
           </p>
-          <a href="/intelligence" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-6 py-3 text-sm transition-all hover:scale-105 inline-flex items-center gap-2">
-            🚀 الذهاب إلى ذكاء المستندات
+          
+          <div class="flex flex-wrap gap-2 justify-center">
+            <button x-show="pendingFilesCount() > 0"
+                    @click="analyzeAllPending()"
+                    :disabled="analyzing"
+                    class="bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl px-5 py-2.5 text-sm flex items-center gap-2 transition-all hover:scale-105">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span x-text="'تحليل ' + pendingFilesCount() + ' ملف'"></span>
+            </button>
+            
+            <a href="/files" 
+               class="bg-zinc-700 hover:bg-zinc-600 text-white rounded-xl px-5 py-2.5 text-sm inline-flex items-center gap-2 transition-all hover:scale-105">
+              📁 إدارة الملفات
+            </a>
+          </div>
+        </div>
+
+        <!-- ✅ حالة: لا ملفات إطلاقاً -->
+        <div x-show="!hasFiles" x-cloak>
+          <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
+            📭 لا توجد ملفات بعد
+          </h3>
+          <p class="text-zinc-400 text-sm mb-5 max-w-md">
+            ارفع ملفاتك أولاً ثم سنقوم بتحليلها وفهرستها تلقائياً لتبدأ الدردشة الذكية.
+          </p>
+          <a href="/files" class="bg-brand-600 hover:bg-brand-500 text-white rounded-xl px-6 py-3 text-sm transition-all hover:scale-105 inline-flex items-center gap-2">
+            🚀 رفع ملفات
           </a>
         </div>
       </div>
@@ -246,15 +341,15 @@
           x-model="question"
           @keydown.enter.prevent="sendQuestion()"
           @input="onQuestionInput"
-          :placeholder="recording ? '🎤 جاري التسجيل... اضغط المايك للإيقاف' : '✏️ اكتب سؤالك هنا...'"
-          :disabled="recording"
-          class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all order-2"
+          :placeholder="inputPlaceholder"
+          :disabled="recording || !canChat"
+          class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all order-2 disabled:opacity-50"
           dir="auto"
         />
 
         <!-- زر الإرسال (يسار) -->
         <button @click="sendQuestion()"
-                :disabled="loading || !question.trim() || recording"
+                :disabled="loading || !question.trim() || recording || !canChat"
                 class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 order-3">
           <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -275,9 +370,10 @@
                     @change="selectedFileId = quickFileSelect; onFileSelect()"
                     class="bg-transparent text-xs text-zinc-300 focus:outline-none max-w-[120px] sm:max-w-[200px]">
               <option value="all">كل الملفات</option>
-              {% for f in files_info %}
-              <option value="{{ f.id }}">{{ f.original_name|truncate(20, True) }}</option>
-              {% endfor %}
+              <template x-for="f in files" :key="f.id">
+                <option :value="String(f.id)" 
+                        x-text="f.original_name.substring(0, 20) + (f.original_name.length > 20 ? '…' : '')"></option>
+              </template>
             </select>
           </div>
 
@@ -325,6 +421,9 @@
 </div>
 
 <style>
+/* إخفاء العناصر قبل تهيئة Alpine */
+[x-cloak] { display: none !important; }
+
 /* Scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   width: 4px;
@@ -400,27 +499,34 @@ select option {
 <script>
 function searchApp() {
   const _urlFileId = parseInt(new URLSearchParams(window.location.search).get('file_id') || '0');
+  const _initialFiles = {{ files_info|tojson }};
 
   return {
     // ── الحالة العامة ──
     question: '',
     messages: [],
     loading: false,
+    analyzing: false,
     error: null,
     autoScroll: true,
     
     // ── الملفات ──
-    selectedFileId: _urlFileId || 'all',
-    quickFileSelect: _urlFileId || 'all',
+    files: _initialFiles.map(f => ({
+      id: f.id,
+      original_name: f.original_name,
+      is_indexed: !!f.is_indexed,
+    })),
+    fileStatuses: {},   // { [fileId]: { status, chunks, ... } }
+    
+    selectedFileId: _urlFileId ? String(_urlFileId) : 'all',
+    quickFileSelect: _urlFileId ? String(_urlFileId) : 'all',
     indexed_count: {{ indexed_count|default(0)|tojson }},
     total_chunks: {{ total_chunks|default(0)|tojson }},
-    hasIndexedFiles: {{ (indexed_count|default(0) > 0)|tojson }},
-    hasFiles: {{ (files_info|length > 0)|tojson }},
     hfConfigured: {{ hf_configured|default(False)|tojson }},
     
     // ── النماذج ──
-    availableModels: {{ models|tojson }},
-    selectedModelId: {{ default_model_id|tojson }},
+    availableModels: {{ (models or [])|tojson }},
+    selectedModelId: {{ (default_model_id or '')|tojson }},
     selectedModelName: '',
     
     // ── الصوت ──
@@ -429,20 +535,107 @@ function searchApp() {
     mediaRecorder: null,
     audioChunks: [],
     stream: null,
+    
+    // ── Polling ──
+    pollingTimer: null,
+
+    // ══════════════════════════════════════════════════════════
+    //  Computed helpers
+    // ══════════════════════════════════════════════════════════
+    
+    get hasIndexedFiles() {
+      return this.indexed_count > 0;
+    },
+    
+    get hasFiles() {
+      return this.files.length > 0;
+    },
+
+    get canChat() {
+      if (this.selectedFileId === 'all') return this.hasIndexedFiles;
+      return this.getSelectedFileStatus() === 'ready';
+    },
+
+    get inputPlaceholder() {
+      if (this.recording) return '🎤 جاري التسجيل... اضغط المايك للإيقاف';
+      if (!this.hasFiles) return 'ارفع ملفات أولاً...';
+      if (!this.hasIndexedFiles && this.selectedFileId === 'all') 
+        return 'حلّل ملفاتك أولاً...';
+      if (this.selectedFileId !== 'all' && this.getSelectedFileStatus() !== 'ready')
+        return 'الملف غير جاهز — اضغط "تحليل" أولاً';
+      return '✏️ اكتب سؤالك هنا...';
+    },
+
+    statusEmoji(fileId) {
+      const s = this.getFileStatus(fileId);
+      return {
+        ready: '✅',
+        analyzing: '⏳',
+        pending: '⏸️',
+        analyzed_not_indexed: '📄',
+        failed: '❌',
+      }[s] || '❔';
+    },
+
+    getFileStatus(fileId) {
+      const st = this.fileStatuses[fileId];
+      if (st && st.status) return st.status;
+      const f = this.files.find(x => String(x.id) === String(fileId));
+      return f?.is_indexed ? 'ready' : 'pending';
+    },
+
+    getFileChunks(fileId) {
+      return this.fileStatuses[fileId]?.chunks || 0;
+    },
+
+    getSelectedFileStatus() {
+      if (this.selectedFileId === 'all') return 'ready';
+      return this.getFileStatus(this.selectedFileId);
+    },
+
+    getSelectedFileChunks() {
+      if (this.selectedFileId === 'all') return this.total_chunks;
+      return this.getFileChunks(this.selectedFileId);
+    },
+
+    getSelectedFileLabel() {
+      const s = this.getSelectedFileStatus();
+      return {
+        ready: '✅ الملف جاهز للدردشة',
+        analyzing: '⏳ جاري تحليل الملف...',
+        pending: '⏸️ الملف بانتظار التحليل',
+        analyzed_not_indexed: '📄 تم التحليل، يحتاج فهرسة',
+        failed: '❌ فشل تحليل الملف',
+      }[s] || '—';
+    },
+
+    pendingFilesCount() {
+      return this.files.filter(f => {
+        const s = this.getFileStatus(f.id);
+        return s === 'pending' || s === 'failed';
+      }).length;
+    },
+
+    // ══════════════════════════════════════════════════════════
+    //  Lifecycle
+    // ══════════════════════════════════════════════════════════
 
     initApp() {
-      // تعيين اسم النموذج الافتراضي
       this.updateModelName();
-      
-      // تحميل النماذج من API
       this.loadAvailableModels();
+      
+      // جلب حالات الملفات فوراً ثم كل 3 ثوانٍ
+      this.refreshAllFileStatuses();
+      this.pollingTimer = setInterval(() => {
+        this.refreshAllFileStatuses();
+      }, 3000);
       
       // التحقق من دعم الصوت
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('تسجيل الصوت غير مدعوم');
       }
       
-      // الاستماع لحدث التمرير
+      // التمرير التلقائي
       this.$watch('messages', () => {
         if (this.autoScroll) {
           this.$nextTick(() => {
@@ -455,7 +648,100 @@ function searchApp() {
       });
     },
 
-    // ── تحديث اسم النموذج ──
+    // ══════════════════════════════════════════════════════════
+    //  File Status
+    // ══════════════════════════════════════════════════════════
+
+    async refreshAllFileStatuses() {
+      const tasks = this.files.map(async (f) => {
+        try {
+          const res = await fetch(`/api/v1/files/${f.id}/status`);
+          if (!res.ok) return;
+          const data = await res.json();
+          
+          const prev = this.fileStatuses[f.id]?.status;
+          this.fileStatuses[f.id] = data;
+          
+          // إشعار عند اكتمال التحليل
+          if (prev === 'analyzing' && data.status === 'ready') {
+            this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
+            this.refreshCounters();
+          }
+          
+          // حدّث بيانات الملف
+          const file = this.files.find(x => x.id === f.id);
+          if (file) {
+            file.is_indexed = data.status === 'ready';
+          }
+        } catch (e) {
+          // تجاهل أخطاء الشبكة
+        }
+      });
+      
+      await Promise.allSettled(tasks);
+    },
+
+    async refreshCounters() {
+      try {
+        const res = await fetch('/api/v1/search/stats');
+        if (res.ok) {
+          const data = await res.json();
+          this.indexed_count = data.indexed_files || 0;
+          this.total_chunks = data.total_chunks || 0;
+        }
+      } catch (e) { /* ignore */ }
+    },
+
+    async analyzeSelectedFile() {
+      if (this.selectedFileId === 'all') return;
+      await this.analyzeFile(parseInt(this.selectedFileId));
+    },
+
+    async analyzeFile(fileId) {
+      try {
+        this.analyzing = true;
+        
+        const res = await fetch(`/api/v1/files/${fileId}/analyze`, {
+          method: 'POST',
+        });
+        
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || 'فشل بدء التحليل');
+        }
+        
+        // ضع الحالة مؤقتاً كـ analyzing
+        if (!this.fileStatuses[fileId]) this.fileStatuses[fileId] = {};
+        this.fileStatuses[fileId].status = 'analyzing';
+        
+        this.showToast('🚀 بدأ التحليل في الخلفية...');
+        
+        // تحديث فوري
+        setTimeout(() => this.refreshAllFileStatuses(), 1000);
+        
+      } catch (e) {
+        console.error('Analyze error:', e);
+        this.showError('⚠️ ' + (e.message || 'فشل بدء التحليل'));
+      } finally {
+        this.analyzing = false;
+      }
+    },
+
+    async analyzeAllPending() {
+      const pending = this.files.filter(f => {
+        const s = this.getFileStatus(f.id);
+        return s === 'pending' || s === 'failed';
+      });
+      
+      for (const f of pending) {
+        await this.analyzeFile(f.id);
+      }
+    },
+
+    // ══════════════════════════════════════════════════════════
+    //  Models
+    // ══════════════════════════════════════════════════════════
+
     updateModelName() {
       const model = this.availableModels.find(m => m.id === this.selectedModelId);
       this.selectedModelName = model ? model.name : 'نموذج غير معروف';
@@ -465,7 +751,6 @@ function searchApp() {
       this.updateModelName();
     },
 
-    // ── تحميل النماذج من النظام ──
     async loadAvailableModels() {
       try {
         const res = await fetch('/api/v1/search/models');
@@ -473,7 +758,6 @@ function searchApp() {
           const data = await res.json();
           if (data.models && data.models.length > 0) {
             this.availableModels = data.models;
-            // تحديث النموذج المحدد إذا كان موجوداً
             const stillExists = this.availableModels.some(m => m.id === this.selectedModelId);
             if (!stillExists) {
               this.selectedModelId = data.default_model_id || this.availableModels[0].id;
@@ -482,61 +766,62 @@ function searchApp() {
           }
         }
       } catch (e) {
-        console.warn('فشل تحميل النماذج من API:', e);
-        // استخدام النماذج الممررة من القالب
+        console.warn('فشل تحميل النماذج:', e);
       }
     },
 
-    // ── اختيار ملف ──
+    // ══════════════════════════════════════════════════════════
+    //  UI helpers
+    // ══════════════════════════════════════════════════════════
+
     onFileSelect() {
       this.quickFileSelect = this.selectedFileId;
     },
 
-    // ── مثال سؤال ──
     askExample(question) {
       this.question = question;
       this.sendQuestion();
     },
 
-    // ── إدخال النص ──
-    onQuestionInput() {
-      // يمكن إضافة منطق إضافي هنا
-    },
+    onQuestionInput() {},
 
-    // ── التمرير ──
     onScroll(event) {
       const container = event.target;
       const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
       this.autoScroll = isAtBottom;
     },
 
-    // ── تسجيل الصوت ──
+    showError(message) {
+      this.error = message;
+      setTimeout(() => { this.error = null; }, 5000);
+    },
+
+    showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm animate-fadeIn';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    },
+
+    // ══════════════════════════════════════════════════════════
+    //  Audio
+    // ══════════════════════════════════════════════════════════
+
     async toggleRecording() {
-      if (this.recording) {
-        this.stopRecording();
-        return;
-      }
+      if (this.recording) { this.stopRecording(); return; }
       
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 16000
-          } 
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 } 
         });
         
-        this.mediaRecorder = new MediaRecorder(this.stream, {
-          mimeType: 'audio/webm'
-        });
+        this.mediaRecorder = new MediaRecorder(this.stream, { mimeType: 'audio/webm' });
         this.audioChunks = [];
         this.audioTranscribed = false;
         
         this.mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            this.audioChunks.push(event.data);
-          }
+          if (event.data.size > 0) this.audioChunks.push(event.data);
         };
         
         this.mediaRecorder.onstop = async () => {
@@ -553,24 +838,17 @@ function searchApp() {
         this.mediaRecorder.start(100);
         this.recording = true;
         this.question = '🎤 جاري التسجيل...';
-        
       } catch (error) {
         console.error('خطأ في الميكروفون:', error);
-        this.showError('⚠️ لا يمكن الوصول إلى الميكروفون. تأكد من منح الإذن.');
+        this.showError('⚠️ لا يمكن الوصول إلى الميكروفون.');
       }
     },
 
     stopRecording() {
       if (this.mediaRecorder && this.recording) {
-        try {
-          this.mediaRecorder.stop();
-        } catch (e) {
-          console.warn('Error stopping recorder:', e);
-        }
+        try { this.mediaRecorder.stop(); } catch (e) {}
         this.recording = false;
-        if (this.question === '🎤 جاري التسجيل...') {
-          this.question = '';
-        }
+        if (this.question === '🎤 جاري التسجيل...') this.question = '';
       }
     },
 
@@ -579,60 +857,44 @@ function searchApp() {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
         
-        // إضافة model_id إذا كان نموذج ASR
         const model = this.availableModels.find(m => m.id === this.selectedModelId);
         if (model && model.task_type === 'speech-to-text') {
           formData.append('model_id', this.selectedModelId.toString());
         }
         
-        const res = await fetch('/api/v1/hf/speech-to-text', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText || 'فشل تحويل الصوت');
-        }
+        const res = await fetch('/api/v1/hf/speech-to-text', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('فشل تحويل الصوت');
         
         const data = await res.json();
-        
         if (data.ok && data.text) {
           this.audioTranscribed = true;
           this.question = data.text;
-          // إرسال السؤال تلقائياً بعد التحويل
-          setTimeout(() => {
-            this.sendQuestion();
-          }, 300);
+          setTimeout(() => this.sendQuestion(), 300);
         } else {
-          const errorMsg = data.error || 'لم يتم التعرف على الصوت';
           this.question = '';
-          this.showError('⚠️ ' + errorMsg);
+          this.showError('⚠️ ' + (data.error || 'لم يتم التعرف على الصوت'));
         }
       } catch (error) {
         console.error('خطأ في تحويل الصوت:', error);
-        this.question = '⚠️ فشل تحويل الصوت، حاول كتابة السؤال';
-        setTimeout(() => {
-          if (this.question === '⚠️ فشل تحويل الصوت، حاول كتابة السؤال') {
-            this.question = '';
-          }
-        }, 3000);
+        this.question = '';
+        this.showError('⚠️ فشل تحويل الصوت');
       }
     },
 
-    // ── عرض خطأ ──
-    showError(message) {
-      this.error = message;
-      setTimeout(() => { this.error = null; }, 5000);
-    },
+    // ══════════════════════════════════════════════════════════
+    //  Send Question
+    // ══════════════════════════════════════════════════════════
 
-    // ── إرسال السؤال ──
     async sendQuestion() {
       const q = this.question.trim();
       if (!q || this.loading || this.recording) return;
+      if (q === '🎤 جاري التسجيل...') { this.question = ''; return; }
       
-      if (q === '🎤 جاري التسجيل...') {
-        this.question = '';
+      // ✅ فحص حالة الملف قبل الإرسال
+      if (!this.canChat) {
+        this.showError('⚠️ ' + (this.selectedFileId === 'all' 
+          ? 'لا توجد ملفات جاهزة بعد.' 
+          : 'هذا الملف غير جاهز. ' + this.getSelectedFileLabel()));
         return;
       }
       
@@ -641,16 +903,13 @@ function searchApp() {
       this.question = '';
       this.audioTranscribed = false;
       
-      // تحويل selectedFileId إلى array
       let fileIds = null;
       if (this.selectedFileId !== 'all') {
         fileIds = [parseInt(this.selectedFileId)];
       }
       
-      // تحديد النموذج المحدد
       const selectedModel = this.availableModels.find(m => m.id === this.selectedModelId);
       
-      // بناء الطلب
       const body = {
         question: currentQuestion,
         top_k: 5,
@@ -666,14 +925,10 @@ function searchApp() {
           body: JSON.stringify(body),
         });
         
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(errorText || 'فشل الطلب');
-        }
+        if (!res.ok) throw new Error(await res.text() || 'فشل الطلب');
         
         const data = await res.json();
         
-        // معالجة الاستجابة
         this.messages.push({
           question: currentQuestion,
           answer: data.answer || '',
@@ -711,28 +966,23 @@ function searchApp() {
         this.loading = false;
         this.$nextTick(() => {
           const container = this.$refs.messagesContainer;
-          if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
+          if (container) container.scrollTop = container.scrollHeight;
         });
       }
     },
 
-    // ── فهرسة ملف ── (إذا كانت موجودة في القالب)
     async indexFile(fileId) {
       try {
-        const res = await fetch(`/api/v1/search/index/${fileId}`, {
-          method: 'POST',
-        });
+        const res = await fetch(`/api/v1/search/index/${fileId}`, { method: 'POST' });
         const data = await res.json();
         if (data.indexed) {
-          this.showError('✅ تمت فهرسة الملف بنجاح (' + data.chunks + ' مقطع)');
-          setTimeout(() => window.location.reload(), 1500);
+          this.showToast('✅ تمت الفهرسة (' + data.chunks + ' مقطع)');
+          this.refreshAllFileStatuses();
         } else {
           this.showError('⚠️ ' + (data.reason || 'فشلت الفهرسة'));
         }
       } catch (e) {
-        this.showError('⚠️ حدث خطأ في الفهرسة');
+        this.showError('⚠️ خطأ في الفهرسة');
       }
     },
   };
