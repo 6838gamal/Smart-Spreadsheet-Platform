@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
-from app.core.database import async_session_maker
+from app.core.database import AsyncSessionLocal
 from app.infrastructure.database.models import File
 from app.infrastructure.database.models_intelligence import (
     DocumentAnalysis,
     AnalysisStatus,
+    DocumentChunk,
 )
 from app.services.search.search_service import search_service
 
@@ -31,7 +32,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
              - run appropriate pipeline (OCR/tables/entities)
              - persist results
              - auto-index chunks
-        4. (Optional) Fallback: if analysis ran but no chunks, index manually
+        4. Safety net: if analysis ran but no chunks, index manually
     """
     logger.info(f"🚀 [BG] Start analyze+index for file_id={file_id} user_id={user_id}")
 
@@ -41,7 +42,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
         # ═══════════════════════════════════════════════════════════
         # 1. Load file + find/create analysis record
         # ═══════════════════════════════════════════════════════════
-        async with async_session_maker() as db:
+        async with AsyncSessionLocal() as db:
             file = (await db.execute(
                 select(File).where(File.id == file_id, File.owner_id == user_id)
             )).scalar_one_or_none()
@@ -95,9 +96,8 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
             analysis_id = analysis.id
             logger.info(f"📝 [BG] Created DocumentAnalysis #{analysis_id}")
 
-            # Mark as running so the UI shows "analyzing"
-            analysis.status = AnalysisStatus.PENDING
-            await db.commit()
+            file_path = file.path
+            file_format = file.format
 
         # ═══════════════════════════════════════════════════════════
         # 2. Call handle_analysis_job (the real pipeline)
@@ -107,8 +107,8 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
 
         payload = {
             "file_id": file_id,
-            "file_path": file.path,
-            "file_format": file.format,
+            "file_path": file_path,
+            "file_format": file_format,
             "analysis_id": analysis_id,
         }
 
@@ -130,7 +130,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
         #    created (e.g., indexing step in handler failed silently),
         #    index here.
         # ═══════════════════════════════════════════════════════════
-        async with async_session_maker() as db:
+        async with AsyncSessionLocal() as db:
             file = (await db.execute(
                 select(File).where(File.id == file_id)
             )).scalar_one_or_none()
@@ -164,9 +164,6 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
 
 async def _count_chunks(db, file_id: int, user_id: int) -> int:
     """Count chunks for a given file/user."""
-    from sqlalchemy import func
-    from app.infrastructure.database.models_intelligence import DocumentChunk
-
     return (await db.execute(
         select(func.count(DocumentChunk.id)).where(
             DocumentChunk.file_id == file_id,
