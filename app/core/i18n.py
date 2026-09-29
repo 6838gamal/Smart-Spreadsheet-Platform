@@ -1,8 +1,30 @@
 """
 Bilingual translations — Arabic (ar) and English (en).
-Usage in routes: pass lang=user.default_lang
-Usage in templates: {% set t = get_texts(lang) %} then {{ t.key }}
+
+Usage in routes:
+    lang = user.default_lang or request.cookies.get("lang", "ar")
+    return templates.TemplateResponse("page.html", {"request": request, "lang": lang})
+
+Usage in templates:
+    {% set t = get_texts(lang) %}
+    {{ t.get('nav_dashboard') }}
+    {{ t['nav_dashboard'] }}       {# dict-style, also works #}
 """
+
+from typing import Dict, Iterator, Iterable
+
+
+# ============================================================
+# SUPPORTED LANGUAGES
+# ============================================================
+
+SUPPORTED_LANGUAGES: tuple[str, ...] = ("ar", "en")
+DEFAULT_LANGUAGE: str = "ar"
+
+
+# ============================================================
+# TRANSLATIONS DICTIONARY
+# ============================================================
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── Navigation ────────────────────────────────────────────────────────────
@@ -175,23 +197,151 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 
 
+# ============================================================
+# TEXTS CLASS
+# ============================================================
+
 class Texts:
-    """Dot-access wrapper around a language dict slice."""
+    """
+    Dot-access + dict-access wrapper around a language slice of _TRANSLATIONS.
+
+    Supports:
+        t.get('nav_dashboard')          → "لوحة التحكم"
+        t['nav_dashboard']              → "لوحة التحكم"
+        t.nav_dashboard                 → "لوحة التحكم"
+        'nav_dashboard' in t            → True
+        for key in t: ...               → iterate keys
+        t.keys() / t.values() / t.items()
+        t.to_dict()                     → plain dict for current lang
+    """
+
+    __slots__ = ("_lang",)
+
     def __init__(self, lang: str) -> None:
-        self._lang = lang if lang in ("ar", "en") else "ar"
+        self._lang = lang if lang in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
 
-    def __getattr__(self, key: str) -> str:
-        entry = _TRANSLATIONS.get(key)
-        if entry is None:
-            return key  # fallback: return key name
-        return entry.get(self._lang) or entry.get("ar", key)
+    # ── Properties ────────────────────────────────────────────────────────────
+    @property
+    def lang(self) -> str:
+        """Current language code."""
+        return self._lang
 
-    def get(self, key: str, default: str = "") -> str:
+    # ── Core access ───────────────────────────────────────────────────────────
+    def _resolve(self, key: str, default: str | None = None) -> str | None:
         entry = _TRANSLATIONS.get(key)
         if entry is None:
             return default
-        return entry.get(self._lang) or entry.get("ar", default)
+        return entry.get(self._lang) or entry.get(DEFAULT_LANGUAGE) or default
+
+    def get(self, key: str, default: str = "") -> str:
+        """dict-style .get() — always returns a string."""
+        result = self._resolve(key, None)
+        return result if result is not None else default
+
+    def __getitem__(self, key: str) -> str:
+        """dict-style t['key'] — raises KeyError if missing."""
+        result = self._resolve(key, None)
+        if result is None:
+            raise KeyError(key)
+        return result
+
+    def __getattr__(self, key: str) -> str:
+        """dot-style t.key — falls back to the key name if missing."""
+        # Avoid recursion during unpickling / copy
+        if key.startswith("__") and key.endswith("__"):
+            raise AttributeError(key)
+        result = self._resolve(key, None)
+        return result if result is not None else key
+
+    # ── Container protocol ────────────────────────────────────────────────────
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key in _TRANSLATIONS
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_TRANSLATIONS)
+
+    def __len__(self) -> int:
+        return len(_TRANSLATIONS)
+
+    def __bool__(self) -> bool:
+        return True  # a Texts instance is always truthy
+
+    # ── dict-like views ───────────────────────────────────────────────────────
+    def keys(self):
+        return _TRANSLATIONS.keys()
+
+    def values(self) -> Iterable[str]:
+        for k in _TRANSLATIONS:
+            yield self.get(k)
+
+    def items(self):
+        for k in _TRANSLATIONS:
+            yield k, self.get(k)
+
+    def to_dict(self) -> Dict[str, str]:
+        """Return a plain {key: value} dict for the current language."""
+        return {
+            k: (v.get(self._lang) or v.get(DEFAULT_LANGUAGE, k))
+            for k, v in _TRANSLATIONS.items()
+        }
+
+    # ── Debug / repr ──────────────────────────────────────────────────────────
+    def __repr__(self) -> str:
+        return f"Texts(lang={self._lang!r}, keys={len(_TRANSLATIONS)})"
 
 
-def get_texts(lang: str = "ar") -> Texts:
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+def get_texts(lang: str = DEFAULT_LANGUAGE) -> Texts:
+    """Return a Texts wrapper for the given language code."""
     return Texts(lang)
+
+
+def get_translation(key: str, lang: str = DEFAULT_LANGUAGE, default: str = "") -> str:
+    """Direct one-shot translation lookup."""
+    entry = _TRANSLATIONS.get(key)
+    if entry is None:
+        return default
+    return entry.get(lang) or entry.get(DEFAULT_LANGUAGE, default)
+
+
+def get_language_direction(lang: str = DEFAULT_LANGUAGE) -> str:
+    """Return 'rtl' for RTL languages, 'ltr' otherwise."""
+    return "rtl" if lang in ("ar", "fa", "he", "ur") else "ltr"
+
+
+def is_rtl_language(lang: str) -> bool:
+    """True if the given language uses RTL direction."""
+    return get_language_direction(lang) == "rtl"
+
+
+def get_supported_languages() -> Dict[str, str]:
+    """Return {code: native_name} for all supported languages."""
+    return {
+        "ar": "العربية",
+        "en": "English",
+    }
+
+
+def is_supported(lang: str) -> bool:
+    """Check if a language code is supported."""
+    return lang in SUPPORTED_LANGUAGES
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    "SUPPORTED_LANGUAGES",
+    "DEFAULT_LANGUAGE",
+    "Texts",
+    "get_texts",
+    "get_translation",
+    "get_language_direction",
+    "is_rtl_language",
+    "get_supported_languages",
+    "is_supported",
+]
