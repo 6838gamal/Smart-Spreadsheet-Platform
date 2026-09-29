@@ -424,7 +424,6 @@
 /* إخفاء العناصر قبل تهيئة Alpine */
 [x-cloak] { display: none !important; }
 
-/* Scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -447,7 +446,6 @@
   overflow: hidden;
 }
 
-/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -464,7 +462,6 @@
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Touch targets for mobile */
 @media (max-width: 640px) {
   button, select {
     min-height: 44px;
@@ -479,18 +476,15 @@
   outline-offset: 2px;
 }
 
-/* زر المايك */
 button[class*="bg-red-600"] {
   box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
 }
 
-/* تحسين القوائم المنسدلة */
 select option {
   background: #18181b;
   color: white;
 }
 
-/* تحسين التمرير */
 .scrollbar-thin {
   scroll-behavior: smooth;
 }
@@ -500,6 +494,9 @@ select option {
 function searchApp() {
   const _urlFileId = parseInt(new URLSearchParams(window.location.search).get('file_id') || '0');
   const _initialFiles = {{ files_info|tojson }};
+
+  // ✅ المسار الأساسي لـ API (يشمل /api/v1/search)
+  const API_BASE = '/api/v1/search';
 
   return {
     // ── الحالة العامة ──
@@ -516,7 +513,7 @@ function searchApp() {
       original_name: f.original_name,
       is_indexed: !!f.is_indexed,
     })),
-    fileStatuses: {},   // { [fileId]: { status, chunks, ... } }
+    fileStatuses: {},
     
     selectedFileId: _urlFileId ? String(_urlFileId) : 'all',
     quickFileSelect: _urlFileId ? String(_urlFileId) : 'all',
@@ -540,7 +537,7 @@ function searchApp() {
     pollingTimer: null,
 
     // ══════════════════════════════════════════════════════════
-    //  Computed helpers
+    //  Computed
     // ══════════════════════════════════════════════════════════
     
     get hasIndexedFiles() {
@@ -624,18 +621,15 @@ function searchApp() {
       this.updateModelName();
       this.loadAvailableModels();
       
-      // جلب حالات الملفات فوراً ثم كل 3 ثوانٍ
       this.refreshAllFileStatuses();
       this.pollingTimer = setInterval(() => {
         this.refreshAllFileStatuses();
       }, 3000);
       
-      // التحقق من دعم الصوت
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('تسجيل الصوت غير مدعوم');
       }
       
-      // التمرير التلقائي
       this.$watch('messages', () => {
         if (this.autoScroll) {
           this.$nextTick(() => {
@@ -649,26 +643,24 @@ function searchApp() {
     },
 
     // ══════════════════════════════════════════════════════════
-    //  File Status
+    //  File Status — ✅ باستخدام API_BASE
     // ══════════════════════════════════════════════════════════
 
     async refreshAllFileStatuses() {
       const tasks = this.files.map(async (f) => {
         try {
-          const res = await fetch(`/api/v1/files/${f.id}/status`);
+          const res = await fetch(`${API_BASE}/files/${f.id}/status`);
           if (!res.ok) return;
           const data = await res.json();
           
           const prev = this.fileStatuses[f.id]?.status;
           this.fileStatuses[f.id] = data;
           
-          // إشعار عند اكتمال التحليل
           if (prev === 'analyzing' && data.status === 'ready') {
             this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
             this.refreshCounters();
           }
           
-          // حدّث بيانات الملف
           const file = this.files.find(x => x.id === f.id);
           if (file) {
             file.is_indexed = data.status === 'ready';
@@ -683,7 +675,7 @@ function searchApp() {
 
     async refreshCounters() {
       try {
-        const res = await fetch('/api/v1/search/stats');
+        const res = await fetch(`${API_BASE}/stats`);
         if (res.ok) {
           const data = await res.json();
           this.indexed_count = data.indexed_files || 0;
@@ -701,7 +693,8 @@ function searchApp() {
       try {
         this.analyzing = true;
         
-        const res = await fetch(`/api/v1/files/${fileId}/analyze`, {
+        // ✅ المسار الصحيح
+        const res = await fetch(`${API_BASE}/files/${fileId}/analyze`, {
           method: 'POST',
         });
         
@@ -710,13 +703,11 @@ function searchApp() {
           throw new Error(err || 'فشل بدء التحليل');
         }
         
-        // ضع الحالة مؤقتاً كـ analyzing
         if (!this.fileStatuses[fileId]) this.fileStatuses[fileId] = {};
         this.fileStatuses[fileId].status = 'analyzing';
         
         this.showToast('🚀 بدأ التحليل في الخلفية...');
         
-        // تحديث فوري
         setTimeout(() => this.refreshAllFileStatuses(), 1000);
         
       } catch (e) {
@@ -753,7 +744,7 @@ function searchApp() {
 
     async loadAvailableModels() {
       try {
-        const res = await fetch('/api/v1/search/models');
+        const res = await fetch(`${API_BASE}/models`);
         if (res.ok) {
           const data = await res.json();
           if (data.models && data.models.length > 0) {
@@ -890,7 +881,6 @@ function searchApp() {
       if (!q || this.loading || this.recording) return;
       if (q === '🎤 جاري التسجيل...') { this.question = ''; return; }
       
-      // ✅ فحص حالة الملف قبل الإرسال
       if (!this.canChat) {
         this.showError('⚠️ ' + (this.selectedFileId === 'all' 
           ? 'لا توجد ملفات جاهزة بعد.' 
@@ -919,7 +909,7 @@ function searchApp() {
       };
       
       try {
-        const res = await fetch('/api/v1/search/query', {
+        const res = await fetch(`${API_BASE}/query`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -973,7 +963,7 @@ function searchApp() {
 
     async indexFile(fileId) {
       try {
-        const res = await fetch(`/api/v1/search/index/${fileId}`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/index/${fileId}`, { method: 'POST' });
         const data = await res.json();
         if (data.indexed) {
           this.showToast('✅ تمت الفهرسة (' + data.chunks + ' مقطع)');
