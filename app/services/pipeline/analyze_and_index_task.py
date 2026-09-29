@@ -1,7 +1,8 @@
-"""Background task: analyze a file, then index it for search.
+"""Background task: analyze a file via the real pipeline, then index it.
 
 Runs as a FastAPI BackgroundTask — no Celery required.
-Idempotent: safe to call multiple times on the same file.
+Uses the existing pipeline_manager.handle_analysis_job() for full analysis
+(classify + OCR + tables + entities) and auto-indexing.
 """
 from __future__ import annotations
 
@@ -23,15 +24,24 @@ logger = logging.getLogger(__name__)
 async def analyze_and_index_background(file_id: int, user_id: int) -> None:
     """
     Full pipeline in background:
-        1. Load file
-        2. Try existing analysis, or run a new one
-        3. Index the analyzed text
+        1. Load file metadata
+        2. Find or create a DocumentAnalysis record
+        3. Call handle_analysis_job() — which does:
+             - classify
+             - run appropriate pipeline (OCR/tables/entities)
+             - persist results
+             - auto-index chunks
+        4. (Optional) Fallback: if analysis ran but no chunks, index manually
     """
     logger.info(f"🚀 [BG] Start analyze+index for file_id={file_id} user_id={user_id}")
 
+    analysis_id: int | None = None
+
     try:
+        # ═══════════════════════════════════════════════════════════
+        # 1. Load file + find/create analysis record
+        # ═══════════════════════════════════════════════════════════
         async with async_session_maker() as db:
-            # ── 1. Load file ──
             file = (await db.execute(
                 select(File).where(File.id == file_id, File.owner_id == user_id)
             )).scalar_one_or_none()
@@ -40,81 +50,149 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
                 logger.warning(f"⚠️ [BG] File {file_id} not found")
                 return
 
-            # ── 2. Check for existing completed analysis ──
+            # Reuse existing analysis if it exists and is not stale
             analysis = (await db.execute(
                 select(DocumentAnalysis)
-                .where(
-                    DocumentAnalysis.file_id == file_id,
-                    DocumentAnalysis.status == AnalysisStatus.COMPLETED,
-                )
+                .where(DocumentAnalysis.file_id == file_id)
                 .order_by(DocumentAnalysis.id.desc())
                 .limit(1)
             )).scalar_one_or_none()
 
-            # ── 3. Run analysis if none exists ──
-            if not analysis or not analysis.raw_text:
-                logger.info(f"🔍 [BG] Analyzing file {file_id} ({file.original_name})...")
-
-                try:
-                    # ── استخدم الاستخراج السريع كحل مؤقت ──
-                    # إذا كان لديك دالة تحليل متقدمة، استبدلها هنا
-                    from app.services.pipeline.pipeline_manager import _quick_text
-
-                    text = _quick_text(file.path, file.format)
-                    if not text or not text.strip():
-                        logger.warning(f"⚠️ [BG] No text extracted from file {file_id}")
-                        return
-
-                    # أنشئ سجل تحليل
-                    analysis = DocumentAnalysis(
-                        file_id=file_id,
-                        user_id=user_id,
-                        status=AnalysisStatus.COMPLETED,
-                        raw_text=text,
+            # If we already have a COMPLETED analysis with raw_text,
+            # just verify chunks and exit.
+            if (
+                analysis
+                and analysis.status == AnalysisStatus.COMPLETED
+                and analysis.raw_text
+            ):
+                chunks_count = await _count_chunks(db, file_id, user_id)
+                if chunks_count > 0:
+                    logger.info(
+                        f"✅ [BG] File {file_id} already analyzed & indexed "
+                        f"({chunks_count} chunks). Skipping."
                     )
-                    db.add(analysis)
-                    await db.commit()
-                    await db.refresh(analysis)
-                    logger.info(f"✅ [BG] Created analysis {analysis.id} ({len(text)} chars)")
-
-                except Exception as e:
-                    logger.exception(f"❌ [BG] Analysis failed for file {file_id}: {e}")
-                    # سجّل الفشل إن أمكن
-                    try:
-                        failed = DocumentAnalysis(
-                            file_id=file_id,
-                            user_id=user_id,
-                            status=AnalysisStatus.FAILED,
-                        )
-                        # حاول إضافة error_message إذا كان الحقل موجوداً
-                        if hasattr(failed, "error_message"):
-                            failed.error_message = str(e)[:500]
-                        db.add(failed)
-                        await db.commit()
-                    except Exception:
-                        pass
+                    return
+                else:
+                    # Analysis done, but no chunks → index only
+                    logger.info(
+                        f"📇 [BG] File {file_id} analyzed but not indexed. "
+                        f"Indexing only..."
+                    )
+                    analysis_id = analysis.id
+                    await _index_only(db, file, analysis, user_id)
                     return
 
-            if not analysis.raw_text or not analysis.raw_text.strip():
-                logger.warning(f"⚠️ [BG] Analysis has no text for file {file_id}")
+            # Otherwise, create a fresh analysis record
+            analysis = DocumentAnalysis(
+                file_id=file_id,
+                user_id=user_id,
+                status=AnalysisStatus.PENDING,
+            )
+            db.add(analysis)
+            await db.commit()
+            await db.refresh(analysis)
+
+            analysis_id = analysis.id
+            logger.info(f"📝 [BG] Created DocumentAnalysis #{analysis_id}")
+
+            # Mark as running so the UI shows "analyzing"
+            analysis.status = AnalysisStatus.PENDING
+            await db.commit()
+
+        # ═══════════════════════════════════════════════════════════
+        # 2. Call handle_analysis_job (the real pipeline)
+        #    — This runs the full analysis + auto-index inside.
+        # ═══════════════════════════════════════════════════════════
+        from app.services.pipeline.pipeline_manager import handle_analysis_job
+
+        payload = {
+            "file_id": file_id,
+            "file_path": file.path,
+            "file_format": file.format,
+            "analysis_id": analysis_id,
+        }
+
+        try:
+            result = await handle_analysis_job(payload)
+            logger.info(
+                f"🎉 [BG] handle_analysis_job completed for file {file_id}: "
+                f"{result}"
+            )
+        except Exception as e:
+            logger.exception(
+                f"❌ [BG] handle_analysis_job failed for file {file_id}: {e}"
+            )
+            # The handler already marks the analysis as FAILED in DB.
+            return
+
+        # ═══════════════════════════════════════════════════════════
+        # 3. Safety net — if analysis completed but no chunks were
+        #    created (e.g., indexing step in handler failed silently),
+        #    index here.
+        # ═══════════════════════════════════════════════════════════
+        async with async_session_maker() as db:
+            file = (await db.execute(
+                select(File).where(File.id == file_id)
+            )).scalar_one_or_none()
+
+            analysis = (await db.execute(
+                select(DocumentAnalysis)
+                .where(DocumentAnalysis.id == analysis_id)
+            )).scalar_one_or_none()
+
+            if not file or not analysis:
                 return
 
-            # ── 4. Index the analyzed text ──
-            logger.info(f"📇 [BG] Indexing file {file_id}...")
-            chunk_count = await search_service.index_document(
-                db,
-                file_id=file_id,
-                analysis_id=analysis.id,
-                user_id=user_id,
-                text=analysis.raw_text,
-                doc_type=getattr(analysis, "doc_type", None),
-                language=getattr(analysis, "language", None),
-                filename=file.original_name,
-            )
+            chunks_count = await _count_chunks(db, file_id, user_id)
 
-            logger.info(
-                f"🎉 [BG] Complete: file_id={file_id} → {chunk_count} chunks indexed"
-            )
+            if chunks_count == 0 and analysis.raw_text:
+                logger.warning(
+                    f"⚠️ [BG] Analysis #{analysis_id} completed but no chunks. "
+                    f"Running fallback indexing..."
+                )
+                await _index_only(db, file, analysis, user_id)
+            else:
+                logger.info(
+                    f"✅ [BG] File {file_id} complete: {chunks_count} chunks in DB"
+                )
 
     except Exception as e:
-        logger.exception(f"❌ [BG] analyze+index failed for {file_id}: {e}")
+        logger.exception(f"❌ [BG] analyze_and_index failed for {file_id}: {e}")
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _count_chunks(db, file_id: int, user_id: int) -> int:
+    """Count chunks for a given file/user."""
+    from sqlalchemy import func
+    from app.infrastructure.database.models_intelligence import DocumentChunk
+
+    return (await db.execute(
+        select(func.count(DocumentChunk.id)).where(
+            DocumentChunk.file_id == file_id,
+            DocumentChunk.user_id == user_id,
+        )
+    )).scalar() or 0
+
+
+async def _index_only(db, file, analysis, user_id: int) -> None:
+    """Index the analysis text only (analysis already exists)."""
+    try:
+        if not analysis.raw_text:
+            logger.warning(f"⚠️ [BG] Analysis #{analysis.id} has no raw_text — cannot index")
+            return
+
+        chunk_count = await search_service.index_document(
+            db,
+            file_id=file.id,
+            analysis_id=analysis.id,
+            user_id=user_id,
+            text=analysis.raw_text,
+            doc_type=getattr(analysis, "doc_type", None),
+            language=getattr(analysis, "language", None),
+            filename=file.original_name,
+        )
+        logger.info(f"✅ [BG] Indexed {chunk_count} chunks for file {file.id}")
+    except Exception as e:
+        logger.exception(f"❌ [BG] Indexing failed for file {file.id}: {e}")
+        raise
