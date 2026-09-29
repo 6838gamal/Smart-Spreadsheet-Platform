@@ -358,6 +358,47 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                            "en": "Convert JPG images to a PDF document."},
     "desc_excel_to_jpg":  {"ar": "تحويل الجداول والرسوم إلى صورة JPG.",
                            "en": "Convert tables and charts to a JPG image."},
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ── Convert Panel (Screen 3) ──────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    "converter_description":   {"ar": "حوّل ملفك بضغطة واحدة",         "en": "Convert your file with one click"},
+    "converting_title":        {"ar": "جارٍ تحويل الملف",              "en": "Converting file"},
+    "processing":              {"ar": "جاري المعالجة…",               "en": "Processing…"},
+    "reading":                 {"ar": "قراءة",                          "en": "Read"},
+    "analyzing":               {"ar": "تحليل",                          "en": "Analyze"},
+    "converting_short":        {"ar": "تحويل",                          "en": "Convert"},
+    "saving":                  {"ar": "حفظ",                            "en": "Save"},
+    "conversion_success":      {"ar": "تم التحويل بنجاح!",              "en": "Conversion succeeded!"},
+    "rows":                    {"ar": "صف",                             "en": "Rows"},
+    "columns":                 {"ar": "عمود",                           "en": "Columns"},
+    "time":                    {"ar": "المدة",                          "en": "Time"},
+    "download_converted":      {"ar": "تحميل الملف الناتج",             "en": "Download converted file"},
+    "new_conversion":          {"ar": "تحويل ملف آخر",                  "en": "Convert another file"},
+    "retry_conversion":        {"ar": "حاول مجدداً",                    "en": "Try again"},
+
+    # JS messages for convert panel
+    "conv_starting":           {"ar": "بدء التحويل…",                   "en": "Starting conversion…"},
+    "conv_reading_file":       {"ar": "جاري قراءة الملف…",              "en": "Reading file…"},
+    "conv_analyzing_data":     {"ar": "جاري تحليل البيانات…",           "en": "Analyzing data…"},
+    "conv_converting_data":    {"ar": "جاري تحويل البيانات…",           "en": "Converting data…"},
+    "conv_saving_file":        {"ar": "جاري إنشاء وحفظ الملف…",         "en": "Creating and saving file…"},
+    "conv_processing_default": {"ar": "جاري المعالجة…",                 "en": "Processing…"},
+    "conv_completed_success":  {"ar": "اكتمل التحويل بنجاح",            "en": "Conversion completed successfully"},
+    "conv_error_title":        {"ar": "خطأ في التحويل",                 "en": "Conversion error"},
+    "conv_error_detail":       {"ar": "تعذر إتمام عملية التحويل.",      "en": "Could not complete the conversion."},
+    "conv_connection_lost":    {"ar": "انقطع الاتصال",                  "en": "Connection lost"},
+    "conv_connection_lost_detail": {"ar": "تعذر الاتصال بخدمة التحويل. تحقق من الاتصال وحاول مجدداً.",
+                                    "en": "Could not reach the conversion service. Check your connection and try again."},
+    "conv_start_failed":       {"ar": "تعذر بدء التحويل",               "en": "Could not start conversion"},
+    "conv_start_failed_detail":{"ar": "حدث خطأ أثناء إنشاء اتصال التحويل. حاول مجدداً.",
+                                "en": "An error occurred while opening the conversion stream. Please try again."},
+    "conv_invalid_response":   {"ar": "استجابة غير صالحة",              "en": "Invalid response"},
+    "conv_invalid_response_detail": {"ar": "تعذر قراءة نتيجة التحويل.", "en": "Could not read the conversion result."},
+    "conv_overall_completed":  {"ar": "اكتمل",                          "en": "Completed"},
+    "conv_overall_converting": {"ar": "جاري التحويل",                   "en": "Converting"},
+    "conv_overall_ready":      {"ar": "جاهز للتحويل",                   "en": "Ready to convert"},
+    "conv_overall_start":      {"ar": "البدء",                          "en": "Start"},
 }
 
 
