@@ -14,6 +14,9 @@ File pipeline endpoints:
     GET    /api/v1/search/files/{id}/status  — pipeline status (pending/analyzing/ready/…)
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
+
+Debug:
+    GET    /api/v1/search/debug/import-check — verify background task import (TEMPORARY)
 """
 from __future__ import annotations
 import json
@@ -864,3 +867,64 @@ async def list_pending_files(
         "pending": pending,
         "total": len(pending),
     }
+
+
+# ── Debug ─────────────────────────────────────────────────────────────────────
+# ⚠️ TEMPORARY: remove after fixing the background task import issue.
+
+@router.get("/debug/import-check")
+async def debug_import_check():
+    """
+    Temporary debug endpoint to diagnose the background task import.
+
+    Returns:
+      - Current working directory
+      - PYTHONPATH
+      - Files present in app/services/pipeline/
+      - Import status + full traceback if failed
+    """
+    import traceback
+    import os
+    from pathlib import Path
+
+    result: dict = {
+        "cwd": os.getcwd(),
+        "python_path": os.environ.get("PYTHONPATH", ""),
+        "files_in_pipeline_dir": None,
+        "pipeline_manager_exists": None,
+        "task_file_exists": None,
+        "import_status": None,
+        "import_error": None,
+    }
+
+    # 1. List files in app/services/pipeline/
+    try:
+        pipeline_dir = Path("app/services/pipeline")
+        if pipeline_dir.exists():
+            result["files_in_pipeline_dir"] = sorted(
+                [f.name for f in pipeline_dir.iterdir()]
+            )
+            result["task_file_exists"] = (pipeline_dir / "analyze_and_index_task.py").exists()
+            result["pipeline_manager_exists"] = (pipeline_dir / "pipeline_manager.py").exists()
+        else:
+            result["files_in_pipeline_dir"] = "❌ DIRECTORY NOT FOUND"
+    except Exception as e:
+        result["files_in_pipeline_dir"] = f"ERROR: {e}"
+
+    # 2. Try importing the background task
+    try:
+        from app.services.pipeline.analyze_and_index_task import analyze_and_index_background  # noqa: F401
+        result["import_status"] = "✅ OK"
+    except Exception:
+        result["import_status"] = "❌ FAILED"
+        result["import_error"] = traceback.format_exc()
+
+    # 3. Also check pipeline_manager import
+    try:
+        from app.services.pipeline.pipeline_manager import handle_analysis_job  # noqa: F401
+        result["pipeline_manager_import"] = "✅ OK"
+    except Exception:
+        result["pipeline_manager_import"] = "❌ FAILED"
+        result["pipeline_manager_error"] = traceback.format_exc()
+
+    return result
