@@ -37,27 +37,40 @@
     </div>
   </header>
 
-  <!-- ── شريط حالة الملف المحدد ──────────────────────────────── -->
+  <!-- ── شريط حالة الملف المحدد + شريط التقدم ─────────────────── -->
   <div x-show="selectedFileId !== 'all'" 
        x-cloak
        class="mb-3 flex-shrink-0 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <!-- مؤشر ملون حسب الحالة -->
-        <span class="w-2 h-2 rounded-full"
+    
+    <!-- الصف 1: الحالة + الأزرار -->
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- مؤشر ملون -->
+        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0"
               :class="{
                 'bg-emerald-500': getSelectedFileStatus() === 'ready',
                 'bg-amber-500 animate-pulse': getSelectedFileStatus() === 'analyzing',
                 'bg-zinc-500': getSelectedFileStatus() === 'pending',
-                'bg-blue-500': getSelectedFileStatus() === 'analyzed_not_indexed',
+                'bg-blue-500 animate-pulse': getSelectedFileStatus() === 'analyzed_not_indexed',
                 'bg-red-500': getSelectedFileStatus() === 'failed',
               }"></span>
         
-        <span class="text-xs text-zinc-300" x-text="getSelectedFileLabel()"></span>
+        <span class="text-xs sm:text-sm text-zinc-200 font-medium" 
+              x-text="getSelectedFileLabel()"></span>
         
+        <!-- شارة "تم الفهرسة" -->
+        <span x-show="getSelectedFileStatus() === 'ready'" 
+              class="text-[10px] bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 rounded-full px-2 py-0.5 flex items-center gap-1">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+          تم الفهرسة
+        </span>
+        
+        <!-- عدد المقاطع -->
         <span x-show="getSelectedFileChunks() > 0" 
-              class="text-[10px] text-zinc-500"
-              x-text="'· ' + getSelectedFileChunks() + ' مقطع'"></span>
+              class="text-[10px] text-zinc-500 bg-zinc-800 rounded px-2 py-0.5"
+              x-text="getSelectedFileChunks() + ' مقطع'"></span>
       </div>
 
       <!-- أزرار الإجراءات -->
@@ -73,20 +86,14 @@
           <span x-text="getSelectedFileStatus() === 'failed' ? 'إعادة المحاولة' : 'تحليل الملف'"></span>
         </button>
 
-        <button x-show="getSelectedFileStatus() === 'analyzing'"
-                disabled
-                class="text-xs bg-amber-600/30 text-amber-300 rounded-lg px-3 py-1.5 flex items-center gap-1 cursor-wait">
-          <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          جاري التحليل...
-        </button>
-
         <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed'"
                 @click="analyzeSelectedFile()"
                 :disabled="analyzing"
-                class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5">
+                class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
           فهرسة الآن
         </button>
 
@@ -101,6 +108,53 @@
           </svg>
         </button>
       </div>
+    </div>
+
+    <!-- الصف 2: شريط التقدم (أثناء التحليل) -->
+    <div x-show="getSelectedFileStatus() === 'analyzing' || (analyzing && selectedFileId !== 'all')" 
+         x-cloak
+         class="mt-2 space-y-1.5">
+      
+      <!-- شريط التقدم المتحرك -->
+      <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden relative">
+        <div class="h-full bg-gradient-to-r from-brand-600 via-brand-400 to-brand-600 rounded-full"
+             style="background-size: 200% 100%; animation: shimmer 1.5s linear infinite; width: 100%;">
+        </div>
+      </div>
+      
+      <!-- النص التفصيلي -->
+      <div class="flex items-center justify-between text-[10px] sm:text-xs text-zinc-400">
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3 h-3 animate-spin text-amber-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span x-text="getAnalyzingMessage()"></span>
+        </span>
+        <span class="text-zinc-500" x-text="getElapsedTime()"></span>
+      </div>
+    </div>
+
+    <!-- الصف 3: رسالة الفشل -->
+    <div x-show="getSelectedFileStatus() === 'failed'" 
+         x-cloak
+         class="mt-2 p-2 bg-red-900/20 border border-red-800/40 rounded-lg">
+      <p class="text-[10px] sm:text-xs text-red-300 flex items-start gap-1.5">
+        <span>❌</span>
+        <span x-text="getSelectedFileError() || 'فشل التحليل. حاول مرة أخرى.'"></span>
+      </p>
+    </div>
+
+    <!-- الصف 4: رسالة النجاح -->
+    <div x-show="getSelectedFileStatus() === 'ready'" 
+         x-cloak
+         class="mt-2 p-2 bg-emerald-900/20 border border-emerald-800/40 rounded-lg">
+      <p class="text-[10px] sm:text-xs text-emerald-300 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        <span x-text="'الملف جاهز للدردشة — ' + getSelectedFileChunks() + ' مقطع مفهرس'"></span>
+      </p>
     </div>
   </div>
 
@@ -325,9 +379,9 @@
         
         <!-- زر المايك (يمين) -->
         <button @click="toggleRecording()"
-                :disabled="loading"
-                class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative order-1"
-                :class="recording ? 'bg-red-600 hover:bg-red-500 animate-pulse' : 'bg-zinc-700 hover:bg-zinc-600'">
+                :disabled="loading || !canChat"
+                class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative order-1 disabled:opacity-40"
+                :class="recording ? 'bg-red-600 hover:bg-red-500 animate-pulse' : (canChat ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-800 cursor-not-allowed')">
           <svg class="w-5 h-5 sm:w-6 sm:h-6" :class="recording ? 'text-white' : 'text-zinc-300'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
           </svg>
@@ -335,22 +389,37 @@
                 class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
         </button>
 
-        <!-- حقل الإدخال (وسط) -->
-        <input
-          type="text"
-          x-model="question"
-          @keydown.enter.prevent="sendQuestion()"
-          @input="onQuestionInput"
-          :placeholder="inputPlaceholder"
-          :disabled="recording || !canChat"
-          class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 text-right transition-all order-2 disabled:opacity-50"
-          dir="auto"
-        />
+        <!-- حقل الإدخال (وسط) — معطّل حتى الجاهزية -->
+        <div class="flex-1 min-w-0 relative order-2">
+          <input
+            type="text"
+            x-model="question"
+            @keydown.enter.prevent="sendQuestion()"
+            @input="onQuestionInput"
+            :placeholder="inputPlaceholder"
+            :disabled="recording || !canChat"
+            class="w-full bg-zinc-800 border rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white placeholder-zinc-500 focus:outline-none text-right transition-all"
+            :class="{
+              'border-zinc-700 focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50': canChat,
+              'border-zinc-800 opacity-60 cursor-not-allowed': !canChat
+            }"
+            dir="auto"
+          />
+          
+          <!-- شارة "معطل" -->
+          <div x-show="!canChat && !recording" 
+               x-cloak
+               class="absolute inset-0 flex items-center justify-end px-3 pointer-events-none">
+            <span class="text-[10px] text-amber-400 bg-amber-900/30 border border-amber-700/50 rounded px-2 py-0.5"
+                  x-text="getChatDisabledReason()"></span>
+          </div>
+        </div>
 
         <!-- زر الإرسال (يسار) -->
         <button @click="sendQuestion()"
                 :disabled="loading || !question.trim() || recording || !canChat"
-                class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 order-3">
+                :class="canChat ? 'bg-brand-600 hover:bg-brand-500' : 'bg-zinc-700 cursor-not-allowed'"
+                class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 disabled:opacity-40 text-white rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 order-3">
           <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
@@ -359,9 +428,7 @@
 
       <!-- ── الشريط السفلي مع خيارات إضافية ── -->
       <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
-        <!-- الجانب الأيمن: اختيار الملف والنموذج -->
         <div class="flex flex-wrap items-center gap-2">
-          <!-- اختيار ملف -->
           <div class="flex items-center gap-1.5 bg-zinc-800/50 border border-zinc-700 rounded-lg px-2 py-1">
             <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -377,7 +444,6 @@
             </select>
           </div>
 
-          <!-- اختيار نموذج الذكاء الاصطناعي -->
           <div class="flex items-center gap-1.5 bg-zinc-800/50 border border-zinc-700 rounded-lg px-2 py-1">
             <svg class="w-3.5 h-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
@@ -391,7 +457,6 @@
             </select>
           </div>
 
-          <!-- زر تحديث النماذج -->
           <button @click="loadAvailableModels()"
                   class="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors p-1"
                   title="تحديث قائمة النماذج">
@@ -401,7 +466,6 @@
           </button>
         </div>
 
-        <!-- الجانب الأيسر: حالة المايك وعدد الأحرف -->
         <div class="flex items-center gap-3 text-[10px] sm:text-xs">
           <span x-show="recording" class="text-red-400 animate-pulse flex items-center gap-1">
             <span class="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
@@ -421,7 +485,6 @@
 </div>
 
 <style>
-/* إخفاء العناصر قبل تهيئة Alpine */
 [x-cloak] { display: none !important; }
 
 .scrollbar-thin::-webkit-scrollbar {
@@ -462,6 +525,12 @@
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* ✨ أنيميشن شريط التقدم */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 @media (max-width: 640px) {
   button, select {
     min-height: 44px;
@@ -494,8 +563,6 @@ select option {
 function searchApp() {
   const _urlFileId = parseInt(new URLSearchParams(window.location.search).get('file_id') || '0');
   const _initialFiles = {{ files_info|tojson }};
-
-  // ✅ المسار الأساسي لـ API (يشمل /api/v1/search)
   const API_BASE = '/api/v1/search';
 
   return {
@@ -504,6 +571,7 @@ function searchApp() {
     messages: [],
     loading: false,
     analyzing: false,
+    analyzingStartTime: null,   // ✨ جديد
     error: null,
     autoScroll: true,
     
@@ -535,6 +603,7 @@ function searchApp() {
     
     // ── Polling ──
     pollingTimer: null,
+    fastPollingTimer: null,
 
     // ══════════════════════════════════════════════════════════
     //  Computed
@@ -549,18 +618,29 @@ function searchApp() {
     },
 
     get canChat() {
-      if (this.selectedFileId === 'all') return this.hasIndexedFiles;
-      return this.getSelectedFileStatus() === 'ready';
+      if (this.selectedFileId !== 'all') {
+        return this.getSelectedFileStatus() === 'ready';
+      }
+      return this.hasIndexedFiles;
     },
 
     get inputPlaceholder() {
       if (this.recording) return '🎤 جاري التسجيل... اضغط المايك للإيقاف';
       if (!this.hasFiles) return 'ارفع ملفات أولاً...';
-      if (!this.hasIndexedFiles && this.selectedFileId === 'all') 
-        return 'حلّل ملفاتك أولاً...';
-      if (this.selectedFileId !== 'all' && this.getSelectedFileStatus() !== 'ready')
-        return 'الملف غير جاهز — اضغط "تحليل" أولاً';
-      return '✏️ اكتب سؤالك هنا...';
+      
+      if (this.selectedFileId === 'all') {
+        if (!this.hasIndexedFiles) return '⏸️ لا توجد ملفات مفهرسة — اختر ملفاً وحلّله';
+        return '✏️ اكتب سؤالك هنا...';
+      }
+      
+      const status = this.getSelectedFileStatus();
+      return {
+        'ready': '✏️ اكتب سؤالك هنا...',
+        'analyzing': '⏳ جاري التحليل — انتظر...',
+        'pending': '⏸️ الملف غير مفهرس — اضغط "تحليل"',
+        'analyzed_not_indexed': '📄 يحتاج فهرسة — اضغط "فهرسة الآن"',
+        'failed': '❌ فشل التحليل — اضغط "إعادة المحاولة"',
+      }[status] || '✏️ اكتب سؤالك هنا...';
     },
 
     statusEmoji(fileId) {
@@ -606,6 +686,41 @@ function searchApp() {
       }[s] || '—';
     },
 
+    // ✨ رسالة التحليل التفصيلية
+    getAnalyzingMessage() {
+      const chunks = this.getSelectedFileChunks();
+      const textLen = this.fileStatuses[this.selectedFileId]?.text_length || 0;
+      
+      if (textLen === 0) return 'جاري استخراج النص...';
+      if (chunks === 0) return `تم استخراج ${textLen} حرف — جاري الفهرسة...`;
+      return `جاري الفهرسة — ${chunks} مقطع حتى الآن...`;
+    },
+
+    // ✨ الوقت المنقضي
+    getElapsedTime() {
+      if (!this.analyzingStartTime) return '';
+      const seconds = Math.floor((Date.now() - this.analyzingStartTime) / 1000);
+      if (seconds < 60) return seconds + ' ث';
+      return Math.floor(seconds / 60) + ' د ' + (seconds % 60) + ' ث';
+    },
+
+    getSelectedFileError() {
+      return this.fileStatuses[this.selectedFileId]?.error || null;
+    },
+
+    getChatDisabledReason() {
+      if (!this.hasFiles) return 'لا توجد ملفات';
+      if (this.selectedFileId === 'all' && !this.hasIndexedFiles) return 'لا ملفات مفهرسة';
+      if (this.selectedFileId !== 'all') {
+        const s = this.getSelectedFileStatus();
+        if (s === 'analyzing') return '⏳ قيد التحليل';
+        if (s === 'pending') return '⏸️ غير مفهرس';
+        if (s === 'analyzed_not_indexed') return '📄 يحتاج فهرسة';
+        if (s === 'failed') return '❌ فشل';
+      }
+      return '';
+    },
+
     pendingFilesCount() {
       return this.files.filter(f => {
         const s = this.getFileStatus(f.id);
@@ -643,7 +758,7 @@ function searchApp() {
     },
 
     // ══════════════════════════════════════════════════════════
-    //  File Status — ✅ باستخدام API_BASE
+    //  File Status
     // ══════════════════════════════════════════════════════════
 
     async refreshAllFileStatuses() {
@@ -656,9 +771,21 @@ function searchApp() {
           const prev = this.fileStatuses[f.id]?.status;
           this.fileStatuses[f.id] = data;
           
+          // إشعار الاكتمال
           if (prev === 'analyzing' && data.status === 'ready') {
             this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
             this.refreshCounters();
+            if (String(f.id) === String(this.selectedFileId)) {
+              this.analyzingStartTime = null;
+            }
+          }
+          
+          // إشعار الفشل
+          if (prev === 'analyzing' && data.status === 'failed') {
+            this.showToast(`❌ فشل تحليل "${f.original_name}"`);
+            if (String(f.id) === String(this.selectedFileId)) {
+              this.analyzingStartTime = null;
+            }
           }
           
           const file = this.files.find(x => x.id === f.id);
@@ -666,7 +793,7 @@ function searchApp() {
             file.is_indexed = data.status === 'ready';
           }
         } catch (e) {
-          // تجاهل أخطاء الشبكة
+          // تجاهل
         }
       });
       
@@ -692,8 +819,8 @@ function searchApp() {
     async analyzeFile(fileId) {
       try {
         this.analyzing = true;
+        this.analyzingStartTime = Date.now();
         
-        // ✅ المسار الصحيح
         const res = await fetch(`${API_BASE}/files/${fileId}/analyze`, {
           method: 'POST',
         });
@@ -708,14 +835,32 @@ function searchApp() {
         
         this.showToast('🚀 بدأ التحليل في الخلفية...');
         
-        setTimeout(() => this.refreshAllFileStatuses(), 1000);
+        // تحديث فوري + polling سريع
+        setTimeout(() => this.refreshAllFileStatuses(), 500);
+        this.startFastPolling();
         
       } catch (e) {
         console.error('Analyze error:', e);
         this.showError('⚠️ ' + (e.message || 'فشل بدء التحليل'));
+        this.analyzingStartTime = null;
       } finally {
         this.analyzing = false;
       }
+    },
+
+    // ✨ polling سريع أثناء التحليل (كل 1.5 ثانية لمدة دقيقة)
+    startFastPolling() {
+      if (this.fastPollingTimer) clearInterval(this.fastPollingTimer);
+      
+      let count = 0;
+      this.fastPollingTimer = setInterval(() => {
+        this.refreshAllFileStatuses();
+        count++;
+        if (count >= 40) {  // 60 ثانية
+          clearInterval(this.fastPollingTimer);
+          this.fastPollingTimer = null;
+        }
+      }, 1500);
     },
 
     async analyzeAllPending() {
@@ -767,6 +912,7 @@ function searchApp() {
 
     onFileSelect() {
       this.quickFileSelect = this.selectedFileId;
+      this.analyzingStartTime = null;
     },
 
     askExample(question) {
@@ -801,6 +947,7 @@ function searchApp() {
 
     async toggleRecording() {
       if (this.recording) { this.stopRecording(); return; }
+      if (!this.canChat) return;
       
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({ 
