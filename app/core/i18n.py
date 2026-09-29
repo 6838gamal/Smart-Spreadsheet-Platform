@@ -194,6 +194,132 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "register_btn":     {"ar": "إنشاء الحساب",       "en": "Create Account"},
     "have_account":     {"ar": "لديك حساب بالفعل؟", "en": "Already have an account?"},
     "login_link":       {"ar": "تسجيل الدخول",       "en": "Login"},
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ── Workspace ─────────────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    "workspace_title":       {"ar": "مساحة العمل",              "en": "Workspace"},
+    "workspace_subtitle":    {"ar": "Talk to Doc",               "en": "Talk to Doc"},
+    "workspace_header_sub":  {"ar": "مساحة العمل",              "en": "Workspace"},
+
+    # Steps
+    "step_tool":             {"ar": "الأداة",                    "en": "Tool"},
+    "step_file":             {"ar": "الملف",                     "en": "File"},
+    "step_convert":          {"ar": "التحويل",                   "en": "Convert"},
+    "step_choose_tool_hint":{"ar": "اختر أداة تحويل للبدء",     "en": "Choose a tool to start"},
+    "step_choose_file_hint":{"ar": "اختر ملفاً",                 "en": "Choose a file"},
+    "step_ready_hint":       {"ar": "جاهز للتحويل",              "en": "Ready to convert"},
+
+    # Hero
+    "hero_badge":            {"ar": "تحويل سريع، آمن، ومجاني 100%", "en": "Fast, secure, and 100% free conversion"},
+    "hero_title_1":          {"ar": "اختر أداة التحويل",         "en": "Choose the right"},
+    "hero_title_2":          {"ar": "المناسبة",                   "en": "conversion tool"},
+    "hero_subtitle":         {"ar": "بعد اختيار الأداة ستنتقل لاختيار الملف المطلوب.", "en": "After choosing the tool, you'll proceed to pick the file."},
+
+    # Tools section
+    "tools_available":       {"ar": "أدوات التحويل المتاحة",     "en": "Available Conversion Tools"},
+    "tools_available_hint":  {"ar": "اختر الأداة المطلوبة للبدء","en": "Choose the tool you want to start with"},
+    "tool_free":             {"ar": "مجاني",                     "en": "Free"},
+    "tool_start":            {"ar": "ابدأ التحويل",              "en": "Start Conversion"},
+    "no_tools_found":        {"ar": "لا توجد أدوات مطابقة",      "en": "No matching tools"},
+    "all_categories":        {"ar": "الكل",                      "en": "All"},
+    "cat_to_pdf":            {"ar": "تحويل إلى PDF",             "en": "To PDF"},
+    "cat_from_pdf":          {"ar": "تحويل من PDF",              "en": "From PDF"},
+    "cat_excel":             {"ar": "أدوات Excel",               "en": "Excel Tools"},
+    "cat_word_image":        {"ar": "Word والصور",               "en": "Word & Images"},
+
+    # Active tool banner
+    "active_tool_label":     {"ar": "🎯 الأداة المختارة",        "en": "🎯 Selected Tool"},
+    "active_tool_hint":      {"ar": "اختر ملفاً من القائمة أدناه، أو ارفع ملفاً جديداً — الملفات المتوافقة فقط تظهر.",
+                              "en": "Choose a file from the list below, or upload a new one — only compatible files are shown."},
+    "change_tool":           {"ar": "تغيير الأداة",              "en": "Change Tool"},
+
+    # Storage status
+    "storage_provider":      {"ar": "مزود التخزين",              "en": "Storage Provider"},
+    "total_files_lbl":       {"ar": "إجمالي الملفات",            "en": "Total Files"},
+    "total_size_lbl":        {"ar": "الحجم الكلي",               "en": "Total Size"},
+    "refresh":               {"ar": "تحديث",                     "en": "Refresh"},
+
+    # Upload zone
+    "drag_drop":             {"ar": "اسحب وأفلت الملفات هنا",     "en": "Drag and drop files here"},
+    "file_limit":            {"ar": "الحد الأقصى 100MB لكل ملف",  "en": "Max 100MB per file"},
+    "stored_in_cloud":       {"ar": "مخزن في السحابة",           "en": "Stored in cloud"},
+    "choose_files":          {"ar": "اختر الملفات",              "en": "Choose Files"},
+    "drop_to_upload":        {"ar": "أفلت الملفات للرفع",         "en": "Drop files to upload"},
+    "uploading_to_cloud":    {"ar": "جاري الرفع إلى السحابة…",   "en": "Uploading to cloud…"},
+    "one_file":              {"ar": "ملف واحد",                  "en": "one file"},
+    "files_count":           {"ar": "ملفات",                     "en": "files"},
+
+    # URL import
+    "import_from_url":       {"ar": "استيراد ملف من رابط",       "en": "Import file from URL"},
+    "import_url_desc":       {"ar": "أدخل رابط ملف مباشر وسيتم سحبه إلى المنصة", "en": "Enter a direct file URL and it will be fetched into the platform"},
+    "enter_file_url":        {"ar": "https://example.com/file.pdf", "en": "https://example.com/file.pdf"},
+    "fetching_file":         {"ar": "جاري السحب...",             "en": "Fetching..."},
+    "fetch_file":            {"ar": "سحب الملف",                 "en": "Fetch File"},
+    "stage_validating":      {"ar": "تحقق",                      "en": "Validate"},
+    "stage_downloading":     {"ar": "تحميل",                     "en": "Download"},
+    "stage_processing":      {"ar": "معالجة",                    "en": "Process"},
+    "stage_saving":          {"ar": "حفظ",                       "en": "Save"},
+    "importing_validate":    {"ar": "🔄 جاري التحقق من الرابط...","en": "🔄 Validating URL..."},
+    "importing_download":    {"ar": "⬇️ جاري تحميل الملف...",   "en": "⬇️ Downloading file..."},
+    "importing_process":     {"ar": "⚙️ جاري معالجة الملف...",   "en": "⚙️ Processing file..."},
+    "importing_save":        {"ar": "💾 جاري حفظ الملف...",     "en": "💾 Saving file..."},
+    "importing_success":     {"ar": "✅ تم الاستيراد بنجاح",     "en": "✅ Imported successfully"},
+    "importing_failed":      {"ar": "❌ فشل الاستيراد",          "en": "❌ Import failed"},
+    "importing_working":     {"ar": "⏳ جاري العمل...",          "en": "⏳ Working..."},
+
+    # Files section
+    "compatible_with":       {"ar": "ملفات متوافقة مع",         "en": "Files compatible with"},
+    "only_compatible":       {"ar": "فقط الملفات المطابقة لصيغة الأداة", "en": "Only files matching the tool's format"},
+    "search_files":          {"ar": "البحث في الملفات…",         "en": "Search files…"},
+    "all_formats_opt":       {"ar": "جميع الصيغ",                "en": "All formats"},
+    "search_btn":            {"ar": "بحث",                       "en": "Search"},
+    "clear_btn":             {"ar": "مسح",                       "en": "Clear"},
+
+    # File card actions
+    "view_btn":              {"ar": "عرض",                       "en": "View"},
+    "download_btn":          {"ar": "تحميل",                     "en": "Download"},
+    "select_btn":            {"ar": "✓ اختر",                   "en": "✓ Select"},
+    "favorite_btn":          {"ar": "المفضلة",                   "en": "Favorite"},
+    "no_compatible_files":   {"ar": "لا توجد ملفات متوافقة مع هذه الأداة.", "en": "No files compatible with this tool."},
+    "upload_with_format":    {"ar": "ارفع ملفاً بصيغة",           "en": "Upload a file in format"},
+
+    # Converter screen 3
+    "converter_tool_lbl":    {"ar": "الأداة",                    "en": "Tool"},
+    "converter_file_lbl":    {"ar": "الملف",                     "en": "File"},
+    "change_file":           {"ar": "تغيير الملف",               "en": "Change File"},
+    "go_home":               {"ar": "البداية",                   "en": "Home"},
+
+    # Footer
+    "footer_copyright":      {"ar": "© 2026 Talk to Doc - جميع الحقوق محفوظة", "en": "© 2026 Talk to Doc - All rights reserved"},
+    "footer_privacy":        {"ar": "سياسة الخصوصية",            "en": "Privacy Policy"},
+    "footer_terms":          {"ar": "شروط الاستخدام",            "en": "Terms of Use"},
+    "footer_support":        {"ar": "الدعم الفني",               "en": "Support"},
+
+    # JS messages
+    "js_choose_tool_first":  {"ar": "اختر أداة تحويل أولاً",     "en": "Choose a conversion tool first"},
+    "js_panel_load_failed":  {"ar": "فشل تحميل لوحة التحويل",    "en": "Failed to load converter panel"},
+    "js_invalid_url":        {"ar": "❌ الرجاء إدخال رابط صحيح",  "en": "❌ Please enter a valid URL"},
+    "js_url_not_valid":      {"ar": "❌ الرابط غير صالح. تأكد من صحة الرابط", "en": "❌ Invalid URL. Please check the link"},
+    "js_fetch_failed":       {"ar": "فشل السحب",                 "en": "Fetch failed"},
+    "js_import_failed":      {"ar": "حدث خطأ أثناء سحب الملف",   "en": "Error while fetching the file"},
+    "js_import_success":     {"ar": "✅ تم سحب الملف بنجاح",     "en": "✅ File fetched successfully"},
+    "js_timeout":            {"ar": "⏰ انتهت المهلة الزمنية. حاول مرة أخرى", "en": "⏰ Timeout. Please try again"},
+    "js_unknown":            {"ar": "غير معروف",                 "en": "Unknown"},
+    "js_files_too_large":    {"ar": "❌ ملفات كبيرة جداً",       "en": "❌ Files too large"},
+    "js_upload_success_one": {"ar": "✅ تم رفع الملف بنجاح ☁️",  "en": "✅ File uploaded successfully ☁️"},
+    "js_upload_success_many":{"ar": "✅ تم رفع",                 "en": "✅ Uploaded"},
+    "js_upload_success_end": {"ar": "ملفات بنجاح ☁️",           "en": "files successfully ☁️"},
+    "js_upload_failed":      {"ar": "❌ فشل الرفع — حاول مجدداً","en": "❌ Upload failed — try again"},
+    "js_delete_confirm":     {"ar": "هل أنت متأكد من حذف هذا الملف؟", "en": "Are you sure you want to delete this file?"},
+    "js_delete_success":     {"ar": "✅ تم حذف الملف بنجاح",     "en": "✅ File deleted successfully"},
+    "js_delete_failed":      {"ar": "فشل حذف الملف",             "en": "Delete failed"},
+    "js_rows_unit":          {"ar": "صف",                        "en": "rows"},
+    "js_cols_unit":          {"ar": "عمود",                      "en": "columns"},
+    "js_sheets_unit":        {"ar": "ورقة",                      "en": "sheets"},
+    "js_pages_unit":         {"ar": "صفحة",                      "en": "pages"},
+    "js_file_name_lbl":      {"ar": "اسم الملف",                 "en": "File name"},
+    "js_format_lbl":         {"ar": "الصيغة",                    "en": "Format"},
 }
 
 
