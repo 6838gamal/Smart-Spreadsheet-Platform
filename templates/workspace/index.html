@@ -815,7 +815,7 @@
     <div class="flex gap-6">
       <a href="#" class="hover:text-white transition-colors">{{ t.get('footer_privacy') }}</a>
       <a href="#" class="hover:text-white transition-colors">{{ t.get('footer_terms') }}</a>
-      <a href="#" class="hover:text-white transition-colors">{{ t.get('footer_support') }}</a>
+      <a href="#" hover:text-white transition-colors>{{ t.get('footer_support') }}</a>
     </div>
   </div>
 </footer>
@@ -829,6 +829,7 @@
 <script>
 // ✅ تمرير الترجمات إلى JavaScript
 window.__I18N__ = {
+  // Messages
   chooseToolFirst: {{ t.get('js_choose_tool_first')|tojson }},
   panelLoadFailed: {{ t.get('js_panel_load_failed')|tojson }},
   invalidUrl: {{ t.get('js_invalid_url')|tojson }},
@@ -850,6 +851,8 @@ window.__I18N__ = {
   oneFile: {{ t.get('one_file')|tojson }},
   fetchingFile: {{ t.get('fetching_file')|tojson }},
   fetchFile: {{ t.get('fetch_file')|tojson }},
+
+  // Import stages
   importingValidate: {{ t.get('importing_validate')|tojson }},
   importingDownload: {{ t.get('importing_download')|tojson }},
   importingProcess: {{ t.get('importing_process')|tojson }},
@@ -861,11 +864,33 @@ window.__I18N__ = {
   stageDownloading: {{ t.get('stage_downloading')|tojson }},
   stageProcessing: {{ t.get('stage_processing')|tojson }},
   stageSaving: {{ t.get('stage_saving')|tojson }},
+
+  // Categories
   catAll: {{ t.get('all_categories')|tojson }},
   catToPdf: {{ t.get('cat_to_pdf')|tojson }},
   catFromPdf: {{ t.get('cat_from_pdf')|tojson }},
   catExcel: {{ t.get('cat_excel')|tojson }},
   catWordImage: {{ t.get('cat_word_image')|tojson }},
+
+  // ✅ Tool descriptions
+  descExcelToPdf: {{ t.get('desc_excel_to_pdf')|tojson }},
+  descPdfToExcel: {{ t.get('desc_pdf_to_excel')|tojson }},
+  descWordToExcel: {{ t.get('desc_word_to_excel')|tojson }},
+  descPdfToWord: {{ t.get('desc_pdf_to_word')|tojson }},
+  descExcelToWord: {{ t.get('desc_excel_to_word')|tojson }},
+  descWordToPdf: {{ t.get('desc_word_to_pdf')|tojson }},
+  descImgToPdf: {{ t.get('desc_img_to_pdf')|tojson }},
+  descXlsToPdf: {{ t.get('desc_xls_to_pdf')|tojson }},
+  descPngToPdf: {{ t.get('desc_png_to_pdf')|tojson }},
+  descPngToExcel: {{ t.get('desc_png_to_excel')|tojson }},
+  descXlsxToPdf: {{ t.get('desc_xlsx_to_pdf')|tojson }},
+  descPptToPdf: {{ t.get('desc_ppt_to_pdf')|tojson }},
+  descPdfToJpg: {{ t.get('desc_pdf_to_jpg')|tojson }},
+  descJpgToExcel: {{ t.get('desc_jpg_to_excel')|tojson }},
+  descPdfToPng: {{ t.get('desc_pdf_to_png')|tojson }},
+  descExcelToCsv: {{ t.get('desc_excel_to_csv')|tojson }},
+  descJpgToPdf: {{ t.get('desc_jpg_to_pdf')|tojson }},
+  descExcelToJpg: {{ t.get('desc_excel_to_jpg')|tojson }},
 };
 
 function filesWorkspace() {
@@ -913,7 +938,7 @@ function filesWorkspace() {
     isDeleting: false,
 
     // ═══════════════════════════════════════════════════════════════════
-    // TOOLS CONFIG
+    // TOOL CATEGORIES
     // ═══════════════════════════════════════════════════════════════════
     get toolCategories() {
       return [
@@ -925,80 +950,85 @@ function filesWorkspace() {
       ];
     },
 
-    tools: [
-      { id: 'excel-to-pdf', title: 'Excel to PDF', category: 'to-pdf',
-        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تحويل جداول البيانات Excel إلى ملفات PDF احترافية.',
-        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
-      { id: 'pdf-to-excel', title: 'PDF to Excel', category: 'from-pdf',
-        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
-        desc: 'استخراج الجداول من PDF إلى شيت Excel قابل للتعديل.',
-        inputFormats: ['pdf'] },
-      { id: 'word-to-excel', title: 'Word to Excel', category: 'excel',
-        icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
-        desc: 'تحويل النصوص والبيانات من Word إلى Excel.',
-        inputFormats: ['docx', 'doc'] },
-      { id: 'pdf-to-word', title: 'PDF to Word', category: 'from-pdf',
-        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
-        desc: 'تحويل مستندات PDF إلى Word قابلة للتعديل.',
-        inputFormats: ['pdf'] },
-      { id: 'excel-to-word', title: 'Excel to Word', category: 'excel',
-        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تصدير بيانات Excel إلى ملف Word منظم.',
-        inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
-      { id: 'word-to-pdf', title: 'Word to PDF', category: 'to-pdf',
-        icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
-        desc: 'تحويل مستندات DOCX إلى PDF سهل القراءة.',
-        inputFormats: ['docx', 'doc'] },
-      { id: 'img-to-pdf', title: 'Img to PDF', category: 'to-pdf',
-        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
-        desc: 'تجميع الصور داخل مستند PDF واحد.',
-        inputFormats: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] },
-      { id: 'xls-to-pdf', title: 'Xls to PDF', category: 'to-pdf',
-        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تحويل صيغ XLS القديمة إلى PDF.',
-        inputFormats: ['xls'] },
-      { id: 'png-to-pdf', title: 'PNG to PDF', category: 'to-pdf',
-        icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
-        desc: 'تحويل صور PNG عالية الدقة إلى PDF.',
-        inputFormats: ['png'] },
-      { id: 'png-to-excel', title: 'PNG to Excel', category: 'word-image',
-        icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
-        desc: 'استخراج الجداول من صور PNG إلى Excel.',
-        inputFormats: ['png'] },
-      { id: 'xlsx-to-pdf', title: 'Xlsx to PDF', category: 'to-pdf',
-        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تحويل XLSX الحديث إلى PDF متناسق.',
-        inputFormats: ['xlsx'] },
-      { id: 'ppt-to-pdf', title: 'PPT to PDF', category: 'to-pdf',
-        icon: 'fa-file-powerpoint', iconColor: 'text-orange-400', bgColor: 'bg-orange-500/10',
-        desc: 'تحويل عروض PowerPoint إلى PDF.',
-        inputFormats: ['pptx', 'ppt'] },
-      { id: 'pdf-to-jpg', title: 'PDF to JPG', category: 'from-pdf',
-        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
-        desc: 'استخراج صفحات PDF إلى صور JPG.',
-        inputFormats: ['pdf'] },
-      { id: 'jpg-to-excel', title: 'JPG to Excel', category: 'word-image',
-        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
-        desc: 'تحويل الجداول المصورة JPG إلى Excel.',
-        inputFormats: ['jpg', 'jpeg'] },
-      { id: 'pdf-to-png', title: 'PDF to PNG', category: 'from-pdf',
-        icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
-        desc: 'حفظ صفحات PDF كصور PNG عالية الجودة.',
-        inputFormats: ['pdf'] },
-      { id: 'excel-to-csv', title: 'Excel to CSV', category: 'excel',
-        icon: 'fa-file-csv', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تحويل Excel إلى صيغة CSV.',
-        inputFormats: ['xlsx', 'xls', 'xlsm'] },
-      { id: 'jpg-to-pdf', title: 'JPG to PDF', category: 'to-pdf',
-        icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
-        desc: 'تحويل صور JPG إلى مستند PDF.',
-        inputFormats: ['jpg', 'jpeg'] },
-      { id: 'excel-to-jpg', title: 'Excel to JPG', category: 'excel',
-        icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
-        desc: 'تحويل الجداول والرسوم إلى صورة JPG.',
-        inputFormats: ['xlsx', 'xls', 'xlsm'] },
-    ],
+    // ═══════════════════════════════════════════════════════════════════
+    // TOOLS LIST (with translated descriptions)
+    // ═══════════════════════════════════════════════════════════════════
+    get tools() {
+      return [
+        { id: 'excel-to-pdf', title: 'Excel to PDF', category: 'to-pdf',
+          icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descExcelToPdf,
+          inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
+        { id: 'pdf-to-excel', title: 'PDF to Excel', category: 'from-pdf',
+          icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+          desc: i18n.descPdfToExcel,
+          inputFormats: ['pdf'] },
+        { id: 'word-to-excel', title: 'Word to Excel', category: 'excel',
+          icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
+          desc: i18n.descWordToExcel,
+          inputFormats: ['docx', 'doc'] },
+        { id: 'pdf-to-word', title: 'PDF to Word', category: 'from-pdf',
+          icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+          desc: i18n.descPdfToWord,
+          inputFormats: ['pdf'] },
+        { id: 'excel-to-word', title: 'Excel to Word', category: 'excel',
+          icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descExcelToWord,
+          inputFormats: ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv'] },
+        { id: 'word-to-pdf', title: 'Word to PDF', category: 'to-pdf',
+          icon: 'fa-file-word', iconColor: 'text-blue-400', bgColor: 'bg-blue-500/10',
+          desc: i18n.descWordToPdf,
+          inputFormats: ['docx', 'doc'] },
+        { id: 'img-to-pdf', title: 'Img to PDF', category: 'to-pdf',
+          icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+          desc: i18n.descImgToPdf,
+          inputFormats: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] },
+        { id: 'xls-to-pdf', title: 'Xls to PDF', category: 'to-pdf',
+          icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descXlsToPdf,
+          inputFormats: ['xls'] },
+        { id: 'png-to-pdf', title: 'PNG to PDF', category: 'to-pdf',
+          icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+          desc: i18n.descPngToPdf,
+          inputFormats: ['png'] },
+        { id: 'png-to-excel', title: 'PNG to Excel', category: 'word-image',
+          icon: 'fa-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+          desc: i18n.descPngToExcel,
+          inputFormats: ['png'] },
+        { id: 'xlsx-to-pdf', title: 'Xlsx to PDF', category: 'to-pdf',
+          icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descXlsxToPdf,
+          inputFormats: ['xlsx'] },
+        { id: 'ppt-to-pdf', title: 'PPT to PDF', category: 'to-pdf',
+          icon: 'fa-file-powerpoint', iconColor: 'text-orange-400', bgColor: 'bg-orange-500/10',
+          desc: i18n.descPptToPdf,
+          inputFormats: ['pptx', 'ppt'] },
+        { id: 'pdf-to-jpg', title: 'PDF to JPG', category: 'from-pdf',
+          icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+          desc: i18n.descPdfToJpg,
+          inputFormats: ['pdf'] },
+        { id: 'jpg-to-excel', title: 'JPG to Excel', category: 'word-image',
+          icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+          desc: i18n.descJpgToExcel,
+          inputFormats: ['jpg', 'jpeg'] },
+        { id: 'pdf-to-png', title: 'PDF to PNG', category: 'from-pdf',
+          icon: 'fa-file-pdf', iconColor: 'text-red-400', bgColor: 'bg-red-500/10',
+          desc: i18n.descPdfToPng,
+          inputFormats: ['pdf'] },
+        { id: 'excel-to-csv', title: 'Excel to CSV', category: 'excel',
+          icon: 'fa-file-csv', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descExcelToCsv,
+          inputFormats: ['xlsx', 'xls', 'xlsm'] },
+        { id: 'jpg-to-pdf', title: 'JPG to PDF', category: 'to-pdf',
+          icon: 'fa-file-image', iconColor: 'text-purple-400', bgColor: 'bg-purple-500/10',
+          desc: i18n.descJpgToPdf,
+          inputFormats: ['jpg', 'jpeg'] },
+        { id: 'excel-to-jpg', title: 'Excel to JPG', category: 'excel',
+          icon: 'fa-file-excel', iconColor: 'text-emerald-400', bgColor: 'bg-emerald-500/10',
+          desc: i18n.descExcelToJpg,
+          inputFormats: ['xlsx', 'xls', 'xlsm'] },
+      ];
+    },
 
     get filteredTools() {
       if (this.activeCategory === 'all') return this.tools;
