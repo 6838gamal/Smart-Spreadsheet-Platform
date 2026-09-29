@@ -637,6 +637,16 @@ async def get_available_models(
 
 # ── File Pipeline: Analyze + Index ────────────────────────────────────────────
 
+def _safe_enum_value(enum_obj) -> str | None:
+    """Convert enum or any value to a lowercase string safely."""
+    if enum_obj is None:
+        return None
+    val = getattr(enum_obj, "value", None)
+    if val is not None:
+        return str(val).lower()
+    return str(enum_obj).lower()
+
+
 @router.get("/files/{file_id}/status", response_model=FileStatusResponse)
 async def file_pipeline_status(
     file_id: int,
@@ -650,59 +660,90 @@ async def file_pipeline_status(
         analyzed_not_indexed  → تم التحليل لكن يحتاج فهرسة
         ready                 → جاهز للدردشة
         failed                → فشل التحليل
+
+    ⚠️ Never returns 500 — falls back to safe defaults.
     """
-    # 1. Verify ownership
-    file = (await db.execute(
-        select(File).where(File.id == file_id, File.owner_id == current_user.id)
-    )).scalar_one_or_none()
+    try:
+        # 1. Verify ownership
+        file = (await db.execute(
+            select(File).where(File.id == file_id, File.owner_id == current_user.id)
+        )).scalar_one_or_none()
 
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
 
-    # 2. Latest analysis
-    analysis = (await db.execute(
-        select(DocumentAnalysis)
-        .where(DocumentAnalysis.file_id == file_id)
-        .order_by(DocumentAnalysis.id.desc())
-        .limit(1)
-    )).scalar_one_or_none()
+        # 2. Latest analysis (safe)
+        analysis = None
+        analysis_status_str = None
+        has_text = False
+        doc_type = None
+        language = None
+        analysis_error = None
 
-    # 3. Chunks count
-    chunks = (await db.execute(
-        select(func.count(DocumentChunk.id)).where(
-            DocumentChunk.file_id == file_id,
-            DocumentChunk.user_id == current_user.id,
+        try:
+            analysis = (await db.execute(
+                select(DocumentAnalysis)
+                .where(DocumentAnalysis.file_id == file_id)
+                .order_by(DocumentAnalysis.id.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+
+            if analysis:
+                analysis_status_str = _safe_enum_value(analysis.status)
+                has_text = bool(getattr(analysis, "raw_text", None))
+                doc_type = getattr(analysis, "doc_type", None)
+                language = getattr(analysis, "language", None)
+                analysis_error = getattr(analysis, "error_message", None)
+        except Exception as e:
+            logger.warning(f"Could not load analysis for file {file_id}: {e}")
+
+        # 3. Chunks count (safe)
+        chunks = 0
+        try:
+            chunks = (await db.execute(
+                select(func.count(DocumentChunk.id)).where(
+                    DocumentChunk.file_id == file_id,
+                    DocumentChunk.user_id == current_user.id,
+                )
+            )).scalar() or 0
+        except Exception as e:
+            logger.warning(f"Could not count chunks for file {file_id}: {e}")
+
+        # 4. Determine status (using safe string comparison)
+        if chunks > 0:
+            status_str = "ready"
+        elif analysis_status_str == "processing":
+            status_str = "analyzing"
+        elif analysis_status_str == "completed":
+            status_str = "analyzed_not_indexed"
+        elif analysis_status_str == "failed":
+            status_str = "failed"
+        else:
+            status_str = "pending"
+
+        return FileStatusResponse(
+            file_id=file_id,
+            status=status_str,
+            chunks=chunks,
+            analysis_id=analysis.id if analysis else None,
+            analysis_status=analysis_status_str,
+            has_text=has_text,
+            doc_type=doc_type,
+            language=language,
+            error=analysis_error,
         )
-    )).scalar() or 0
 
-    # 4. Determine status
-    if chunks > 0:
-        status_str = "ready"
-    elif analysis and analysis.status == AnalysisStatus.PROCESSING:
-        status_str = "analyzing"
-    elif analysis and analysis.status == AnalysisStatus.COMPLETED:
-        status_str = "analyzed_not_indexed"
-    elif analysis and analysis.status == AnalysisStatus.FAILED:
-        status_str = "failed"
-    else:
-        status_str = "pending"
-
-    # Get analysis status as string safely
-    analysis_status_str = None
-    if analysis and analysis.status:
-        analysis_status_str = getattr(analysis.status, "value", None) or str(analysis.status)
-
-    return FileStatusResponse(
-        file_id=file_id,
-        status=status_str,
-        chunks=chunks,
-        analysis_id=analysis.id if analysis else None,
-        analysis_status=analysis_status_str,
-        has_text=bool(analysis.raw_text) if analysis else False,
-        doc_type=analysis.doc_type if analysis else None,
-        language=getattr(analysis, "language", None) if analysis else None,
-        error=getattr(analysis, "error_message", None) if analysis else None,
-    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # ⚠️ Fallback: never return 500
+        logger.exception(f"❌ [status] Unexpected error for file {file_id}: {e}")
+        return FileStatusResponse(
+            file_id=file_id,
+            status="pending",
+            chunks=0,
+            error=f"خطأ داخلي: {str(e)[:100]}",
+        )
 
 
 @router.post("/files/{file_id}/analyze", response_model=AnalyzeTriggerResponse)
@@ -724,16 +765,20 @@ async def trigger_file_analysis(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # 2. Schedule background task
+    # 2. Try to import background task
     try:
         from app.services.pipeline.analyze_and_index_task import analyze_and_index_background
     except ImportError as e:
-        logger.error(f"Failed to import background task: {e}")
+        logger.error(f"❌ Failed to import background task: {e}")
         raise HTTPException(
             status_code=500,
-            detail="خدمة التحليل غير متوفرة حالياً. تأكد من إعداد النظام.",
+            detail=(
+                "خدمة التحليل غير متوفرة حالياً. "
+                "تأكد من وجود app/services/pipeline/analyze_and_index_task.py"
+            ),
         )
 
+    # 3. Schedule background task
     background_tasks.add_task(
         analyze_and_index_background,
         file_id=file_id,
@@ -796,11 +841,13 @@ async def list_pending_files(
             continue  # ready
 
         a = latest_analysis.get(f.id)
-        if a and a.status == AnalysisStatus.PROCESSING:
+        a_status = _safe_enum_value(a.status) if a else None
+
+        if a_status == "processing":
             status_str = "analyzing"
-        elif a and a.status == AnalysisStatus.FAILED:
+        elif a_status == "failed":
             status_str = "failed"
-        elif a and a.status == AnalysisStatus.COMPLETED:
+        elif a_status == "completed":
             status_str = "analyzed_not_indexed"
         else:
             status_str = "pending"
