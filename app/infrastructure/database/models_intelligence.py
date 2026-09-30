@@ -1,6 +1,9 @@
 """
 SQLAlchemy ORM models for Document Intelligence features.
 These models extend the base platform without modifying existing tables.
+
+✨ تحديث: إضافة حقول تتبع التقدم (progress tracking) إلى DocumentAnalysis
+         لدعم شريط تقدم حقيقي في واجهة البحث الذكي.
 """
 
 import enum
@@ -120,6 +123,16 @@ class TrainingStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+# ✨ جديد: أنواع مراحل الفهرسة لعرضها في الواجهة
+class IndexingStage(str, enum.Enum):
+    PREPARING = "preparing"      # تجهيز النص
+    CHUNKING = "chunking"        # تقسيم النص
+    EMBEDDING = "embedding"      # إنشاء التمثيلات
+    STORING = "storing"          # حفظ المقاطع
+    DONE = "done"                # اكتمل
+    FAILED = "failed"            # فشل
+
+
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class DocumentAnalysis(Base):
@@ -143,6 +156,53 @@ class DocumentAnalysis(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     pipeline_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model_versions: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # ✨ حقول جديدة لتتبع التقدم (Progress Tracking)
+    # ═══════════════════════════════════════════════════════════════════
+    # المرحلة الحالية: analysis / indexing / done / failed
+    stage: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default=None,
+        comment="المرحلة الحالية: analysis | indexing | done | failed"
+    )
+
+    # خطوة فرعية تفصيلية: preparing | chunking | embedding | storing
+    current_step: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, default=None,
+        comment="الخطوة الفرعية الحالية داخل المرحلة"
+    )
+
+    # عدد المقاطع المعالجة حتى الآن
+    progress_current: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+        comment="عدد المقاطع التي تمت معالجتها"
+    )
+
+    # إجمالي عدد المقاطع المتوقع
+    progress_total: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+        comment="إجمالي عدد المقاطع المتوقع"
+    )
+
+    # نسبة التقدم (0-100) — محسوبة مسبقًا لتفادي الحساب في الواجهة
+    progress_percent: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0", nullable=False,
+        comment="نسبة التقدم 0-100"
+    )
+
+    # وقت بدء المرحلة الحالية (لحساب الوقت المنقضي)
+    stage_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+        comment="وقت بدء المرحلة الحالية"
+    )
+
+    # آخر نبضة (heartbeat) من المهمة — لكشف المهام المعلقة
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+        comment="آخر تحديث من المهمة الخلفية"
+    )
+
+    # ── Timestamps ──
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -159,6 +219,34 @@ class DocumentAnalysis(Base):
     suggestions: Mapped[list["AISuggestion"]] = relationship(
         "AISuggestion", back_populates="analysis", cascade="all, delete-orphan"
     )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # ✨ Properties مساعدة للاستخدام في الواجهة والـ API
+    # ═══════════════════════════════════════════════════════════════════
+
+    @property
+    def is_indexing(self) -> bool:
+        """هل الملف في مرحلة الفهرسة الآن؟"""
+        return self.stage == "indexing"
+
+    @property
+    def is_stalled(self) -> bool:
+        """
+        هل المهمة معلقة؟ (لم تُحدّث heartbeat منذ > 5 دقائق)
+        """
+        if not self.last_heartbeat_at:
+            return False
+        if self.status in (AnalysisStatus.COMPLETED, AnalysisStatus.FAILED):
+            return False
+        elapsed = (utcnow() - self.last_heartbeat_at).total_seconds()
+        return elapsed > 300  # 5 دقائق
+
+    @property
+    def progress_ratio(self) -> float:
+        """نسبة التقدم ككسر (0.0 - 1.0)."""
+        if self.progress_total <= 0:
+            return 0.0
+        return min(1.0, self.progress_current / self.progress_total)
 
 
 class LayoutElement(Base):
@@ -191,7 +279,7 @@ class ExtractedTable(Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     col_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    table_index: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ← هذا العمود المطلوب
+    table_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     has_header: Mapped[bool] = mapped_column(Boolean, default=True)
     has_merged_cells: Mapped[bool] = mapped_column(Boolean, default=False)
     spans_pages: Mapped[bool] = mapped_column(Boolean, default=False)
