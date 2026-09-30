@@ -15,14 +15,17 @@ File pipeline endpoints:
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
 
-✨ تحديث: 
-    - إرجاع حقول التقدم التفصيلي (progress_current/total/percent/step/stage)
-    - إصلاح منطق تحديد الحالة: "failed" لها أولوية على "completed"
-    - إضافة حقل current_step و stage لدعم عرض الخطوة الحالية في الواجهة
+✨ تحديث:
+    - حقول تقدم تفصيلية (progress_current/total/percent/step/stage)
+    - كشف المهمة المعلقة (is_stalled) + سبب التعطل
+    - كشف المرحلة العالقة (is_stage_1_stuck / is_stage_2_stuck)
+    - أولوية "failed" على "completed" في تحديد الحالة
+    - إرجاع heartbeat ومدة الانتظار
 """
 from __future__ import annotations
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
@@ -118,15 +121,21 @@ class FileStatusResponse(BaseModel):
     updated_at: str | None = None
     is_indexing: bool = False
 
-    # ✨ حقول تتبع التقدم (جديدة)
+    # ── حقول تتبع التقدم ──
     stage: str | None = None              # analysis | indexing | done | failed
     current_step: str | None = None       # preparing | chunking | embedding | storing | done | failed
-    progress_current: int = 0             # عدد المقاطع المعالجة
-    progress_total: int = 0               # إجمالي المقاطع المتوقع
-    progress_percent: float = 0.0         # نسبة التقدم 0-100
-    stage_started_at: str | None = None   # وقت بدء المرحلة الحالية
-    last_heartbeat_at: str | None = None  # آخر نبضة من المهمة
-    is_stalled: bool = False              # هل المهمة معلقة؟
+    progress_current: int = 0
+    progress_total: int = 0
+    progress_percent: float = 0.0
+    stage_started_at: str | None = None
+    last_heartbeat_at: str | None = None
+
+    # ── ✨ حقول كشف التعطل ──
+    is_stalled: bool = False
+    seconds_since_heartbeat: float = 0.0
+    is_stage_1_stuck: bool = False        # التحليل عالق
+    is_stage_2_stuck: bool = False        # الفهرسة عالقة
+    stall_reason: str | None = None       # سبب التعطل (للعرض)
 
 
 class AnalyzeTriggerResponse(BaseModel):
@@ -197,22 +206,15 @@ async def query_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Sync Q&A with optional AI-powered answers.
-
-    - If model_id is provided and use_ai=True: uses HF model for answer generation
-    - Otherwise: uses BM25 extractive Q&A
-    """
-    # 1. Perform BM25 search first
+    """Sync Q&A with optional AI-powered answers."""
     result = await search_service.query(
         db,
         user_id=current_user.id,
         question=body.question,
         file_ids=body.file_ids,
-        top_k=body.top_k * 2,  # Get more for context
+        top_k=body.top_k * 2,
     )
 
-    # 2. If no results, return early
     if not result.has_results or not result.sources:
         return QueryResponse(
             question=body.question,
@@ -225,7 +227,6 @@ async def query_documents(
             mode="extractive",
         )
 
-    # 3. If AI is enabled and model_id provided
     if body.use_ai and body.model_id:
         model = await _get_model_or_none(body.model_id, db)
 
@@ -244,7 +245,6 @@ async def query_documents(
                 )
 
                 answer = hf_result.get("answer") or hf_result.get("summary") or ""
-
                 best_source = result.sources[0] if result.sources else None
                 answer_source = SourceSchema(
                     file_id=best_source.file_id,
@@ -299,7 +299,6 @@ async def query_documents(
                     error=str(exc),
                 )
 
-    # 4. Fallback: return BM25 results only
     return QueryResponse(
         question=body.question,
         answer=result.answer,
@@ -432,7 +431,6 @@ async def stream_answer(
     if not question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
 
-    # ✨ جلب النموذج قبل إنشاء الـ generator (تفادي استخدام db مغلق)
     hf_model = None
     if model_id:
         hf_model = await _get_model_or_none(model_id, db)
@@ -475,10 +473,7 @@ async def stream_answer(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -517,7 +512,6 @@ async def stream_chat(
         if analysis and analysis.raw_text:
             context = analysis.raw_text[:3000]
 
-    # ✨ حفظ مرجع النموذج قبل الـ generator
     _model_name = model.name
     _model_task_type = model.task_type or "text2text-generation"
     _model_hf_id = model.hf_model_id
@@ -681,13 +675,21 @@ async def file_pipeline_status(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Return the current pipeline status of a file:
+    Return the current pipeline status of a file.
+
+    Statuses:
         pending               → لم يبدأ التحليل
         analyzing             → جاري التحليل الآن
         indexing              → التحليل انتهى، الفهرسة جارية
         analyzed_not_indexed  → التحليل انتهى لكن لا يوجد نص للفهرسة
         ready                 → جاهز للدردشة
         failed                → فشل التحليل
+
+    ✨ كشف التعطل:
+        - is_stalled          → المهمة معلقة (>90 ثانية بدون نبضة)
+        - is_stage_1_stuck    → Stage 1 (analysis) عالقة
+        - is_stage_2_stuck    → Stage 2 (indexing) عالقة قبل بدء المعالجة
+        - stall_reason        → سبب مقروء للعرض
 
     ⚠️ Never returns 500 — falls back to safe defaults.
     """
@@ -700,7 +702,7 @@ async def file_pipeline_status(
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        # 2. Latest analysis (safe) + حقول التقدم
+        # 2. Latest analysis (safe) + progress fields
         analysis = None
         analysis_status_str = None
         has_text = False
@@ -712,7 +714,7 @@ async def file_pipeline_status(
         processing_ms = None
         updated_at_iso = None
 
-        # ✨ حقول التقدم
+        # progress fields
         stage = None
         current_step = None
         progress_current = 0
@@ -720,7 +722,7 @@ async def file_pipeline_status(
         progress_percent = 0.0
         stage_started_at_iso = None
         last_heartbeat_at_iso = None
-        is_stalled = False
+        last_heartbeat_dt = None
 
         try:
             analysis = (await db.execute(
@@ -741,21 +743,14 @@ async def file_pipeline_status(
                 processing_ms = getattr(analysis, "processing_ms", None)
                 updated_at_iso = _iso_or_none(getattr(analysis, "updated_at", None))
 
-                # ✨ حقول التقدم
                 stage = getattr(analysis, "stage", None)
                 current_step = getattr(analysis, "current_step", None)
                 progress_current = getattr(analysis, "progress_current", 0) or 0
                 progress_total = getattr(analysis, "progress_total", 0) or 0
                 progress_percent = getattr(analysis, "progress_percent", 0.0) or 0.0
                 stage_started_at_iso = _iso_or_none(getattr(analysis, "stage_started_at", None))
-                last_heartbeat_at_iso = _iso_or_none(getattr(analysis, "last_heartbeat_at", None))
-
-                # ✨ كشف المهمة المعلقة
-                if hasattr(analysis, "is_stalled"):
-                    try:
-                        is_stalled = bool(analysis.is_stalled)
-                    except Exception:
-                        is_stalled = False
+                last_heartbeat_dt = getattr(analysis, "last_heartbeat_at", None)
+                last_heartbeat_at_iso = _iso_or_none(last_heartbeat_dt)
         except Exception as e:
             logger.warning(f"Could not load analysis for file {file_id}: {e}")
 
@@ -772,48 +767,82 @@ async def file_pipeline_status(
             logger.warning(f"Could not count chunks for file {file_id}: {e}")
 
         # ═══════════════════════════════════════════════════════════
-        # 4. Determine status (with explicit "indexing" phase)
+        # 4. Determine status (with explicit priority)
         # ═══════════════════════════════════════════════════════════
-        #
-        # Status priority (highest to lowest):
-        #   1. chunks > 0                             → ready
-        #   2. analysis FAILED                        → failed  ← ✨ رُفعت الأولوية
-        #   3. analysis RUNNING/PROCESSING            → analyzing
-        #   4. analysis COMPLETED + has_text + no chunks → indexing
-        #   5. analysis COMPLETED + no text           → analyzed_not_indexed
-        #   6. otherwise                              → pending
-        #
+        # Priority:
+        #   1. chunks > 0                       → ready
+        #   2. analysis FAILED                  → failed
+        #   3. analysis RUNNING/PROCESSING      → analyzing
+        #   4. analysis COMPLETED + has_text    → indexing
+        #   5. analysis COMPLETED + no text     → analyzed_not_indexed
+        #   6. otherwise                        → pending
         is_indexing = False
 
         if chunks > 0:
             status_str = "ready"
-
         elif analysis_status_str == "failed":
-            # ✨ فشل له أولوية — يظهر للمستخدم بدل "indexing" الأبدي
             status_str = "failed"
-
         elif analysis_status_str in ("processing", "running"):
             status_str = "analyzing"
-
         elif analysis_status_str == "completed" and has_text:
-            # ✨ Analysis done + text exists → indexing should be in progress
             status_str = "indexing"
             is_indexing = True
-
         elif analysis_status_str == "completed":
-            # Analysis done but no extractable text
             status_str = "analyzed_not_indexed"
-
         else:
             status_str = "pending"
 
-        # ✨ إذا كانت المهمة معلقة لكن status = indexing/analyzing → أبلغ عن ذلك
-        if is_stalled and status_str in ("indexing", "analyzing"):
+        # ═══════════════════════════════════════════════════════════
+        # 5. ✨ كشف التعطل (stall detection)
+        # ═══════════════════════════════════════════════════════════
+        seconds_since_heartbeat = 0.0
+        if last_heartbeat_dt:
+            try:
+                # اجعل last_heartbeat_dt aware إن لم يكن
+                if last_heartbeat_dt.tzinfo is None:
+                    last_heartbeat_dt = last_heartbeat_dt.replace(tzinfo=timezone.utc)
+                seconds_since_heartbeat = (
+                    datetime.now(timezone.utc) - last_heartbeat_dt
+                ).total_seconds()
+            except Exception:
+                seconds_since_heartbeat = 0.0
+
+        # thresholds
+        STALL_THRESHOLD = 90.0  # ثانية
+
+        is_stage_1_stuck = (
+            status_str == "analyzing"
+            and seconds_since_heartbeat > STALL_THRESHOLD
+        )
+        is_stage_2_stuck = (
+            status_str == "indexing"
+            and progress_current == 0
+            and seconds_since_heartbeat > STALL_THRESHOLD
+        )
+        is_stalled = is_stage_1_stuck or is_stage_2_stuck
+
+        stall_reason = None
+        if is_stage_1_stuck:
+            stall_reason = (
+                f"التحليل عالق منذ {int(seconds_since_heartbeat)} ثانية — "
+                f"قد يكون النموذج بطيئًا أو الملف كبيرًا."
+            )
+        elif is_stage_2_stuck:
+            stall_reason = (
+                f"الفهرسة لم تبدأ منذ {int(seconds_since_heartbeat)} ثانية — "
+                f"قد تكون المهمة الخلفية قد توقفت."
+            )
+
+        # ═══════════════════════════════════════════════════════════
+        # 6. سجّل تحذير إذا كانت المهمة معلقة
+        # ═══════════════════════════════════════════════════════════
+        if is_stalled:
             logger.warning(
                 f"⚠️ [status] File {file_id} appears stalled "
-                f"(last heartbeat: {last_heartbeat_at_iso})"
+                f"(stage={stage}, step={current_step}, "
+                f"progress={progress_current}/{progress_total}, "
+                f"heartbeat={int(seconds_since_heartbeat)}s ago)"
             )
-            # لا نُغيّر status، لكن نُمرّر is_stalled للمستخدم
 
         return FileStatusResponse(
             file_id=file_id,
@@ -830,7 +859,6 @@ async def file_pipeline_status(
             processing_ms=processing_ms,
             updated_at=updated_at_iso,
             is_indexing=is_indexing,
-            # ✨ حقول التقدم
             stage=stage,
             current_step=current_step,
             progress_current=progress_current,
@@ -839,6 +867,10 @@ async def file_pipeline_status(
             stage_started_at=stage_started_at_iso,
             last_heartbeat_at=last_heartbeat_at_iso,
             is_stalled=is_stalled,
+            seconds_since_heartbeat=round(seconds_since_heartbeat, 1),
+            is_stage_1_stuck=is_stage_1_stuck,
+            is_stage_2_stuck=is_stage_2_stuck,
+            stall_reason=stall_reason,
         )
 
     except HTTPException:
@@ -863,6 +895,8 @@ async def trigger_file_analysis(
     """
     Manually trigger analysis + indexing for a file (background task).
     Safe to call multiple times.
+
+    ✨ إذا كانت هناك مهمة عالقة، هذا الـ endpoint يعيد تشغيلها.
     """
     file = (await db.execute(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
@@ -945,7 +979,6 @@ async def list_pending_files(
         a_status = _safe_enum_value(a.status) if a else None
         a_has_text = bool(getattr(a, "raw_text", None)) if a else False
 
-        # ✨ Determine status with "indexing" phase + failed priority
         if a_status == "failed":
             status_str = "failed"
         elif a_status in ("processing", "running"):
