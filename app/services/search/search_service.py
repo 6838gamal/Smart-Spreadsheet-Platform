@@ -8,6 +8,9 @@ Upgrade path:
     Phase 3  — full RAG with re-ranking
 
 The public API (index_document / query / stream_answer) stays identical across phases.
+
+✨ تحديث: إضافة دعم تتبع التقدم (progress tracking) عبر callback اختياري
+         يُستدعى دوريًا أثناء الفهرسة لتحديث DocumentAnalysis.
 """
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable
 
 from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +28,10 @@ from app.services.search.backends import BM25Backend, SearchBackend, ChunkResult
 from app.infrastructure.database.models_intelligence import DocumentChunk
 
 logger = logging.getLogger(__name__)
+
+
+# ✨ نوع callback التقدم: async (current, total, step) -> None
+ProgressCallback = Callable[[int, int, str], Awaitable[None]]
 
 
 # ── Result shapes ─────────────────────────────────────────────────────────────
@@ -78,11 +85,18 @@ class SearchService:
         doc_type: str | None = None,
         language: str | None = None,
         filename: str = "",
+        on_progress: ProgressCallback | None = None,   # ✨ جديد
+        progress_every: int = 5,                        # ✨ جديد: كل كم chunk نُبلّغ
     ) -> int:
         """
         Chunk *text* and store chunks in the DB.
         Existing chunks for *file_id* are replaced.
         Returns the number of chunks stored.
+
+        ✨ جديد:
+            on_progress — دالة async اختيارية تُستدعى كل `progress_every` مقاطع
+                          بالتوقيع: async (current, total, step) -> None
+            progress_every — عدد المقاطع بين كل إبلاغ (افتراضي 5)
         """
         logger.info(
             f"📇 [INDEX] START: file={file_id} "
@@ -91,7 +105,14 @@ class SearchService:
 
         if not text or not text.strip():
             logger.warning(f"⚠️ [INDEX] Empty text for file {file_id}")
+            # ✨ أبلغ أن العملية انتهت (بدون chunks)
+            if on_progress:
+                await _safe_progress(on_progress, 0, 0, "done")
             return 0
+
+        # ── 0. ✨ إبلاغ: بدء التجهيز ──
+        if on_progress:
+            await _safe_progress(on_progress, 0, 0, "preparing")
 
         # ── 1. Remove old chunks for this file ──
         logger.info(f"🗑️ [INDEX] Deleting old chunks for file {file_id}")
@@ -106,28 +127,36 @@ class SearchService:
 
         # ── 2. Chunk the text ──
         logger.info(f"✂️ [INDEX] Chunking {len(text)} chars...")
+        if on_progress:
+            await _safe_progress(on_progress, 0, 0, "chunking")
         try:
             chunks = chunk_text(text)
         except Exception as e:
             logger.exception(f"❌ [INDEX] Chunking failed for file {file_id}: {e}")
             raise
 
-        logger.info(f"✅ [INDEX] Produced {len(chunks)} chunks for file {file_id}")
+        total_chunks = len(chunks)
+        logger.info(f"✅ [INDEX] Produced {total_chunks} chunks for file {file_id}")
 
         if not chunks:
             logger.warning(
                 f"⚠️ [INDEX] No chunks produced for file {file_id} — "
                 f"text may be too short or unparseable"
             )
-            # Still commit to release any pending transaction
             try:
                 await db.commit()
             except Exception as e:
                 logger.warning(f"⚠️ [INDEX] Commit (empty) failed: {e}")
+            if on_progress:
+                await _safe_progress(on_progress, 0, 0, "done")
             return 0
 
-        # ── 3. Prepare chunk rows ──
-        logger.info(f"💾 [INDEX] Preparing {len(chunks)} chunks...")
+        # ── 2b. ✨ إبلاغ أولي بعد معرفة العدد الكلي ──
+        if on_progress:
+            await _safe_progress(on_progress, 0, total_chunks, "embedding")
+
+        # ── 3. Prepare chunk rows (مع إبلاغ دوري عن التقدم) ──
+        logger.info(f"💾 [INDEX] Preparing {total_chunks} chunks...")
         try:
             for i, ch in enumerate(chunks):
                 db.add(DocumentChunk(
@@ -140,25 +169,50 @@ class SearchService:
                     language=language,
                     filename=filename,
                 ))
-                if (i + 1) % 50 == 0:
-                    logger.info(f"   → prepared {i+1}/{len(chunks)} chunks")
+
+                # ✨ إبلاغ دوري عن التقدم
+                processed = i + 1
+                if on_progress and (processed % progress_every == 0):
+                    await _safe_progress(
+                        on_progress, processed, total_chunks, "embedding"
+                    )
+
+                if processed % 50 == 0:
+                    logger.info(f"   → prepared {processed}/{total_chunks} chunks")
         except Exception as e:
             logger.exception(f"❌ [INDEX] Preparing chunks failed: {e}")
+            # ✨ أبلغ عن الفشل
+            if on_progress:
+                await _safe_progress(on_progress, 0, total_chunks, "failed")
             raise
 
+        # ── 3b. ✨ إبلاغ: بدء الحفظ ──
+        if on_progress:
+            await _safe_progress(
+                on_progress, total_chunks, total_chunks, "storing"
+            )
+
         # ── 4. Commit ──
-        logger.info(f"💾 [INDEX] Committing {len(chunks)} chunks...")
+        logger.info(f"💾 [INDEX] Committing {total_chunks} chunks...")
         try:
             await db.commit()
         except Exception as e:
             logger.exception(f"❌ [INDEX] Commit failed for file {file_id}: {e}")
+            if on_progress:
+                await _safe_progress(on_progress, 0, total_chunks, "failed")
             raise
 
+        # ── 4b. ✨ إبلاغ: اكتمل ──
+        if on_progress:
+            await _safe_progress(
+                on_progress, total_chunks, total_chunks, "done"
+            )
+
         logger.info(
-            f"🎉 [INDEX] DONE: {len(chunks)} chunks for file {file_id} "
+            f"🎉 [INDEX] DONE: {total_chunks} chunks for file {file_id} "
             f"(backend={self._backend.name})"
         )
-        return len(chunks)
+        return total_chunks
 
     # ── Querying ──────────────────────────────────────────────────────────────
 
@@ -449,6 +503,26 @@ class SearchService:
             "indexed_files": row.indexed_files or 0,
             "backend": self._backend.name,
         }
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _safe_progress(
+    callback: ProgressCallback,
+    current: int,
+    total: int,
+    step: str,
+) -> None:
+    """
+    ✨ استدعِ callback التقدم بأمان — أي استثناء منه لا يُفشل الفهرسة.
+    """
+    try:
+        await callback(current, total, step)
+    except Exception as e:
+        logger.warning(
+            f"⚠️ [INDEX] Progress callback failed (step={step}, "
+            f"current={current}/{total}): {e}"
+        )
 
 
 # Singleton — import this everywhere
