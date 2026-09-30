@@ -13,6 +13,7 @@ The frontend sees via /status:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy import select, func
@@ -28,6 +29,10 @@ from app.services.search.search_service import search_service
 
 logger = logging.getLogger(__name__)
 
+# ⏱️ Timeouts (seconds)
+ANALYSIS_TIMEOUT = 300.0   # 5 دقائق للتحليل
+INDEXING_TIMEOUT = 120.0   # 2 دقيقة للفهرسة
+
 
 async def analyze_and_index_background(file_id: int, user_id: int) -> None:
     """
@@ -38,7 +43,9 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
         4. Stage 2 — Indexing via search_service.index_document()
         5. Safety net — if Stage 2 failed silently, retry indexing
     """
-    logger.info(f"🚀 [BG] Start analyze+index for file_id={file_id} user_id={user_id}")
+    logger.info(
+        f"🚀 [BG] Start analyze+index for file_id={file_id} user_id={user_id}"
+    )
 
     analysis_id: int | None = None
 
@@ -107,9 +114,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
             file_format = file.format
 
         # ═══════════════════════════════════════════════════════════
-        # 2. Stage 1 — Analysis (handle_analysis_job)
-        #    The handler does classify + OCR + tables + entities.
-        #    NOTE: It no longer auto-indexes (removed in pipeline_manager).
+        # 2. Stage 1 — Analysis (handle_analysis_job) with timeout
         # ═══════════════════════════════════════════════════════════
         from app.services.pipeline.pipeline_manager import handle_analysis_job
 
@@ -121,11 +126,28 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
         }
 
         try:
-            result = await handle_analysis_job(payload)
+            logger.info(
+                f"🔍 [BG] Stage 1 (analysis) started for file {file_id} "
+                f"(timeout={ANALYSIS_TIMEOUT}s)"
+            )
+            result = await asyncio.wait_for(
+                handle_analysis_job(payload),
+                timeout=ANALYSIS_TIMEOUT,
+            )
             logger.info(
                 f"🎉 [BG] Stage 1 (analysis) completed for file {file_id}: "
                 f"{result}"
             )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"⏱️ [BG] Stage 1 TIMEOUT after {ANALYSIS_TIMEOUT}s "
+                f"for file {file_id}"
+            )
+            await _mark_analysis_failed(
+                analysis_id,
+                f"analysis timed out after {int(ANALYSIS_TIMEOUT)}s",
+            )
+            return
         except Exception as e:
             logger.exception(
                 f"❌ [BG] Stage 1 (analysis) failed for file {file_id}: {e}"
@@ -134,7 +156,6 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
 
         # ═══════════════════════════════════════════════════════════
         # 3. Stage 2 — Indexing (search_service.index_document)
-        #    This is what the frontend displays as the "indexing" bar.
         # ═══════════════════════════════════════════════════════════
         await _run_stage_2_indexing(
             analysis_id=analysis_id,
@@ -189,36 +210,49 @@ async def _run_stage_2_indexing(
             )
             return
 
-        # ── Run indexing ──
+        # ── Run indexing with timeout ──
         try:
             logger.info(
                 f"📇 [BG] Stage 2 (indexing) started for file {file_id} "
-                f"({len(analysis.raw_text)} chars)"
+                f"({len(analysis.raw_text)} chars, timeout={INDEXING_TIMEOUT}s)"
             )
-            chunk_count = await search_service.index_document(
-                db,
-                file_id=file_id,
-                analysis_id=analysis_id,
-                user_id=user_id,
-                text=analysis.raw_text,
-                doc_type=getattr(analysis, "doc_type", None),
-                language=getattr(analysis, "language", None),
-                filename=file.original_name,
+            chunk_count = await asyncio.wait_for(
+                search_service.index_document(
+                    db,
+                    file_id=file_id,
+                    analysis_id=analysis_id,
+                    user_id=user_id,
+                    text=analysis.raw_text,
+                    doc_type=getattr(analysis, "doc_type", None),
+                    language=getattr(analysis, "language", None),
+                    filename=file.original_name,
+                ),
+                timeout=INDEXING_TIMEOUT,
             )
             logger.info(
                 f"🎉 [BG] Stage 2 (indexing) complete — "
                 f"{chunk_count} chunks stored for file {file_id}"
             )
+
+        except asyncio.TimeoutError:
+            logger.error(
+                f"⏱️ [BG] Stage 2 TIMEOUT after {INDEXING_TIMEOUT}s "
+                f"for file {file_id}"
+            )
+            await _mark_analysis_failed(
+                analysis_id,
+                f"indexing timed out after {int(INDEXING_TIMEOUT)}s",
+            )
+            raise
+
         except Exception as e:
             logger.exception(
                 f"❌ [BG] Stage 2 (indexing) failed for file {file_id}: {e}"
             )
-            # Store the error so the UI can display it
-            try:
-                analysis.error_message = f"indexing failed: {str(e)[:400]}"
-                await db.commit()
-            except Exception:
-                pass
+            await _mark_analysis_failed(
+                analysis_id,
+                f"indexing failed: {str(e)[:400]}",
+            )
             raise
 
 
@@ -232,6 +266,27 @@ async def _count_chunks(db, file_id: int, user_id: int) -> int:
             DocumentChunk.user_id == user_id,
         )
     )).scalar() or 0
+
+
+async def _mark_analysis_failed(analysis_id: int, error_msg: str) -> None:
+    """
+    Safely mark an analysis as failed in a fresh session.
+    Used when the original session may be in a bad state.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            analysis = await db.get(DocumentAnalysis, analysis_id)
+            if analysis:
+                analysis.error_message = error_msg[:500]
+                await db.commit()
+                logger.info(
+                    f"📝 [BG] Marked analysis #{analysis_id} as failed: "
+                    f"{error_msg[:100]}"
+                )
+    except Exception as e:
+        logger.warning(
+            f"⚠️ [BG] Could not mark analysis #{analysis_id} as failed: {e}"
+        )
 
 
 async def _index_only(db, file, analysis, user_id: int) -> None:
