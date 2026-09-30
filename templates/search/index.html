@@ -66,13 +66,20 @@
         </span>
         
         <!-- شارة "جاري الفهرسة" -->
-        <span x-show="isIndexing() || getSelectedFileStatus() === 'indexing'" 
+        <span x-show="isIndexing()" 
               class="text-[10px] bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 rounded-full px-2 py-0.5 flex items-center gap-1 animate-pulse">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
           </svg>
-          جاري الفهرسة
+          <span x-text="getIndexingBadgeLabel()"></span>
+        </span>
+
+        <!-- ✨ شارة "المهمة معلقة" -->
+        <span x-show="isSelectedFileStalled()" 
+              x-cloak
+              class="text-[10px] bg-orange-600/20 text-orange-400 border border-orange-600/40 rounded-full px-2 py-0.5 flex items-center gap-1">
+          ⚠️ قد تكون المهمة معلقة
         </span>
         
         <!-- عدد المقاطع -->
@@ -94,20 +101,15 @@
           <span x-text="getSelectedFileStatus() === 'failed' ? 'إعادة المحاولة' : 'تحليل الملف'"></span>
         </button>
 
-        <!-- ✅ زر "فهرسة الآن" — يظهر لحالة analyzed_not_indexed أو indexing -->
-        <button x-show="(getSelectedFileStatus() === 'analyzed_not_indexed' || 
-                        getSelectedFileStatus() === 'indexing')"
+        <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed' && !isIndexing()"
                 @click="indexSelectedFile()"
-                :disabled="analyzing || isFileIndexing(selectedFileId)"
-                :class="isFileIndexing(selectedFileId) ? 'opacity-60 cursor-wait' : ''"
+                :disabled="analyzing"
                 class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
-          <svg class="w-3.5 h-3.5" 
-               :class="isFileIndexing(selectedFileId) ? 'animate-spin' : ''"
-               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
-          <span x-text="isFileIndexing(selectedFileId) ? 'جاري الفهرسة...' : 'فهرسة الآن'"></span>
+          فهرسة الآن
         </button>
 
         <button x-show="getSelectedFileStatus() === 'ready'"
@@ -134,7 +136,7 @@
         <span class="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-700/40 rounded px-1.5 py-0.5">
           المرحلة 1/2
         </span>
-        <span class="text-[10px] text-zinc-500">تحليل المستند</span>
+        <span class="text-[10px] text-zinc-500" x-text="getAnalyzingStepLabel()"></span>
       </div>
       
       <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden relative">
@@ -157,8 +159,9 @@
 
     <!-- ═══════════════════════════════════════════════════════ -->
     <!--  شريط التقدم — المرحلة 2: الفهرسة (Indexing) -->
+    <!--  ✨ مع عرض نسبة تقدم حقيقية وخطوات مفصلة -->
     <!-- ═══════════════════════════════════════════════════════ -->
-    <div x-show="isIndexing() || getSelectedFileStatus() === 'indexing'" 
+    <div x-show="isIndexing()" 
          x-cloak
          class="mt-3 space-y-1.5">
       
@@ -166,12 +169,20 @@
         <span class="text-[10px] font-bold text-cyan-400 bg-cyan-900/30 border border-cyan-700/40 rounded px-1.5 py-0.5">
           المرحلة 2/2
         </span>
-        <span class="text-[10px] text-zinc-500">فهرسة المقاطع</span>
+        <span class="text-[10px] text-zinc-500" x-text="getIndexingStepLabel()"></span>
       </div>
       
-      <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden relative">
-        <div class="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-600 rounded-full"
+      <!-- ✨ شريط بنسبة تقدم حقيقية -->
+      <div class="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden relative">
+        <!-- خلفية متحركة عندما لا توجد نسبة بعد -->
+        <div x-show="getSelectedFileProgress().total === 0"
+             class="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-600 rounded-full"
              style="background-size: 200% 100%; animation: shimmer 1.5s linear infinite; width: 100%;">
+        </div>
+        <!-- شريط بنسبة حقيقية -->
+        <div x-show="getSelectedFileProgress().total > 0"
+             class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+             :style="`width: ${getIndexingPercent()}%`">
         </div>
       </div>
       
@@ -183,7 +194,20 @@
           </svg>
           <span x-text="getIndexingMessage()"></span>
         </span>
-        <span class="text-zinc-500" x-text="getIndexingElapsed()"></span>
+        <span class="flex items-center gap-2">
+          <span x-show="getSelectedFileProgress().total > 0"
+                class="text-cyan-400 font-mono font-bold"
+                x-text="getIndexingPercent().toFixed(0) + '%'"></span>
+          <span class="text-zinc-500" x-text="getIndexingElapsed()"></span>
+        </span>
+      </div>
+
+      <!-- ✨ تفاصيل إضافية: عدد المقاطع -->
+      <div x-show="getSelectedFileProgress().total > 0"
+           class="flex items-center justify-between text-[10px] text-zinc-500">
+        <span x-text="'📊 ' + getSelectedFileProgress().current + ' / ' + getSelectedFileProgress().total + ' مقطع'"></span>
+        <span x-show="getSelectedFileProgress().stageStartedAt"
+              x-text="'⏱️ بدأ: ' + formatTime(getSelectedFileProgress().stageStartedAt)"></span>
       </div>
     </div>
 
@@ -206,6 +230,16 @@
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
         </svg>
         <span x-text="'الملف جاهز للدردشة — ' + getSelectedFileChunks() + ' مقطع مفهرس'"></span>
+      </p>
+    </div>
+
+    <!-- ✨ الصف 5: رسالة "المهمة معلقة" -->
+    <div x-show="isSelectedFileStalled()" 
+         x-cloak
+         class="mt-2 p-2 bg-orange-900/20 border border-orange-800/40 rounded-lg">
+      <p class="text-[10px] sm:text-xs text-orange-300 flex items-start gap-1.5">
+        <span>⚠️</span>
+        <span>المهمة تبدو معلقة (لم تُحدّث منذ أكثر من 5 دقائق). جرّب "إعادة التحليل".</span>
       </p>
     </div>
   </div>
@@ -675,14 +709,13 @@ function searchApp() {
       return {
         'ready': '✏️ اكتب سؤالك هنا...',
         'analyzing': '⏳ جاري التحليل — انتظر...',
-        'indexing': '📇 جاري الفهرسة — انتظر...',
         'pending': '⏸️ الملف غير مفهرس — اضغط "تحليل"',
+        'indexing': '📇 جاري الفهرسة — انتظر...',
         'analyzed_not_indexed': '📄 يحتاج فهرسة — اضغط "فهرسة الآن"',
         'failed': '❌ فشل التحليل — اضغط "إعادة المحاولة"',
       }[status] || '✏️ اكتب سؤالك هنا...';
     },
 
-    // ✅ محدّثة — تدعم indexing
     statusEmoji(fileId) {
       if (this.isFileIndexing(fileId)) return '📇';
       const s = this.getFileStatus(fileId);
@@ -717,7 +750,6 @@ function searchApp() {
       return this.getFileChunks(this.selectedFileId);
     },
 
-    // ✅ محدّثة — تدعم indexing
     getSelectedFileLabel() {
       if (this.isIndexing()) return '📇 جاري فهرسة المقاطع...';
       
@@ -734,16 +766,71 @@ function searchApp() {
 
     isIndexing() {
       if (this.selectedFileId === 'all') return false;
-      return this.isFileIndexing(this.selectedFileId);
+      if (this.isFileIndexing(this.selectedFileId)) return true;
+      return this.getSelectedFileStatus() === 'indexing';
     },
 
-    // ✅ محدّثة — تتحقق من Set محلي + حالة API
     isFileIndexing(fileId) {
-      // 1. Set محلي (للانتقالات السريعة)
-      if (this.indexingFileIds.has(String(fileId))) return true;
-      // 2. تحقق من حالة الـ API مباشرة
-      const s = this.getFileStatus(fileId);
-      return s === 'indexing';
+      return this.indexingFileIds.has(String(fileId));
+    },
+
+    // ✨ هل الملف المحدد يبدو معلقًا؟
+    isSelectedFileStalled() {
+      if (this.selectedFileId === 'all') return false;
+      const st = this.fileStatuses[this.selectedFileId];
+      return !!(st && st.is_stalled);
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    //  ✨ Progress helpers — التقدم التفصيلي
+    // ═══════════════════════════════════════════════════════════
+
+    getSelectedFileProgress() {
+      const st = this.fileStatuses[this.selectedFileId] || {};
+      return {
+        current: st.progress_current || 0,
+        total: st.progress_total || 0,
+        percent: st.progress_percent || 0,
+        step: st.current_step || null,
+        stage: st.stage || null,
+        stageStartedAt: st.stage_started_at || null,
+        heartbeat: st.last_heartbeat_at || null,
+      };
+    },
+
+    getIndexingPercent() {
+      const p = this.getSelectedFileProgress();
+      // إذا لا توجد بيانات تقدم، استخدم حركة لا نهائية (0% + شريط متحرك)
+      if (p.total === 0) return 0;
+      return Math.min(100, Math.max(0, p.percent));
+    },
+
+    getIndexingStepLabel() {
+      const step = this.getSelectedFileProgress().step;
+      return {
+        'preparing': 'تجهيز النص',
+        'chunking': 'تقسيم النص',
+        'embedding': 'إنشاء التمثيلات',
+        'storing': 'حفظ المقاطع',
+        'done': 'اكتملت الفهرسة',
+        'failed': 'فشلت الفهرسة',
+      }[step] || 'جاري الفهرسة';
+    },
+
+    getAnalyzingStepLabel() {
+      const step = this.getSelectedFileProgress().step;
+      return {
+        'preparing': 'تجهيز المستند',
+        'chunking': 'جاري التحليل',
+        'embedding': 'استخراج المحتوى',
+        'done': 'اكتمل التحليل',
+      }[step] || 'تحليل المستند';
+    },
+
+    getIndexingBadgeLabel() {
+      const p = this.getSelectedFileProgress();
+      if (p.total === 0) return 'جاري الفهرسة';
+      return `فهرسة ${p.current}/${p.total}`;
     },
 
     getAnalyzingMessage() {
@@ -763,9 +850,9 @@ function searchApp() {
     },
 
     getIndexingMessage() {
-      const chunks = this.getSelectedFileChunks();
-      if (chunks === 0) return 'جاري تقطيع النص وفهرسته...';
-      return `تم فهرسة ${chunks} مقطع حتى الآن...`;
+      const p = this.getSelectedFileProgress();
+      if (p.total === 0) return 'جاري تقطيع النص وفهرسته...';
+      return `تمت معالجة ${p.current} من ${p.total} مقطع`;
     },
 
     getIndexingElapsed() {
@@ -775,11 +862,20 @@ function searchApp() {
       return Math.floor(seconds / 60) + ' د ' + (seconds % 60) + ' ث';
     },
 
+    formatTime(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        return '';
+      }
+    },
+
     getSelectedFileError() {
       return this.fileStatuses[this.selectedFileId]?.error || null;
     },
 
-    // ✅ محدّثة — تدعم indexing
     getChatDisabledReason() {
       if (!this.hasFiles) return 'لا توجد ملفات';
       if (this.selectedFileId === 'all' && !this.hasIndexedFiles) return 'لا ملفات مفهرسة';
@@ -814,6 +910,14 @@ function searchApp() {
       this.pollingTimer = setInterval(() => {
         this.refreshAllFileStatuses();
       }, 3000);
+
+      // ✨ مؤقت لتحديث "الوقت المنقضي" كل ثانية
+      setInterval(() => {
+        if (this.isIndexing() || this.getSelectedFileStatus() === 'analyzing') {
+          // القوة على Alpine.js لإعادة التقييم
+          this.$nextTick(() => {});
+        }
+      }, 1000);
       
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('تسجيل الصوت غير مدعوم');
@@ -835,7 +939,6 @@ function searchApp() {
     //  File Status
     // ══════════════════════════════════════════════════════════
 
-    // ✅ محدّثة — تدعم "indexing" في اكتشاف الانتقالات
     async refreshAllFileStatuses() {
       const tasks = this.files.map(async (f) => {
         try {
@@ -847,41 +950,22 @@ function searchApp() {
           this.fileStatuses[f.id] = data;
           const fileIdStr = String(f.id);
           
-          // ═══ اكتشاف الانتقالات ═══
+          // ═══ ✨ اكتشاف الانتقالات ═══
           
           // 1. من analyzing → indexing (بدء الفهرسة!)
-          //    ✅ يدعم الآن "indexing" و "analyzed_not_indexed"
-          const becameIndexing =
-            data.status === 'indexing' ||
-            data.status === 'analyzed_not_indexed';
-
-          if (prev === 'analyzing' && becameIndexing) {
+          if (prev === 'analyzing' && data.status === 'indexing') {
             this.showToast(`📇 اكتمل التحليل — بدأت الفهرسة...`);
             this.indexingFileIds.add(fileIdStr);
-            
             if (fileIdStr === String(this.selectedFileId)) {
               this.analyzingStartTime = null;
               this.indexingStartTime = Date.now();
             }
             this.startFastPolling();
           }
-
-          // 1.b — إذا كان الملف جديدًا (prev === undefined) وحالته indexing
-          if (!prev && becameIndexing) {
-            this.indexingFileIds.add(fileIdStr);
-            if (fileIdStr === String(this.selectedFileId)) {
-              this.indexingStartTime = Date.now();
-            }
-            this.startFastPolling();
-          }
           
-          // 2. اكتملت الفهرسة → ready
-          if (
-            (prev === 'indexing' ||
-             prev === 'analyzed_not_indexed' ||
-             this.isFileIndexing(fileIdStr)) &&
-            data.status === 'ready'
-          ) {
+          // 2. من indexing → ready (اكتملت الفهرسة!)
+          if ((prev === 'indexing' || this.isFileIndexing(fileIdStr)) 
+              && data.status === 'ready') {
             this.showToast(`✅ تمت الفهرسة — ${data.chunks} مقطع جاهز`);
             this.indexingFileIds.delete(fileIdStr);
             this.refreshCounters();
@@ -891,33 +975,38 @@ function searchApp() {
             }
           }
           
-          // 3. من analyzing → ready (عملية كاملة بدون مرحلة وسطية)
+          // 3. من analyzing → ready (عملية كاملة)
           if (prev === 'analyzing' && data.status === 'ready') {
             this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
             this.refreshCounters();
             this.indexingFileIds.delete(fileIdStr);
-            
             if (fileIdStr === String(this.selectedFileId)) {
               this.analyzingStartTime = null;
               this.indexingStartTime = null;
             }
           }
           
-          // 4. فشل
+          // 4. فشل (من أي حالة سابقة غير failed)
           if (prev && prev !== 'failed' && data.status === 'failed') {
             this.showToast(`❌ فشل تحليل "${f.original_name}"`);
             this.indexingFileIds.delete(fileIdStr);
-            
             if (fileIdStr === String(this.selectedFileId)) {
               this.analyzingStartTime = null;
               this.indexingStartTime = null;
             }
           }
           
-          // 5. إذا status = analyzed_not_indexed أو indexing ولم نكن نعرفه
-          if ((data.status === 'analyzed_not_indexed' || data.status === 'indexing') 
-              && this.analyzing) {
+          // 5. إذا status = analyzed_not_indexed ولم نكن نعرفه → أضفه لقائمة الفهرسة
+          if (data.status === 'analyzed_not_indexed' && this.analyzing) {
             this.indexingFileIds.add(fileIdStr);
+          }
+
+          // 6. ✨ إذا بدأ ملف جديد الفهرسة (indexing) ولم يكن معروفًا
+          if (data.status === 'indexing' && prev !== 'indexing' && prev !== 'analyzing') {
+            this.indexingFileIds.add(fileIdStr);
+            if (fileIdStr === String(this.selectedFileId)) {
+              this.indexingStartTime = Date.now();
+            }
           }
           
           const file = this.files.find(x => x.id === f.id);
