@@ -278,24 +278,35 @@ async def seed_admin() -> None:
 
 
 async def apply_column_migrations() -> None:
-    """Apply column migrations to existing tables."""
+    """Apply column migrations to existing tables.
+
+    Uses `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` so this is fully idempotent
+    and safe to run on every application startup. Also backfills existing rows
+    and creates indexes when necessary.
+    """
+    import sqlalchemy as sa
+
     try:
         async with engine.begin() as conn:
-            # 1. تعديلات ai_model_registry
-            await conn.execute(__import__("sqlalchemy").text(
+            # ═══════════════════════════════════════════════════════════════
+            # 1. ai_model_registry — core columns
+            # ═══════════════════════════════════════════════════════════════
+            await conn.execute(sa.text(
                 "ALTER TABLE ai_model_registry "
                 "ADD COLUMN IF NOT EXISTS task_type VARCHAR(50);"
             ))
-            await conn.execute(__import__("sqlalchemy").text(
+            await conn.execute(sa.text(
                 "ALTER TABLE ai_model_registry "
                 "ADD COLUMN IF NOT EXISTS visible_to_users BOOLEAN DEFAULT TRUE;"
             ))
-            await conn.execute(__import__("sqlalchemy").text(
+            await conn.execute(sa.text(
                 "ALTER TABLE ai_model_registry "
                 "ADD COLUMN IF NOT EXISTS hf_model_id VARCHAR(200);"
             ))
-            
-            # 2. ✅ أعمدة التخزين إلى جدول files (الإصلاح الرئيسي)
+
+            # ═══════════════════════════════════════════════════════════════
+            # 2. files — storage columns
+            # ═══════════════════════════════════════════════════════════════
             storage_columns = [
                 ("storage_key", "VARCHAR"),
                 ("is_locally_stored", "BOOLEAN DEFAULT TRUE"),
@@ -304,63 +315,125 @@ async def apply_column_migrations() -> None:
                 ("storage_bucket", "VARCHAR"),
                 ("storage_object_key", "VARCHAR"),
             ]
-            
+
             for col_name, col_type in storage_columns:
-                await conn.execute(__import__("sqlalchemy").text(
+                await conn.execute(sa.text(
                     f"ALTER TABLE files "
                     f"ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
                 ))
                 logger.info(f"✅ Column '{col_name}' added to files")
-                
-            # إنشاء فهرس على storage_key لتحسين الأداء
-            await conn.execute(__import__("sqlalchemy").text(
+
+            # Index on storage_key
+            await conn.execute(sa.text(
                 "CREATE INDEX IF NOT EXISTS ix_files_storage_key "
                 "ON files (storage_key);"
             ))
             logger.info("✅ Index created on files.storage_key")
-            
-            # 3. ✅ إصلاح extracted_tables - إضافة table_index
+
+            # ═══════════════════════════════════════════════════════════════
+            # 3. extracted_tables — table_index
+            # ═══════════════════════════════════════════════════════════════
             try:
-                await conn.execute(__import__("sqlalchemy").text(
+                await conn.execute(sa.text(
                     "ALTER TABLE extracted_tables "
                     "ADD COLUMN IF NOT EXISTS table_index INTEGER;"
                 ))
                 logger.info("✅ Column 'table_index' added to extracted_tables")
             except Exception as e:
                 logger.warning(f"⚠️ Could not add table_index column: {e}")
-            
-            # 4. إضافة عمود لـ speech-to-text support
+
+            # ═══════════════════════════════════════════════════════════════
+            # 4. ai_model_registry — languages JSONB
+            # ═══════════════════════════════════════════════════════════════
             try:
-                await conn.execute(__import__("sqlalchemy").text(
+                await conn.execute(sa.text(
                     "ALTER TABLE ai_model_registry "
                     "ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]'::jsonb;"
                 ))
                 logger.info("✅ Column 'languages' added to ai_model_registry")
             except Exception as e:
                 logger.warning(f"⚠️ Could not add languages column: {e}")
-            
-            # 5. إنشاء فهارس للعمود الجديد
+
+            # Index on task_type
             try:
-                await conn.execute(__import__("sqlalchemy").text(
+                await conn.execute(sa.text(
                     "CREATE INDEX IF NOT EXISTS ix_ai_model_registry_task_type "
                     "ON ai_model_registry (task_type);"
                 ))
                 logger.info("✅ Index created on ai_model_registry.task_type")
             except Exception as e:
                 logger.warning(f"⚠️ Could not create index on task_type: {e}")
-                
-            # 6. إضافة بعض النماذج الافتراضية إذا لم تكن موجودة
+
+            # ═══════════════════════════════════════════════════════════════
+            # 5. ✨ document_analyses — progress tracking columns (NEW)
+            # ═══════════════════════════════════════════════════════════════
+            # Adds:
+            #   - stage             VARCHAR(50)          — analysis | indexing | done | failed
+            #   - current_step      VARCHAR(100)         — preparing | chunking | embedding | storing | done | failed
+            #   - progress_current  INTEGER NOT NULL     — # of chunks processed
+            #   - progress_total    INTEGER NOT NULL     — total chunks expected
+            #   - progress_percent  DOUBLE PRECISION     — 0-100
+            #   - stage_started_at  TIMESTAMPTZ          — when current stage began
+            #   - last_heartbeat_at TIMESTAMPTZ          — last update from background task
+            document_analysis_columns = [
+                ("stage", "VARCHAR(50)"),
+                ("current_step", "VARCHAR(100)"),
+                ("progress_current", "INTEGER NOT NULL DEFAULT 0"),
+                ("progress_total", "INTEGER NOT NULL DEFAULT 0"),
+                ("progress_percent", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
+                ("stage_started_at", "TIMESTAMP WITH TIME ZONE"),
+                ("last_heartbeat_at", "TIMESTAMP WITH TIME ZONE"),
+            ]
+
+            for col_name, col_type in document_analysis_columns:
+                await conn.execute(sa.text(
+                    f"ALTER TABLE document_analyses "
+                    f"ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
+                ))
+                logger.info(f"✅ Column '{col_name}' added to document_analyses")
+
+            # Partial index on stage (only for running jobs → very compact index)
             try:
-                # Check if models exist
-                result = await conn.execute(
-                    __import__("sqlalchemy").text(
-                        "SELECT COUNT(*) FROM ai_model_registry WHERE source = 'huggingface'"
-                    )
-                )
+                await conn.execute(sa.text(
+                    "CREATE INDEX IF NOT EXISTS ix_document_analyses_stage "
+                    "ON document_analyses (stage) "
+                    "WHERE stage IN ('analysis', 'indexing');"
+                ))
+                logger.info("✅ Partial index created on document_analyses.stage")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not create partial index on stage: {e}")
+
+            # Backfill existing rows so old data has a consistent stage value
+            try:
+                await conn.execute(sa.text(
+                    "UPDATE document_analyses "
+                    "SET stage = 'done', current_step = 'done', progress_percent = 100.0 "
+                    "WHERE status = 'COMPLETED' AND stage IS NULL;"
+                ))
+                await conn.execute(sa.text(
+                    "UPDATE document_analyses "
+                    "SET stage = 'failed', current_step = 'failed' "
+                    "WHERE status = 'FAILED' AND stage IS NULL;"
+                ))
+                await conn.execute(sa.text(
+                    "UPDATE document_analyses "
+                    "SET stage = 'analysis', current_step = 'preparing' "
+                    "WHERE status IN ('PENDING', 'RUNNING') AND stage IS NULL;"
+                ))
+                logger.info("✅ Backfilled existing document_analyses rows")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not backfill document_analyses: {e}")
+
+            # ═══════════════════════════════════════════════════════════════
+            # 6. Seed default Hugging Face models (if none exist)
+            # ═══════════════════════════════════════════════════════════════
+            try:
+                result = await conn.execute(sa.text(
+                    "SELECT COUNT(*) FROM ai_model_registry WHERE source = 'huggingface'"
+                ))
                 count = result.scalar()
-                
+
                 if count == 0:
-                    # Insert default models
                     default_models = [
                         {
                             "name": "🧠 Qwen 2.5 72B",
@@ -411,10 +484,10 @@ async def apply_column_migrations() -> None:
                             "description": "نموذج Llama 3 المتقدم"
                         },
                     ]
-                    
+
                     for model in default_models:
                         await conn.execute(
-                            __import__("sqlalchemy").text("""
+                            sa.text("""
                                 INSERT INTO ai_model_registry 
                                 (name, source, task_type, hf_model_id, model_type, 
                                  is_active, visible_to_users, is_default, languages, description)
@@ -427,7 +500,7 @@ async def apply_column_migrations() -> None:
                     logger.info("✅ Default Hugging Face models inserted")
             except Exception as e:
                 logger.warning(f"⚠️ Could not insert default models: {e}")
-                
+
         logger.info("✅ All column migrations applied successfully")
     except Exception as exc:
         logger.warning(f"⚠️ Column migration skipped: {exc}")
@@ -436,11 +509,11 @@ async def apply_column_migrations() -> None:
 def _check_storage_backend():
     """Check and log storage backend status."""
     from app.infrastructure.storage.local_storage import storage
-    
+
     logger.info("=" * 60)
     logger.info(f"📁 STORAGE BACKEND: {storage.backend_name.upper()}")
     logger.info("=" * 60)
-    
+
     if storage.backend_name == "local":
         logger.error("=" * 60)
         logger.error("⚠️⚠️⚠️  WARNING: USING LOCAL STORAGE  ⚠️⚠️⚠️")
@@ -466,22 +539,23 @@ def _check_storage_backend():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: setup on startup, teardown on shutdown."""
-    # Create database tables
+    # Create database tables (no-op for existing tables — only creates missing ones)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Apply column migrations
+    # Apply column migrations — idempotent, safe to run on every startup
+    # Adds any missing columns (including document_analyses progress tracking)
     await apply_column_migrations()
 
     # Ensure upload/output directories exist
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
-    
-    # ✅ إنشاء مجلد التخزين المحلي
+
+    # Ensure local storage dir exists
     storage_dir = getattr(settings, 'STORAGE_DIR', './storage')
     os.makedirs(storage_dir, exist_ok=True)
-    
-    # ✅ إنشاء مجلدات المستخدمين
+
+    # Ensure per-user upload directories exist
     try:
         for user_id in [2]:  # admin user ID
             user_dir = os.path.join(storage_dir, "uploads", str(user_id))
@@ -493,7 +567,7 @@ async def lifespan(app: FastAPI):
     # Seed default admin account
     await seed_admin()
 
-    # ✅ CHECK STORAGE BACKEND
+    # Verify storage backend
     _check_storage_backend()
 
     # Start keep-alive in a daemon thread (no asyncio task — survives event-loop pauses)
@@ -567,7 +641,7 @@ def create_app() -> FastAPI:
     app.include_router(api_websocket.router, tags=["api:websocket"])
 
     # ── Additional convenience endpoints ──────────────────────────────────────
-    
+
     @app.get("/api/v1/models/available")
     async def models_available():
         """
@@ -575,13 +649,10 @@ def create_app() -> FastAPI:
         This makes it easier for the frontend to discover models.
         """
         try:
-            # Call the HF models endpoint
             from app.presentation.api.v1.hf_api import list_hf_models
             from app.core.database import AsyncSessionLocal
-            
-            # We need to call it with dependencies
+
             async with AsyncSessionLocal() as db:
-                # Get current user (or None for public access)
                 result = await list_hf_models(db=db, current_user=None)
                 return result
         except Exception as e:
@@ -649,7 +720,7 @@ async def keepalive_status():
 async def system_info():
     """General system information."""
     from app.infrastructure.storage.local_storage import storage
-    
+
     return JSONResponse({
         "app_name": settings.APP_NAME,
         "version": settings.APP_VERSION,
