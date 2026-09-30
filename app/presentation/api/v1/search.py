@@ -15,15 +15,20 @@ File pipeline endpoints:
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
 
+✨ Debug endpoints (جديد):
+    GET    /api/v1/search/debug/chunks/{id}         — عرض chunks ملف معين
+    POST   /api/v1/search/debug/test-search         — اختبار BM25 مباشرة بسؤال
+
 ✨ تحديث شامل:
     - حقول تقدم تفصيلية (progress_current/total/percent/step/stage)
     - كشف المهمة المعلقة (is_stalled) + سبب التعطل
     - كشف المرحلة العالقة (is_stage_1_stuck / is_stage_2_stuck)
     - أولوية "failed" على "completed" في تحديد الحالة
-    - ✨ إصلاح جذري: stage له أولوية مطلقة على analysis_status
-    - ✨ إصلاح has_text: يتحقق من المحتوى الفعلي (strip)
-    - ✨ كشف stage='done' مع chunks=0 → failed (فشل صامت)
-    - ✨ حالة analyzed_not_indexed جديدة مع stage صريح
+    - إصلاح has_text: يتحقق من المحتوى الفعلي (strip)
+    - كشف stage='done' مع chunks=0 → failed (فشل صامت)
+    - حالة analyzed_not_indexed جديدة مع stage صريح
+    - ✨ endpoint تشخيصي لفحص المقاطع
+    - ✨ endpoint لاختبار البحث مباشرة
 """
 from __future__ import annotations
 import json
@@ -125,26 +130,64 @@ class FileStatusResponse(BaseModel):
     is_indexing: bool = False
 
     # ── حقول تتبع التقدم ──
-    stage: str | None = None              # analysis | indexing | analyzed_not_indexed | done | failed
-    current_step: str | None = None       # preparing | chunking | embedding | storing | no_text | done | failed
+    stage: str | None = None
+    current_step: str | None = None
     progress_current: int = 0
     progress_total: int = 0
     progress_percent: float = 0.0
     stage_started_at: str | None = None
     last_heartbeat_at: str | None = None
 
-    # ── ✨ حقول كشف التعطل ──
+    # ── حقول كشف التعطل ──
     is_stalled: bool = False
     seconds_since_heartbeat: float = 0.0
-    is_stage_1_stuck: bool = False        # التحليل عالق
-    is_stage_2_stuck: bool = False        # الفهرسة عالقة
-    stall_reason: str | None = None       # سبب التعطل (للعرض)
+    is_stage_1_stuck: bool = False
+    is_stage_2_stuck: bool = False
+    stall_reason: str | None = None
 
 
 class AnalyzeTriggerResponse(BaseModel):
     ok: bool
     message: str
     file_id: int
+
+
+# ✨ Schemas جديدة للـ debug endpoints
+class DebugChunkItem(BaseModel):
+    chunk_index: int
+    length: int
+    preview: str
+    chunk_text_full: str | None = None
+
+
+class DebugChunksResponse(BaseModel):
+    file_id: int
+    file_name: str
+    file_format: str | None = None
+    total_chunks: int
+    showing: int
+    avg_chunk_length: float = 0.0
+    min_chunk_length: int = 0
+    max_chunk_length: int = 0
+    chunks: list[DebugChunkItem]
+
+
+class DebugSearchRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=1000)
+    file_ids: list[int] | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class DebugSearchResponse(BaseModel):
+    question: str
+    backend: str
+    total_chunks_searched: int
+    results_count: int
+    has_results: bool
+    results: list[SourceSchema]
+    # معلومات مساعدة
+    question_tokens: list[str] = []
+    detected_question_language: str | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,6 +242,29 @@ def _iso_or_none(dt) -> str | None:
         return dt.isoformat()
     except Exception:
         return None
+
+
+def _detect_language(text: str) -> str:
+    """كشف لغة النص بشكل مبسط (عربي / إنجليزي / مختلط)."""
+    if not text:
+        return "unknown"
+    arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+    latin_chars = sum(1 for c in text if c.isascii() and c.isalpha())
+    total = arabic_chars + latin_chars
+    if total == 0:
+        return "unknown"
+    if arabic_chars / total > 0.6:
+        return "ar"
+    if latin_chars / total > 0.6:
+        return "en"
+    return "mixed"
+
+
+def _tokenize_simple(text: str) -> list[str]:
+    """Tokenizer بسيط لعرض الكلمات في الـ debug."""
+    import re
+    tokens = re.findall(r"[\u0600-\u06FF\w]+", text.lower())
+    return [t for t in tokens if len(t) > 1][:30]
 
 
 # ── Q&A Endpoints ─────────────────────────────────────────────────────────────
@@ -669,6 +735,192 @@ async def get_available_models(
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ✨ Debug Endpoints — تشخيص البحث والمقاطع
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/debug/chunks/{file_id}", response_model=DebugChunksResponse)
+async def debug_chunks(
+    file_id: int,
+    limit: int = 5,
+    show_full: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    🔍 Endpoint تشخيصي — يعرض مقاطع ملف معين مباشرة.
+
+    يستخدم للتأكد من أن chunks مخزّنة بشكل صحيح:
+      - عدد المقاطع
+      - طول كل مقطع
+      - عينة من المحتوى
+
+    Parameters:
+        file_id: معرف الملف
+        limit: عدد المقاطع المعروضة (افتراضي 5)
+        show_full: عرض النص الكامل للمقطع (افتراضي false)
+    """
+    # 1. Verify ownership
+    file = (await db.execute(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )).scalar_one_or_none()
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # 2. Count + stats
+    total = (await db.execute(
+        select(func.count(DocumentChunk.id)).where(
+            DocumentChunk.file_id == file_id,
+            DocumentChunk.user_id == current_user.id,
+        )
+    )).scalar() or 0
+
+    if total == 0:
+        return DebugChunksResponse(
+            file_id=file_id,
+            file_name=file.original_name,
+            file_format=file.format,
+            total_chunks=0,
+            showing=0,
+            chunks=[],
+        )
+
+    # 3. Aggregate stats
+    stats_row = (await db.execute(
+        select(
+            func.avg(func.length(DocumentChunk.chunk_text)).label("avg_len"),
+            func.min(func.length(DocumentChunk.chunk_text)).label("min_len"),
+            func.max(func.length(DocumentChunk.chunk_text)).label("max_len"),
+        ).where(
+            DocumentChunk.file_id == file_id,
+            DocumentChunk.user_id == current_user.id,
+        )
+    )).one()
+
+    # 4. Load sample chunks
+    chunks = (await db.execute(
+        select(DocumentChunk)
+        .where(
+            DocumentChunk.file_id == file_id,
+            DocumentChunk.user_id == current_user.id,
+        )
+        .order_by(DocumentChunk.chunk_index)
+        .limit(min(limit, 50))
+    )).scalars().all()
+
+    items = [
+        DebugChunkItem(
+            chunk_index=c.chunk_index,
+            length=len(c.chunk_text),
+            preview=c.chunk_text[:400],
+            chunk_text_full=c.chunk_text if show_full else None,
+        )
+        for c in chunks
+    ]
+
+    return DebugChunksResponse(
+        file_id=file_id,
+        file_name=file.original_name,
+        file_format=file.format,
+        total_chunks=total,
+        showing=len(items),
+        avg_chunk_length=float(stats_row.avg_len or 0),
+        min_chunk_length=int(stats_row.min_len or 0),
+        max_chunk_length=int(stats_row.max_len or 0),
+        chunks=items,
+    )
+
+
+@router.post("/debug/test-search", response_model=DebugSearchResponse)
+async def debug_test_search(
+    body: DebugSearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    🔬 Endpoint تشخيصي — يختبر BM25 مباشرة بسؤال، بدون أي AI.
+
+    يُظهر:
+      - عدد المقاطع التي تم البحث فيها
+      - عدد النتائج
+      - أفضل النتائج مع scores
+      - tokens السؤال (للتحقق من التطابق)
+      - لغة السؤال المكتشفة
+
+    استخدمه للتشخيص:
+      - إذا رجع 0 نتائج → المشكلة في BM25 أو في المقاطع
+      - إذا رجع نتائج لكن الجواب لا يظهر → المشكلة في النموذج
+    """
+    # 1. Load chunks
+    stmt = select(DocumentChunk).where(DocumentChunk.user_id == current_user.id)
+    if body.file_ids:
+        stmt = stmt.where(DocumentChunk.file_id.in_(body.file_ids))
+
+    rows = (await db.execute(stmt)).scalars().all()
+
+    if not rows:
+        return DebugSearchResponse(
+            question=body.question,
+            backend=search_service._backend.name,
+            total_chunks_searched=0,
+            results_count=0,
+            has_results=False,
+            results=[],
+            question_tokens=_tokenize_simple(body.question),
+            detected_question_language=_detect_language(body.question),
+        )
+
+    # 2. Prepare chunk dicts
+    chunk_dicts = [
+        {
+            "id": r.id,
+            "file_id": r.file_id,
+            "file_name": r.filename or f"ملف #{r.file_id}",
+            "chunk_text": r.chunk_text,
+            "chunk_index": r.chunk_index,
+            "doc_type": r.doc_type,
+            "language": r.language,
+        }
+        for r in rows
+    ]
+
+    # 3. Run BM25 directly
+    try:
+        results = search_service._backend.search(
+            body.question,
+            chunk_dicts,
+            top_k=min(max(body.top_k, 1), 20),
+        )
+    except Exception as e:
+        logger.exception(f"❌ [debug-search] BM25 failed: {e}")
+        raise HTTPException(status_code=500, detail=f"BM25 failed: {str(e)}")
+
+    # 4. Convert to schema
+    sources = [
+        SourceSchema(
+            file_id=r.file_id,
+            file_name=r.file_name,
+            doc_type=r.doc_type,
+            chunk_text=r.chunk_text,
+            chunk_index=r.chunk_index,
+            score=r.score,
+        )
+        for r in results
+    ]
+
+    return DebugSearchResponse(
+        question=body.question,
+        backend=search_service._backend.name,
+        total_chunks_searched=len(chunk_dicts),
+        results_count=len(sources),
+        has_results=len(sources) > 0,
+        results=sources,
+        question_tokens=_tokenize_simple(body.question),
+        detected_question_language=_detect_language(body.question),
+    )
+
+
 # ── File Pipeline: Analyze + Index ────────────────────────────────────────────
 
 @router.get("/files/{file_id}/status", response_model=FileStatusResponse)
@@ -737,7 +989,7 @@ async def file_pipeline_status(
 
             if analysis:
                 analysis_status_str = _safe_enum_value(analysis.status)
-                # ✨ إصلاح جذري: has_text يجب أن يتحقق من المحتوى الفعلي
+                # ✨ has_text يتحقق من المحتوى الفعلي
                 raw_text_value = getattr(analysis, "raw_text", None)
                 has_text = bool(raw_text_value and raw_text_value.strip())
                 doc_type = getattr(analysis, "doc_type", None)
@@ -772,65 +1024,40 @@ async def file_pipeline_status(
             logger.warning(f"Could not count chunks for file {file_id}: {e}")
 
         # ═══════════════════════════════════════════════════════════
-        # 4. Determine status — ✨ stage له أولوية مطلقة
+        # 4. Determine status — stage له أولوية مطلقة
         # ═══════════════════════════════════════════════════════════
-        #
-        # Priority (الأعلى إلى الأدنى):
-        #   1. chunks > 0                              → ready
-        #   2. analysis FAILED                         → failed
-        #   3. stage == 'failed'                       → failed
-        #   4. stage == 'analyzed_not_indexed'         → analyzed_not_indexed
-        #   5. stage == 'done' + chunks == 0           → failed (فشل صامت)
-        #   6. stage == 'indexing'                     → indexing
-        #   7. analysis RUNNING/PROCESSING             → analyzing
-        #   8. analysis COMPLETED + has_text           → indexing (fallback)
-        #   9. analysis COMPLETED + no text            → analyzed_not_indexed
-        #  10. otherwise                               → pending
-        #
         is_indexing = False
 
         if chunks > 0:
             status_str = "ready"
-
         elif analysis_status_str == "failed":
             status_str = "failed"
-
         elif stage == "failed":
             status_str = "failed"
-
         elif stage == "analyzed_not_indexed":
-            # ✨ حالة جديدة: التحليل انتهى لكن لا نص للفهرسة
             status_str = "analyzed_not_indexed"
-
         elif stage == "done" and chunks == 0:
-            # ✨ stage='done' لكن لا chunks → فشل صامت في الفهرسة
             status_str = "failed"
             if not analysis_error:
                 analysis_error = (
                     "Indexing completed but produced 0 chunks. "
                     "Check chunk_text() output or document content."
                 )
-
         elif stage == "indexing":
             status_str = "indexing"
             is_indexing = True
-
         elif analysis_status_str in ("processing", "running"):
             status_str = "analyzing"
-
         elif analysis_status_str == "completed" and has_text:
-            # Fallback — إذا لم يكن stage محددًا
             status_str = "indexing"
             is_indexing = True
-
         elif analysis_status_str == "completed":
             status_str = "analyzed_not_indexed"
-
         else:
             status_str = "pending"
 
         # ═══════════════════════════════════════════════════════════
-        # 5. ✨ كشف التعطل (stall detection)
+        # 5. كشف التعطل
         # ═══════════════════════════════════════════════════════════
         seconds_since_heartbeat = 0.0
         if last_heartbeat_dt:
@@ -843,7 +1070,7 @@ async def file_pipeline_status(
             except Exception:
                 seconds_since_heartbeat = 0.0
 
-        STALL_THRESHOLD = 90.0  # ثانية
+        STALL_THRESHOLD = 90.0
 
         is_stage_1_stuck = (
             status_str == "analyzing"
@@ -868,9 +1095,6 @@ async def file_pipeline_status(
                 f"قد تكون المهمة الخلفية قد توقفت."
             )
 
-        # ═══════════════════════════════════════════════════════════
-        # 6. سجّل تحذير إذا كانت المهمة معلقة
-        # ═══════════════════════════════════════════════════════════
         if is_stalled:
             logger.warning(
                 f"⚠️ [status] File {file_id} appears stalled "
@@ -930,8 +1154,6 @@ async def trigger_file_analysis(
     """
     Manually trigger analysis + indexing for a file (background task).
     Safe to call multiple times.
-
-    ✨ إذا كانت هناك مهمة عالقة، هذا الـ endpoint يعيد تشغيلها.
     """
     file = (await db.execute(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
@@ -1012,18 +1234,15 @@ async def list_pending_files(
 
         a = latest_analysis.get(f.id)
         a_status = _safe_enum_value(a.status) if a else None
-        # ✨ إصلاح: has_text يتحقق من المحتوى الفعلي
         raw = getattr(a, "raw_text", None) if a else None
         a_has_text = bool(raw and raw.strip())
         a_stage = getattr(a, "stage", None) if a else None
 
-        # ✨ stage له أولوية
         if a_status == "failed" or a_stage == "failed":
             status_str = "failed"
         elif a_stage == "analyzed_not_indexed":
             status_str = "analyzed_not_indexed"
         elif a_stage == "done":
-            # stage='done' لكن لا chunks → فشل صامت
             status_str = "failed"
         elif a_stage == "indexing":
             status_str = "indexing"
