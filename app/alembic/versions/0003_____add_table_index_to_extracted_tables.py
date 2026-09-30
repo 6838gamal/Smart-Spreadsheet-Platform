@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'add_table_index_to_extracted_tables'
-down_revision: Union[str, None] = None  # ضع الـ revision السابق هنا
+revision: str = '0003'
+down_revision: Union[str, None] = '0002'  # ضع الـ revision السابق هنا
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
