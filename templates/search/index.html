@@ -13,7 +13,6 @@
       <h1 class="text-base sm:text-lg font-bold text-white whitespace-nowrap">البحث الذكي</h1>
     </div>
 
-    <!-- قائمة اختيار الملفات -->
     <div class="flex-1 min-w-[200px]">
       <select x-model="selectedFileId" 
               @change="onFileSelect()"
@@ -26,7 +25,6 @@
       </select>
     </div>
 
-    <!-- إحصائيات سريعة -->
     <div class="flex items-center gap-2 text-xs text-zinc-400 flex-shrink-0">
       <span class="hidden sm:inline">📊</span>
       <span class="hidden sm:inline" x-text="indexed_count + ' ملفات جاهزة'"></span>
@@ -37,7 +35,7 @@
     </div>
   </header>
 
-  <!-- ── شريط حالة الملف المحدد + شريط التقدم ─────────────────── -->
+  <!-- ── شريط حالة الملف المحدد + شرائط التقدم ─────────────────── -->
   <div x-show="selectedFileId !== 'all'" 
        x-cloak
        class="mb-3 flex-shrink-0 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3">
@@ -45,13 +43,13 @@
     <!-- الصف 1: الحالة + الأزرار -->
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- مؤشر ملون -->
         <span class="w-2.5 h-2.5 rounded-full flex-shrink-0"
               :class="{
                 'bg-emerald-500': getSelectedFileStatus() === 'ready',
                 'bg-amber-500 animate-pulse': getSelectedFileStatus() === 'analyzing',
                 'bg-zinc-500': getSelectedFileStatus() === 'pending',
                 'bg-blue-500 animate-pulse': getSelectedFileStatus() === 'analyzed_not_indexed',
+                'bg-cyan-500 animate-pulse': isIndexing(),
                 'bg-red-500': getSelectedFileStatus() === 'failed',
               }"></span>
         
@@ -65,6 +63,16 @@
             <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
           </svg>
           تم الفهرسة
+        </span>
+        
+        <!-- شارة "جاري الفهرسة" -->
+        <span x-show="isIndexing()" 
+              class="text-[10px] bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 rounded-full px-2 py-0.5 flex items-center gap-1 animate-pulse">
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          جاري الفهرسة
         </span>
         
         <!-- عدد المقاطع -->
@@ -86,8 +94,8 @@
           <span x-text="getSelectedFileStatus() === 'failed' ? 'إعادة المحاولة' : 'تحليل الملف'"></span>
         </button>
 
-        <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed'"
-                @click="analyzeSelectedFile()"
+        <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed' && !isIndexing()"
+                @click="indexSelectedFile()"
                 :disabled="analyzing"
                 class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -110,19 +118,26 @@
       </div>
     </div>
 
-    <!-- الصف 2: شريط التقدم (أثناء التحليل) -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--  شريط التقدم — المرحلة 1: التحليل (Extraction) -->
+    <!-- ═══════════════════════════════════════════════════════ -->
     <div x-show="getSelectedFileStatus() === 'analyzing' || (analyzing && selectedFileId !== 'all')" 
          x-cloak
          class="mt-2 space-y-1.5">
       
-      <!-- شريط التقدم المتحرك -->
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-700/40 rounded px-1.5 py-0.5">
+          المرحلة 1/2
+        </span>
+        <span class="text-[10px] text-zinc-500">تحليل المستند</span>
+      </div>
+      
       <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden relative">
-        <div class="h-full bg-gradient-to-r from-brand-600 via-brand-400 to-brand-600 rounded-full"
+        <div class="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600 rounded-full"
              style="background-size: 200% 100%; animation: shimmer 1.5s linear infinite; width: 100%;">
         </div>
       </div>
       
-      <!-- النص التفصيلي -->
       <div class="flex items-center justify-between text-[10px] sm:text-xs text-zinc-400">
         <span class="flex items-center gap-1.5">
           <svg class="w-3 h-3 animate-spin text-amber-400" fill="none" viewBox="0 0 24 24">
@@ -132,6 +147,38 @@
           <span x-text="getAnalyzingMessage()"></span>
         </span>
         <span class="text-zinc-500" x-text="getElapsedTime()"></span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!--  شريط التقدم — المرحلة 2: الفهرسة (Indexing) -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div x-show="isIndexing()" 
+         x-cloak
+         class="mt-3 space-y-1.5">
+      
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-[10px] font-bold text-cyan-400 bg-cyan-900/30 border border-cyan-700/40 rounded px-1.5 py-0.5">
+          المرحلة 2/2
+        </span>
+        <span class="text-[10px] text-zinc-500">فهرسة المقاطع</span>
+      </div>
+      
+      <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden relative">
+        <div class="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-600 rounded-full"
+             style="background-size: 200% 100%; animation: shimmer 1.5s linear infinite; width: 100%;">
+        </div>
+      </div>
+      
+      <div class="flex items-center justify-between text-[10px] sm:text-xs text-zinc-400">
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3 h-3 animate-spin text-cyan-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span x-text="getIndexingMessage()"></span>
+        </span>
+        <span class="text-zinc-500" x-text="getIndexingElapsed()"></span>
       </div>
     </div>
 
@@ -176,7 +223,6 @@
           </svg>
         </div>
 
-        <!-- ✅ حالة: ملفات جاهزة -->
         <div x-show="hasIndexedFiles">
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             🤖 مرحباً! لدي <span x-text="indexed_count"></span> ملف جاهز للبحث
@@ -217,7 +263,6 @@
           </div>
         </div>
 
-        <!-- ✅ حالة: ملفات موجودة لكن غير جاهزة -->
         <div x-show="!hasIndexedFiles && hasFiles" x-cloak>
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             📄 لديك <span x-text="files.length"></span> ملف لكن غير جاهز
@@ -245,7 +290,6 @@
           </div>
         </div>
 
-        <!-- ✅ حالة: لا ملفات إطلاقاً -->
         <div x-show="!hasFiles" x-cloak>
           <h3 class="text-white font-semibold text-base sm:text-lg mb-2">
             📭 لا توجد ملفات بعد
@@ -262,7 +306,6 @@
       <!-- الرسائل -->
       <template x-for="(msg, idx) in messages" :key="idx">
         <div class="space-y-2 sm:space-y-3 animate-fadeIn">
-          <!-- سؤال المستخدم -->
           <div class="flex justify-end">
             <div class="max-w-[85%] sm:max-w-lg bg-brand-600/20 border border-brand-600/30 rounded-2xl rounded-tr-sm px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-white text-right break-words">
               <span x-text="msg.question"></span>
@@ -274,17 +317,14 @@
             </div>
           </div>
 
-          <!-- الإجابة -->
           <div class="flex justify-start">
             <div class="max-w-[95%] sm:max-w-2xl w-full">
-              <!-- حالة عدم وجود نتائج -->
               <div x-show="!msg.has_results && !msg.loading"
                    class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-sm text-zinc-300 text-right">
                 <p x-text="msg.error || '😕 لم أجد معلومات ذات صلة بسؤالك.'"></p>
                 <span class="text-zinc-500 text-[10px] sm:text-xs block mt-1">💡 حاول تغيير نطاق البحث أو صياغة السؤال بشكل مختلف</span>
               </div>
 
-              <!-- حالة تحميل النموذج -->
               <div x-show="msg.loading" class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5">
                 <div class="flex items-center gap-3 text-right">
                   <div class="flex gap-1">
@@ -297,7 +337,6 @@
                 <p class="text-xs text-zinc-500 mt-1 text-right">🔄 النماذج الكبيرة تحتاج وقتاً للتحميل لأول مرة</p>
               </div>
 
-              <!-- عرض النتائج -->
               <div x-show="msg.has_results" class="space-y-2">
                 <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 sm:py-3.5 text-right">
                   <div class="flex items-center gap-2 mb-2">
@@ -319,7 +358,6 @@
                   </div>
                 </div>
 
-                <!-- مصادر إضافية -->
                 <div x-show="msg.sources && msg.sources.length > 1">
                   <button @click="msg.showSources = !msg.showSources"
                           class="text-[10px] sm:text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1">
@@ -360,7 +398,6 @@
         </div>
       </template>
 
-      <!-- مؤشر التحميل العام -->
       <div x-show="loading && messages.length > 0 && !messages[messages.length - 1]?.loading" class="flex justify-start">
         <div class="bg-zinc-800 border border-zinc-700 rounded-2xl rounded-tl-sm px-3 sm:px-4 py-3 flex items-center gap-2">
           <div class="flex gap-1">
@@ -377,7 +414,6 @@
     <div class="border-t border-zinc-800 p-2 sm:p-3 flex-shrink-0 bg-zinc-900/95 backdrop-blur-sm">
       <div class="flex gap-2 items-center">
         
-        <!-- زر المايك (يمين) -->
         <button @click="toggleRecording()"
                 :disabled="loading || !canChat"
                 class="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 relative order-1 disabled:opacity-40"
@@ -389,7 +425,6 @@
                 class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
         </button>
 
-        <!-- حقل الإدخال (وسط) — معطّل حتى الجاهزية -->
         <div class="flex-1 min-w-0 relative order-2">
           <input
             type="text"
@@ -406,7 +441,6 @@
             dir="auto"
           />
           
-          <!-- شارة "معطل" -->
           <div x-show="!canChat && !recording" 
                x-cloak
                class="absolute inset-0 flex items-center justify-end px-3 pointer-events-none">
@@ -415,7 +449,6 @@
           </div>
         </div>
 
-        <!-- زر الإرسال (يسار) -->
         <button @click="sendQuestion()"
                 :disabled="loading || !question.trim() || recording || !canChat"
                 :class="canChat ? 'bg-brand-600 hover:bg-brand-500' : 'bg-zinc-700 cursor-not-allowed'"
@@ -426,7 +459,6 @@
         </button>
       </div>
 
-      <!-- ── الشريط السفلي مع خيارات إضافية ── -->
       <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
         <div class="flex flex-wrap items-center gap-2">
           <div class="flex items-center gap-1.5 bg-zinc-800/50 border border-zinc-700 rounded-lg px-2 py-1">
@@ -525,7 +557,6 @@
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* ✨ أنيميشن شريط التقدم */
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
@@ -571,7 +602,9 @@ function searchApp() {
     messages: [],
     loading: false,
     analyzing: false,
-    analyzingStartTime: null,   // ✨ جديد
+    analyzingStartTime: null,
+    indexingStartTime: null,      // ✨ جديد
+    indexingFileIds: new Set(),   // ✨ جديد - لتتبع الملفات قيد الفهرسة
     error: null,
     autoScroll: true,
     
@@ -644,6 +677,7 @@ function searchApp() {
     },
 
     statusEmoji(fileId) {
+      if (this.isFileIndexing(fileId)) return '📇';
       const s = this.getFileStatus(fileId);
       return {
         ready: '✅',
@@ -676,6 +710,8 @@ function searchApp() {
     },
 
     getSelectedFileLabel() {
+      if (this.isIndexing()) return '📇 جاري فهرسة المقاطع...';
+      
       const s = this.getSelectedFileStatus();
       return {
         ready: '✅ الملف جاهز للدردشة',
@@ -686,20 +722,44 @@ function searchApp() {
       }[s] || '—';
     },
 
-    // ✨ رسالة التحليل التفصيلية
+    // ✨ هل الملف المحدد قيد الفهرسة؟
+    isIndexing() {
+      if (this.selectedFileId === 'all') return false;
+      return this.isFileIndexing(this.selectedFileId);
+    },
+
+    // ✨ هل ملف معين قيد الفهرسة؟
+    isFileIndexing(fileId) {
+      return this.indexingFileIds.has(String(fileId));
+    },
+
     getAnalyzingMessage() {
       const chunks = this.getSelectedFileChunks();
       const textLen = this.fileStatuses[this.selectedFileId]?.text_length || 0;
       
       if (textLen === 0) return 'جاري استخراج النص...';
-      if (chunks === 0) return `تم استخراج ${textLen} حرف — جاري الفهرسة...`;
-      return `جاري الفهرسة — ${chunks} مقطع حتى الآن...`;
+      if (chunks === 0) return `تم استخراج ${textLen} حرف — جاري التصنيف...`;
+      return `جاري التحليل — ${chunks} مقطع`;
     },
 
-    // ✨ الوقت المنقضي
     getElapsedTime() {
       if (!this.analyzingStartTime) return '';
       const seconds = Math.floor((Date.now() - this.analyzingStartTime) / 1000);
+      if (seconds < 60) return seconds + ' ث';
+      return Math.floor(seconds / 60) + ' د ' + (seconds % 60) + ' ث';
+    },
+
+    // ✨ رسالة الفهرسة
+    getIndexingMessage() {
+      const chunks = this.getSelectedFileChunks();
+      if (chunks === 0) return 'جاري تقطيع النص وفهرسته...';
+      return `تم فهرسة ${chunks} مقطع حتى الآن...`;
+    },
+
+    // ✨ وقت الفهرسة المنقضي
+    getIndexingElapsed() {
+      if (!this.indexingStartTime) return '';
+      const seconds = Math.floor((Date.now() - this.indexingStartTime) / 1000);
       if (seconds < 60) return seconds + ' ث';
       return Math.floor(seconds / 60) + ' د ' + (seconds % 60) + ' ث';
     },
@@ -712,6 +772,7 @@ function searchApp() {
       if (!this.hasFiles) return 'لا توجد ملفات';
       if (this.selectedFileId === 'all' && !this.hasIndexedFiles) return 'لا ملفات مفهرسة';
       if (this.selectedFileId !== 'all') {
+        if (this.isIndexing()) return '📇 قيد الفهرسة';
         const s = this.getSelectedFileStatus();
         if (s === 'analyzing') return '⏳ قيد التحليل';
         if (s === 'pending') return '⏸️ غير مفهرس';
@@ -770,22 +831,61 @@ function searchApp() {
           
           const prev = this.fileStatuses[f.id]?.status;
           this.fileStatuses[f.id] = data;
+          const fileIdStr = String(f.id);
           
-          // إشعار الاكتمال
-          if (prev === 'analyzing' && data.status === 'ready') {
-            this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
-            this.refreshCounters();
-            if (String(f.id) === String(this.selectedFileId)) {
+          // ═══ ✨ اكتشاف الانتقالات ═══
+          
+          // 1. من analyzing → analyzed_not_indexed (بدء الفهرسة!)
+          if (prev === 'analyzing' && data.status === 'analyzed_not_indexed') {
+            this.showToast(`📇 اكتمل التحليل — بدأت الفهرسة...`);
+            this.indexingFileIds.add(fileIdStr);
+            
+            if (fileIdStr === String(this.selectedFileId)) {
               this.analyzingStartTime = null;
+              this.indexingStartTime = Date.now();
+            }
+            // ابدأ polling سريع للفهرسة
+            this.startFastPolling();
+          }
+          
+          // 2. من analyzed_not_indexed → ready (اكتملت الفهرسة!)
+          if ((prev === 'analyzed_not_indexed' || this.isFileIndexing(fileIdStr)) 
+              && data.status === 'ready') {
+            this.showToast(`✅ تمت الفهرسة — ${data.chunks} مقطع جاهز`);
+            this.indexingFileIds.delete(fileIdStr);
+            this.refreshCounters();
+            
+            if (fileIdStr === String(this.selectedFileId)) {
+              this.indexingStartTime = null;
             }
           }
           
-          // إشعار الفشل
-          if (prev === 'analyzing' && data.status === 'failed') {
-            this.showToast(`❌ فشل تحليل "${f.original_name}"`);
-            if (String(f.id) === String(this.selectedFileId)) {
+          // 3. من analyzing → ready (عملية كاملة بدون مرحلة وسطية)
+          if (prev === 'analyzing' && data.status === 'ready') {
+            this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
+            this.refreshCounters();
+            this.indexingFileIds.delete(fileIdStr);
+            
+            if (fileIdStr === String(this.selectedFileId)) {
               this.analyzingStartTime = null;
+              this.indexingStartTime = null;
             }
+          }
+          
+          // 4. فشل
+          if (prev && prev !== 'failed' && data.status === 'failed') {
+            this.showToast(`❌ فشل تحليل "${f.original_name}"`);
+            this.indexingFileIds.delete(fileIdStr);
+            
+            if (fileIdStr === String(this.selectedFileId)) {
+              this.analyzingStartTime = null;
+              this.indexingStartTime = null;
+            }
+          }
+          
+          // 5. إذا status = analyzed_not_indexed ولم نكن نعرفه → أضفه لقائمة الفهرسة
+          if (data.status === 'analyzed_not_indexed' && this.analyzing) {
+            this.indexingFileIds.add(fileIdStr);
           }
           
           const file = this.files.find(x => x.id === f.id);
@@ -820,6 +920,8 @@ function searchApp() {
       try {
         this.analyzing = true;
         this.analyzingStartTime = Date.now();
+        // أضف للتتبع (سيُفهرس لاحقاً)
+        this.indexingFileIds.add(String(fileId));
         
         const res = await fetch(`${API_BASE}/files/${fileId}/analyze`, {
           method: 'POST',
@@ -835,7 +937,6 @@ function searchApp() {
         
         this.showToast('🚀 بدأ التحليل في الخلفية...');
         
-        // تحديث فوري + polling سريع
         setTimeout(() => this.refreshAllFileStatuses(), 500);
         this.startFastPolling();
         
@@ -843,12 +944,42 @@ function searchApp() {
         console.error('Analyze error:', e);
         this.showError('⚠️ ' + (e.message || 'فشل بدء التحليل'));
         this.analyzingStartTime = null;
+        this.indexingFileIds.delete(String(fileId));
       } finally {
         this.analyzing = false;
       }
     },
 
-    // ✨ polling سريع أثناء التحليل (كل 1.5 ثانية لمدة دقيقة)
+    // ✨ فهرسة مباشرة (لزر "فهرسة الآن")
+    async indexSelectedFile() {
+      if (this.selectedFileId === 'all') return;
+      
+      const fileId = parseInt(this.selectedFileId);
+      this.indexingFileIds.add(String(fileId));
+      this.indexingStartTime = Date.now();
+      
+      try {
+        const res = await fetch(`${API_BASE}/files/${fileId}/analyze`, {
+          method: 'POST',
+        });
+        
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || 'فشل بدء الفهرسة');
+        }
+        
+        this.showToast('📇 بدأت الفهرسة...');
+        setTimeout(() => this.refreshAllFileStatuses(), 500);
+        this.startFastPolling();
+        
+      } catch (e) {
+        console.error('Index error:', e);
+        this.showError('⚠️ ' + (e.message || 'فشل بدء الفهرسة'));
+        this.indexingFileIds.delete(String(fileId));
+        this.indexingStartTime = null;
+      }
+    },
+
     startFastPolling() {
       if (this.fastPollingTimer) clearInterval(this.fastPollingTimer);
       
@@ -856,11 +987,11 @@ function searchApp() {
       this.fastPollingTimer = setInterval(() => {
         this.refreshAllFileStatuses();
         count++;
-        if (count >= 40) {  // 60 ثانية
+        if (count >= 60) {
           clearInterval(this.fastPollingTimer);
           this.fastPollingTimer = null;
         }
-      }, 1500);
+      }, 1000);
     },
 
     async analyzeAllPending() {
@@ -913,6 +1044,7 @@ function searchApp() {
     onFileSelect() {
       this.quickFileSelect = this.selectedFileId;
       this.analyzingStartTime = null;
+      this.indexingStartTime = null;
     },
 
     askExample(question) {
@@ -940,10 +1072,6 @@ function searchApp() {
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 3000);
     },
-
-    // ══════════════════════════════════════════════════════════
-    //  Audio
-    // ══════════════════════════════════════════════════════════
 
     async toggleRecording() {
       if (this.recording) { this.stopRecording(); return; }
@@ -1018,10 +1146,6 @@ function searchApp() {
         this.showError('⚠️ فشل تحويل الصوت');
       }
     },
-
-    // ══════════════════════════════════════════════════════════
-    //  Send Question
-    // ══════════════════════════════════════════════════════════
 
     async sendQuestion() {
       const q = this.question.trim();
