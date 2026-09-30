@@ -11,9 +11,11 @@ Pipeline stages:
 The frontend sees via /status:
     pending → analyzing → indexing → ready
 
-✨ تحديث: تتبع التقدم الحقيقي (progress tracking) عبر تحديث DocumentAnalysis
-         دوريًا من callback يُمرَّر إلى search_service.index_document.
-         + إصلاح _mark_analysis_failed لتغيير status إلى FAILED فعليًا.
+✨ تحديث:
+    - Heartbeat loop أثناء Stage 1 (لتجنب كشف المهمة كمعلقة)
+    - Fallback إلى _quick_text إذا فشل Stage 1
+    - إصلاح _mark_analysis_failed لتغيير status إلى FAILED فعليًا
+    - تحديث التقدم دوريًا عبر on_progress callback
 """
 from __future__ import annotations
 
@@ -35,11 +37,17 @@ from app.services.search.search_service import search_service
 logger = logging.getLogger(__name__)
 
 # ⏱️ Timeouts (seconds)
-ANALYSIS_TIMEOUT = 300.0   # 5 دقائق للتحليل
+ANALYSIS_TIMEOUT = 180.0   # 3 دقائق للتحليل (خفّضناها من 300)
 INDEXING_TIMEOUT = 120.0   # 2 دقيقة للفهرسة
 
 # ✨ عدد المقاطع بين كل تحديث تقدم في قاعدة البيانات
 PROGRESS_UPDATE_EVERY = 5
+
+# ✨ كل كم ثانية نُحدّث النبضة أثناء Stage 1
+HEARTBEAT_INTERVAL = 15.0
+
+# ✨ إذا لم تُنتج Stage 1 نصًا خلال هذه المدة → fallback إلى _quick_text
+FALLBACK_TO_QUICK_TEXT = True
 
 
 async def analyze_and_index_background(file_id: int, user_id: int) -> None:
@@ -56,6 +64,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
     )
 
     analysis_id: int | None = None
+    heartbeat_task: asyncio.Task | None = None
 
     try:
         # ═══════════════════════════════════════════════════════════
@@ -110,13 +119,13 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
                 file_id=file_id,
                 user_id=user_id,
                 status=AnalysisStatus.PENDING,
-                stage="analysis",           # ✨
-                current_step="preparing",   # ✨
-                progress_current=0,         # ✨
-                progress_total=0,           # ✨
-                progress_percent=0.0,       # ✨
-                stage_started_at=utcnow(),  # ✨
-                last_heartbeat_at=utcnow(), # ✨
+                stage="analysis",
+                current_step="preparing",
+                progress_current=0,
+                progress_total=0,
+                progress_percent=0.0,
+                stage_started_at=utcnow(),
+                last_heartbeat_at=utcnow(),
             )
             db.add(analysis)
             await db.commit()
@@ -127,6 +136,17 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
 
             file_path = file.path
             file_format = file.format
+
+        # ═══════════════════════════════════════════════════════════
+        # ✨ 1b. ابدأ heartbeat loop في الخلفية
+        # ═══════════════════════════════════════════════════════════
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_loop(analysis_id, interval=HEARTBEAT_INTERVAL)
+        )
+        logger.info(
+            f"💓 [BG] Heartbeat loop started for analysis #{analysis_id} "
+            f"(interval={HEARTBEAT_INTERVAL}s)"
+        )
 
         # ═══════════════════════════════════════════════════════════
         # 2. Stage 1 — Analysis (handle_analysis_job) with timeout
@@ -140,14 +160,12 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
             "analysis_id": analysis_id,
         }
 
+        stage_1_succeeded = False
         try:
             logger.info(
                 f"🔍 [BG] Stage 1 (analysis) started for file {file_id} "
                 f"(timeout={ANALYSIS_TIMEOUT}s)"
             )
-            # ✨ تحديث نبضة قبل البدء
-            await _touch_heartbeat(analysis_id)
-
             result = await asyncio.wait_for(
                 handle_analysis_job(payload),
                 timeout=ANALYSIS_TIMEOUT,
@@ -156,36 +174,84 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
                 f"🎉 [BG] Stage 1 (analysis) completed for file {file_id}: "
                 f"{result}"
             )
-            # ✨ تحديث الحالة بعد التحليل
-            await _update_analysis_stage(
-                analysis_id,
-                stage="indexing",
-                step="preparing",
-                heartbeat=True,
-            )
+            stage_1_succeeded = True
+
+            # ✨ تحقق أن التحليل أنتج نصًا فعلًا
+            async with AsyncSessionLocal() as check_db:
+                a = await check_db.get(DocumentAnalysis, analysis_id)
+                if a and (not a.raw_text or not a.raw_text.strip()):
+                    logger.warning(
+                        f"⚠️ [BG] Stage 1 completed but raw_text is empty "
+                        f"for analysis #{analysis_id}"
+                    )
+                    stage_1_succeeded = False
+
         except asyncio.TimeoutError:
             logger.error(
                 f"⏱️ [BG] Stage 1 TIMEOUT after {ANALYSIS_TIMEOUT}s "
                 f"for file {file_id}"
             )
-            await _mark_analysis_failed(
-                analysis_id,
-                f"analysis timed out after {int(ANALYSIS_TIMEOUT)}s",
-            )
-            return
         except Exception as e:
             logger.exception(
                 f"❌ [BG] Stage 1 (analysis) failed for file {file_id}: {e}"
             )
+
+        # ═══════════════════════════════════════════════════════════
+        # ✨ 2b. Fallback: إذا فشل Stage 1، جرّب _quick_text
+        # ═══════════════════════════════════════════════════════════
+        if not stage_1_succeeded and FALLBACK_TO_QUICK_TEXT:
+            logger.info(
+                f"🔄 [BG] Trying fallback _quick_text for file {file_id}"
+            )
+            try:
+                from app.services.pipeline.pipeline_manager import _quick_text
+
+                quick_text = _quick_text(file_path, file_format)
+                if quick_text and quick_text.strip():
+                    async with AsyncSessionLocal() as fb_db:
+                        a = await fb_db.get(DocumentAnalysis, analysis_id)
+                        if a:
+                            a.raw_text = quick_text
+                            a.status = AnalysisStatus.COMPLETED
+                            a.stage = "indexing"
+                            a.current_step = "preparing"
+                            a.error_message = (
+                                "Stage 1 timed out — using quick_text fallback"
+                            )
+                            a.last_heartbeat_at = utcnow()
+                            await fb_db.commit()
+
+                    logger.info(
+                        f"✅ [BG] Fallback succeeded: extracted "
+                        f"{len(quick_text)} chars"
+                    )
+                    stage_1_succeeded = True
+                else:
+                    logger.warning(f"⚠️ [BG] _quick_text returned empty")
+            except Exception as fb_err:
+                logger.error(f"❌ [BG] Fallback failed: {fb_err}")
+
+        # ═══════════════════════════════════════════════════════════
+        # إذا فشل كل شيء → سجّل الفشل
+        # ═══════════════════════════════════════════════════════════
+        if not stage_1_succeeded:
             await _mark_analysis_failed(
                 analysis_id,
-                f"analysis failed: {str(e)[:400]}",
+                "analysis failed or produced no text (both main pipeline and fallback)",
             )
             return
 
         # ═══════════════════════════════════════════════════════════
         # 3. Stage 2 — Indexing (search_service.index_document)
         # ═══════════════════════════════════════════════════════════
+        # ✨ تحديث الحالة قبل الفهرسة
+        await _update_analysis_stage(
+            analysis_id,
+            stage="indexing",
+            step="preparing",
+            heartbeat=True,
+        )
+
         await _run_stage_2_indexing(
             analysis_id=analysis_id,
             file_id=file_id,
@@ -201,6 +267,16 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
                 analysis_id,
                 f"pipeline crashed: {str(e)[:400]}",
             )
+    finally:
+        # ✨ أوقف heartbeat loop
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"⚠️ [BG] Heartbeat task cleanup error: {e}")
 
 
 # ── Stage 2: Indexing ─────────────────────────────────────────────────────────
@@ -212,11 +288,6 @@ async def _run_stage_2_indexing(
 ) -> None:
     """
     Stage 2 — index the analysis text into DocumentChunk.
-
-    This is a separate function so it can be called directly when:
-      - Stage 1 produced fresh text (normal flow)
-      - Analysis already existed but wasn't indexed (Case B)
-      - Safety net after Stage 1 (idempotent)
     """
     async with AsyncSessionLocal() as db:
         file = await db.get(File, file_id)
@@ -235,7 +306,6 @@ async def _run_stage_2_indexing(
             logger.info(
                 f"✅ [BG] Stage 2 skipped — {chunks_count} chunks already in DB"
             )
-            # ✨ ضع علامة "done" لأن الفهرسة مكتملة
             await _update_analysis_stage(
                 analysis_id,
                 stage="done",
@@ -249,7 +319,6 @@ async def _run_stage_2_indexing(
             logger.warning(
                 f"⚠️ [BG] Stage 2 skipped — no raw_text for analysis #{analysis_id}"
             )
-            # ✨ ضع علامة "done" لأن التحليل انتهى لكن لا نص للفهرسة
             await _update_analysis_stage(
                 analysis_id,
                 stage="done",
@@ -259,10 +328,9 @@ async def _run_stage_2_indexing(
             return
 
         # ═══════════════════════════════════════════════════════════
-        # ✨ دالة callback لتحديث التقدم في DB
+        # ✨ callback لتحديث التقدم في DB
         # ═══════════════════════════════════════════════════════════
         async def update_progress(current: int, total: int, step: str) -> None:
-            """تُستدعى من search_service.index_document دوريًا."""
             await _update_analysis_progress(
                 analysis_id=analysis_id,
                 stage="indexing",
@@ -278,7 +346,6 @@ async def _run_stage_2_indexing(
                 f"({len(analysis.raw_text)} chars, timeout={INDEXING_TIMEOUT}s)"
             )
 
-            # ✨ تحديث الحالة قبل البدء
             await _update_analysis_stage(
                 analysis_id,
                 stage="indexing",
@@ -296,8 +363,8 @@ async def _run_stage_2_indexing(
                     doc_type=getattr(analysis, "doc_type", None),
                     language=getattr(analysis, "language", None),
                     filename=file.original_name,
-                    on_progress=update_progress,           # ✨ جديد
-                    progress_every=PROGRESS_UPDATE_EVERY,   # ✨ جديد
+                    on_progress=update_progress,
+                    progress_every=PROGRESS_UPDATE_EVERY,
                 ),
                 timeout=INDEXING_TIMEOUT,
             )
@@ -306,7 +373,6 @@ async def _run_stage_2_indexing(
                 f"{chunk_count} chunks stored for file {file_id}"
             )
 
-            # ✨ ضع علامة "done" عند النجاح
             await _update_analysis_stage(
                 analysis_id,
                 stage="done",
@@ -337,6 +403,21 @@ async def _run_stage_2_indexing(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  ✨ Heartbeat loop — يعمل أثناء Stage 1 لتجنب كشف المهمة كمعلقة
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _heartbeat_loop(analysis_id: int, interval: float = 15.0) -> None:
+    """يُحدّث last_heartbeat_at كل `interval` ثانية حتى يُلغى."""
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            await _touch_heartbeat(analysis_id)
+    except asyncio.CancelledError:
+        # طبيعي عند الانتهاء
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  ✨ دوال مساعدة لتحديث التقدم في قاعدة البيانات
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -348,10 +429,7 @@ async def _update_analysis_progress(
     current: int,
     total: int,
 ) -> None:
-    """
-    ✨ تحديث حقول التقدم في DocumentAnalysis بجلسة جديدة.
-    آمن — أي استثناء لا يُفشل الفهرسة.
-    """
+    """تحديث حقول التقدم في DocumentAnalysis بجلسة جديدة."""
     try:
         async with AsyncSessionLocal() as db:
             analysis = await db.get(DocumentAnalysis, analysis_id)
@@ -367,7 +445,6 @@ async def _update_analysis_progress(
             )
             analysis.last_heartbeat_at = utcnow()
 
-            # إذا كانت خطوة البداية، سجّل وقت بدء المرحلة
             if step == "preparing" and current == 0:
                 analysis.stage_started_at = utcnow()
 
@@ -387,9 +464,7 @@ async def _update_analysis_stage(
     step: str,
     heartbeat: bool = False,
 ) -> None:
-    """
-    ✨ تحديث مرحلة/خطوة DocumentAnalysis (بدون تغيير progress counts).
-    """
+    """تحديث مرحلة/خطوة DocumentAnalysis."""
     try:
         async with AsyncSessionLocal() as db:
             analysis = await db.get(DocumentAnalysis, analysis_id)
@@ -401,7 +476,6 @@ async def _update_analysis_stage(
             if heartbeat:
                 analysis.last_heartbeat_at = utcnow()
 
-            # إذا كانت المرحلة "done"، اضبط النسبة إلى 100
             if stage == "done":
                 analysis.progress_percent = 100.0
                 if analysis.progress_total > 0:
@@ -416,7 +490,7 @@ async def _update_analysis_stage(
 
 
 async def _touch_heartbeat(analysis_id: int) -> None:
-    """✨ تحديث نبضة فقط — لتفادي كشف المهمة كمعلقة أثناء التحليل."""
+    """تحديث نبضة فقط."""
     try:
         async with AsyncSessionLocal() as db:
             analysis = await db.get(DocumentAnalysis, analysis_id)
@@ -449,7 +523,6 @@ async def _mark_analysis_failed(analysis_id: int, error_msg: str) -> None:
         async with AsyncSessionLocal() as db:
             analysis = await db.get(DocumentAnalysis, analysis_id)
             if analysis:
-                # ✨ إصلاح جوهري: غيّر status إلى FAILED
                 analysis.status = AnalysisStatus.FAILED
                 analysis.stage = "failed"
                 analysis.current_step = "failed"
@@ -467,10 +540,7 @@ async def _mark_analysis_failed(analysis_id: int, error_msg: str) -> None:
 
 
 async def _index_only(db, file, analysis, user_id: int) -> None:
-    """Legacy helper — kept for backward compatibility.
-
-    Prefer _run_stage_2_indexing() which opens its own session.
-    """
+    """Legacy helper — kept for backward compatibility."""
     try:
         if not analysis.raw_text:
             logger.warning(
