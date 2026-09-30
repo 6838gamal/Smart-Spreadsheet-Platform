@@ -11,7 +11,7 @@ Endpoints:
     GET    /api/v1/search/models             — list available HF models
 
 File pipeline endpoints:
-    GET    /api/v1/search/files/{id}/status  — pipeline status (pending/analyzing/ready/…)
+    GET    /api/v1/search/files/{id}/status  — pipeline status (pending/analyzing/indexing/ready/…)
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
 """
@@ -96,7 +96,8 @@ class ChatResponse(BaseModel):
 
 class FileStatusResponse(BaseModel):
     file_id: int
-    status: str          # pending | analyzing | analyzed_not_indexed | ready | failed
+    # pending | analyzing | indexing | analyzed_not_indexed | ready | failed
+    status: str
     chunks: int
     analysis_id: int | None = None
     analysis_status: str | None = None
@@ -104,11 +105,12 @@ class FileStatusResponse(BaseModel):
     doc_type: str | None = None
     language: str | None = None
     error: str | None = None
-    # ✨ حقول جديدة لدعم شريط التقدم التفصيلي
+    # ✨ حقول إضافية لدعم شريط التقدم التفصيلي
     text_length: int = 0
     pipeline_used: str | None = None
     processing_ms: int | None = None
     updated_at: str | None = None
+    is_indexing: bool = False
 
 
 class AnalyzeTriggerResponse(BaseModel):
@@ -193,13 +195,11 @@ async def query_documents(
 
         if model and model.hf_model_id:
             try:
-                # Prepare context from top sources
                 context = "\n\n---\n\n".join([
                     f"[المصدر {i+1}]: {s.chunk_text}"
                     for i, s in enumerate(result.sources[:3])
                 ])
 
-                # Use HF model for answer generation
                 hf_result = await run_task(
                     task_type=model.task_type or "question-answering",
                     hf_model_id=model.hf_model_id,
@@ -209,7 +209,6 @@ async def query_documents(
 
                 answer = hf_result.get("answer") or hf_result.get("summary") or ""
 
-                # Create answer source from best match
                 best_source = result.sources[0] if result.sources else None
                 answer_source = SourceSchema(
                     file_id=best_source.file_id,
@@ -252,7 +251,6 @@ async def query_documents(
 
             except HFError as exc:
                 logger.error(f"HF error in query: {exc}")
-                # Fallback to BM25
                 return QueryResponse(
                     question=body.question,
                     answer=result.answer or "⚠️ خطأ في الذكاء الاصطناعي. عرض نتائج البحث.",
@@ -284,11 +282,7 @@ async def chat_with_ai(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    General chat with AI (no document context required).
-    Uses Hugging Face models for conversational responses.
-    """
-    # 1. Select model
+    """General chat with AI (no document context required)."""
     model = None
     if body.model_id:
         model = await _get_model_or_none(body.model_id, db)
@@ -311,7 +305,6 @@ async def chat_with_ai(
             model_id=model.id,
         )
 
-    # 2. Get file context if provided
     file_name = None
     context = ""
     if body.file_id:
@@ -329,7 +322,6 @@ async def chat_with_ai(
         if analysis and analysis.raw_text:
             context = analysis.raw_text[:3000]
 
-    # 3. Run HF model
     try:
         if context:
             prompt = f"Context: {context}\n\nQuestion: {body.message}\n\nAnswer:"
@@ -393,9 +385,7 @@ async def stream_answer(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Server-Sent Events endpoint for real-time generative answers.
-    """
+    """Server-Sent Events endpoint for real-time generative answers."""
     parsed_ids: list[int] | None = None
     if file_ids:
         try:
@@ -662,7 +652,8 @@ async def file_pipeline_status(
     Return the current pipeline status of a file:
         pending               → لم يبدأ التحليل
         analyzing             → جاري التحليل الآن
-        analyzed_not_indexed  → تم التحليل لكن يحتاج فهرسة
+        indexing              → التحليل انتهى، الفهرسة جارية
+        analyzed_not_indexed  → التحليل انتهى لكن لا يوجد نص للفهرسة
         ready                 → جاهز للدردشة
         failed                → فشل التحليل
 
@@ -703,7 +694,6 @@ async def file_pipeline_status(
                 doc_type = getattr(analysis, "doc_type", None)
                 language = getattr(analysis, "language", None)
                 analysis_error = getattr(analysis, "error_message", None)
-                # ✨ حقول إضافية
                 text_length = len(analysis.raw_text) if analysis.raw_text else 0
                 pipeline_used = getattr(analysis, "pipeline_used", None)
                 processing_ms = getattr(analysis, "processing_ms", None)
@@ -723,15 +713,38 @@ async def file_pipeline_status(
         except Exception as e:
             logger.warning(f"Could not count chunks for file {file_id}: {e}")
 
-        # 4. Determine status
+        # ═══════════════════════════════════════════════════════════
+        # 4. Determine status (with explicit "indexing" phase)
+        # ═══════════════════════════════════════════════════════════
+        #
+        # Status priority (highest to lowest):
+        #   1. chunks > 0                             → ready
+        #   2. analysis RUNNING/PROCESSING            → analyzing
+        #   3. analysis COMPLETED + has_text + no chunks → indexing
+        #   4. analysis COMPLETED + no text           → analyzed_not_indexed
+        #   5. analysis FAILED                        → failed
+        #   6. otherwise                              → pending
+        #
+        is_indexing = False
+
         if chunks > 0:
             status_str = "ready"
-        elif analysis_status_str == "processing":
+
+        elif analysis_status_str in ("processing", "running"):
             status_str = "analyzing"
+
+        elif analysis_status_str == "completed" and has_text:
+            # ✨ Analysis done + text exists → indexing should be in progress
+            status_str = "indexing"
+            is_indexing = True
+
         elif analysis_status_str == "completed":
+            # Analysis done but no extractable text
             status_str = "analyzed_not_indexed"
+
         elif analysis_status_str == "failed":
             status_str = "failed"
+
         else:
             status_str = "pending"
 
@@ -745,17 +758,16 @@ async def file_pipeline_status(
             doc_type=doc_type,
             language=language,
             error=analysis_error,
-            # ✨ حقول إضافية
             text_length=text_length,
             pipeline_used=pipeline_used,
             processing_ms=processing_ms,
             updated_at=updated_at_iso,
+            is_indexing=is_indexing,
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        # ⚠️ Fallback: never return 500
         logger.exception(f"❌ [status] Unexpected error for file {file_id}: {e}")
         return FileStatusResponse(
             file_id=file_id,
@@ -774,9 +786,8 @@ async def trigger_file_analysis(
 ):
     """
     Manually trigger analysis + indexing for a file (background task).
-    Safe to call multiple times — will re-analyze if already indexed.
+    Safe to call multiple times.
     """
-    # 1. Verify ownership
     file = (await db.execute(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
     )).scalar_one_or_none()
@@ -784,7 +795,6 @@ async def trigger_file_analysis(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # 2. Try to import background task
     try:
         from app.services.pipeline.analyze_and_index_task import analyze_and_index_background
     except ImportError as e:
@@ -797,7 +807,6 @@ async def trigger_file_analysis(
             ),
         )
 
-    # 3. Schedule background task
     background_tasks.add_task(
         analyze_and_index_background,
         file_id=file_id,
@@ -821,7 +830,8 @@ async def list_pending_files(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Return files that are NOT yet ready for search (pending/analyzing/failed).
+    Return files that are NOT yet ready for search
+    (pending/analyzing/indexing/analyzed_not_indexed/failed).
     """
     all_files = (await db.execute(
         select(File).where(File.owner_id == current_user.id).order_by(File.created_at.desc())
@@ -857,13 +867,17 @@ async def list_pending_files(
 
         a = latest_analysis.get(f.id)
         a_status = _safe_enum_value(a.status) if a else None
+        a_has_text = bool(getattr(a, "raw_text", None)) if a else False
 
-        if a_status == "processing":
+        # ✨ Determine status with "indexing" phase
+        if a_status in ("processing", "running"):
             status_str = "analyzing"
-        elif a_status == "failed":
-            status_str = "failed"
+        elif a_status == "completed" and a_has_text:
+            status_str = "indexing"
         elif a_status == "completed":
             status_str = "analyzed_not_indexed"
+        elif a_status == "failed":
+            status_str = "failed"
         else:
             status_str = "pending"
 
