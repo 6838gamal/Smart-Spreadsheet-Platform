@@ -249,26 +249,18 @@ async def handle_analysis_job(payload: dict) -> dict:
             analysis.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
-            # ── Step 4: Auto-index for search ─────────────────────────
-            try:
-                from app.services.search.search_service import search_service
-                file_row = await db.get(File, file_id)
-                if raw_text:
-                    chunk_count = await search_service.index_document(
-                        db,
-                        file_id=file_id,
-                        analysis_id=analysis_id,
-                        user_id=file_row.owner_id if file_row else 0,
-                        text=raw_text,
-                        doc_type=clf_result.doc_type,
-                        language=ctx.language,
-                        filename=file_row.original_name if file_row else "",
-                    )
-                    logger.info(f"📇 Indexed {chunk_count} chunks for file {file_id}")
-                else:
-                    logger.warning(f"⚠️ No text to index for file {file_id}")
-            except Exception as idx_exc:
-                logger.warning("Search indexing failed for file %d: %s", file_id, idx_exc)
+            # ═══════════════════════════════════════════════════════════
+            # ⚠️ Step 4: Auto-index REMOVED
+            # ═══════════════════════════════════════════════════════════
+            # Indexing is now handled SEPARATELY by analyze_and_index_background()
+            # so the frontend can display a distinct "indexing" progress bar.
+            # The analysis row is left with status=COMPLETED and no chunks yet,
+            # which the /status endpoint reports as "indexing" (between
+            # analyzed_not_indexed and ready).
+            logger.info(
+                f"📄 Analysis #{analysis_id} complete — awaiting separate indexing step "
+                f"(file={file_id})"
+            )
 
             logger.info("Analysis %d completed in %dms (type=%s)", analysis_id, duration_ms, clf_result.doc_type)
             return {
@@ -306,26 +298,31 @@ async def handle_analysis_job(payload: dict) -> dict:
 
 async def analyze_and_index_background(file_id: int, user_id: int) -> None:
     """
-    Wrapper that runs the analysis pipeline in background.
-    Called by the FastAPI BackgroundTasks from the search API.
+    Wrapper that runs the analysis pipeline + indexing in background.
 
-    Creates (or reuses) a DocumentAnalysis record, then calls
-    handle_analysis_job() which does the full analysis + auto-indexing.
+    Pipeline stages:
+        1. Create (or reuse) DocumentAnalysis  → status=PENDING
+        2. Call handle_analysis_job()          → status=RUNNING → COMPLETED
+        3. Run index_document()                → chunks stored → status stays COMPLETED
+
+    The frontend sees the following transitions via /status:
+        pending → analyzing → indexing → ready
     """
     logger.info(f"🚀 [BG] analyze_and_index_background: file={file_id} user={user_id}")
 
     analysis_id: int | None = None
 
     try:
-        # ── 1. Create (or reuse) a DocumentAnalysis row ──
+        # ═══════════════════════════════════════════════════════════
+        # 1. Create (or reuse) a DocumentAnalysis row
+        # ═══════════════════════════════════════════════════════════
         async with AsyncSessionLocal() as db:
+            from sqlalchemy import select
             file = await db.get(File, file_id)
             if not file:
                 logger.warning(f"⚠️ [BG] File {file_id} not found")
                 return
 
-            # Reuse existing completed analysis if available
-            from sqlalchemy import select
             existing = (await db.execute(
                 select(DocumentAnalysis)
                 .where(DocumentAnalysis.file_id == file_id)
@@ -351,7 +348,9 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
             file_path = file.path
             file_format = file.format
 
-        # ── 2. Call the real handler ──
+        # ═══════════════════════════════════════════════════════════
+        # 2. Stage 1 — Analysis (status: analyzing)
+        # ═══════════════════════════════════════════════════════════
         result = await handle_analysis_job({
             "file_id": file_id,
             "file_path": file_path,
@@ -359,10 +358,77 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
             "analysis_id": analysis_id,
         })
 
-        logger.info(f"🎉 [BG] Complete for file {file_id}: {result}")
+        logger.info(f"✅ [BG] Analysis stage done for file {file_id}: {result}")
+
+        # ═══════════════════════════════════════════════════════════
+        # 3. Stage 2 — Indexing (status: indexing)
+        # ═══════════════════════════════════════════════════════════
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import select
+            analysis = await db.get(DocumentAnalysis, analysis_id)
+            file = await db.get(File, file_id)
+
+            if not analysis or not file:
+                logger.warning(f"⚠️ [BG] Cannot index — analysis/file missing")
+                return
+
+            # Skip if already indexed
+            from sqlalchemy import func as sql_func
+            from app.infrastructure.database.models_intelligence import DocumentChunk
+            existing_chunks = (await db.execute(
+                select(sql_func.count(DocumentChunk.id)).where(
+                    DocumentChunk.file_id == file_id,
+                    DocumentChunk.user_id == user_id,
+                )
+            )).scalar() or 0
+
+            if existing_chunks > 0:
+                logger.info(
+                    f"✅ [BG] File {file_id} already indexed "
+                    f"({existing_chunks} chunks) — skipping"
+                )
+                return
+
+            if not analysis.raw_text or not analysis.raw_text.strip():
+                logger.warning(f"⚠️ [BG] No text to index for file {file_id}")
+                return
+
+            # ═══════════════════════════════════════════════════════
+            # Run the indexing — this is what the frontend sees as "indexing"
+            # ═══════════════════════════════════════════════════════
+            try:
+                from app.services.search.search_service import search_service
+
+                logger.info(f"📇 [BG] Indexing file {file_id}...")
+                chunk_count = await search_service.index_document(
+                    db,
+                    file_id=file_id,
+                    analysis_id=analysis_id,
+                    user_id=user_id,
+                    text=analysis.raw_text,
+                    doc_type=getattr(analysis, "doc_type", None),
+                    language=getattr(analysis, "language", None),
+                    filename=file.original_name,
+                )
+                logger.info(
+                    f"🎉 [BG] Indexed {chunk_count} chunks for file {file_id}"
+                )
+            except Exception as idx_exc:
+                logger.exception(
+                    f"❌ [BG] Indexing failed for file {file_id}: {idx_exc}"
+                )
+                # Store the error so the UI can display it
+                try:
+                    analysis.error_message = f"indexing failed: {str(idx_exc)[:400]}"
+                    await db.commit()
+                except Exception:
+                    pass
+                return
+
+        logger.info(f"🏁 [BG] Full pipeline complete for file {file_id}")
 
     except Exception as e:
-        logger.exception(f"❌ [BG] Failed for file {file_id}: {e}")
+        logger.exception(f"❌ [BG] analyze_and_index failed for {file_id}: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
