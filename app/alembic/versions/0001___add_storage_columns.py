@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers
-revision = '20260816_add_storage_columns'
-down_revision = 'previous_revision'  # استبدل بـ revision السابقة
+revision = '0001'
+down_revision = None  # استبدل بـ revision السابقة
 branch_labels = None
 depends_on = None
 
