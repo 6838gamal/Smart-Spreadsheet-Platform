@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import AsyncIterator
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.search.text_chunker import chunk_text
@@ -84,29 +84,80 @@ class SearchService:
         Existing chunks for *file_id* are replaced.
         Returns the number of chunks stored.
         """
-        if not text or not text.strip():
-            return 0
-
-        # Remove old chunks for this file
-        await db.execute(
-            delete(DocumentChunk).where(DocumentChunk.file_id == file_id)
+        logger.info(
+            f"📇 [INDEX] START: file={file_id} "
+            f"text_len={len(text) if text else 0} user={user_id}"
         )
 
-        chunks = chunk_text(text)
-        for ch in chunks:
-            db.add(DocumentChunk(
-                file_id=file_id,
-                analysis_id=analysis_id,
-                user_id=user_id,
-                chunk_index=ch["chunk_index"],
-                chunk_text=ch["chunk_text"],
-                doc_type=doc_type,
-                language=language,
-                filename=filename,
-            ))
+        if not text or not text.strip():
+            logger.warning(f"⚠️ [INDEX] Empty text for file {file_id}")
+            return 0
 
-        await db.commit()
-        logger.info("Indexed %d chunks for file_id=%d (backend=%s)", len(chunks), file_id, self._backend.name)
+        # ── 1. Remove old chunks for this file ──
+        logger.info(f"🗑️ [INDEX] Deleting old chunks for file {file_id}")
+        try:
+            await db.execute(
+                delete(DocumentChunk).where(DocumentChunk.file_id == file_id)
+            )
+            logger.info(f"🗑️ [INDEX] Delete done for file {file_id}")
+        except Exception as e:
+            logger.exception(f"❌ [INDEX] Delete failed for file {file_id}: {e}")
+            raise
+
+        # ── 2. Chunk the text ──
+        logger.info(f"✂️ [INDEX] Chunking {len(text)} chars...")
+        try:
+            chunks = chunk_text(text)
+        except Exception as e:
+            logger.exception(f"❌ [INDEX] Chunking failed for file {file_id}: {e}")
+            raise
+
+        logger.info(f"✅ [INDEX] Produced {len(chunks)} chunks for file {file_id}")
+
+        if not chunks:
+            logger.warning(
+                f"⚠️ [INDEX] No chunks produced for file {file_id} — "
+                f"text may be too short or unparseable"
+            )
+            # Still commit to release any pending transaction
+            try:
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"⚠️ [INDEX] Commit (empty) failed: {e}")
+            return 0
+
+        # ── 3. Prepare chunk rows ──
+        logger.info(f"💾 [INDEX] Preparing {len(chunks)} chunks...")
+        try:
+            for i, ch in enumerate(chunks):
+                db.add(DocumentChunk(
+                    file_id=file_id,
+                    analysis_id=analysis_id,
+                    user_id=user_id,
+                    chunk_index=ch["chunk_index"],
+                    chunk_text=ch["chunk_text"],
+                    doc_type=doc_type,
+                    language=language,
+                    filename=filename,
+                ))
+                if (i + 1) % 50 == 0:
+                    logger.info(f"   → prepared {i+1}/{len(chunks)} chunks")
+        except Exception as e:
+            logger.exception(f"❌ [INDEX] Preparing chunks failed: {e}")
+            raise
+
+        # ── 4. Commit ──
+        logger.info(f"💾 [INDEX] Committing {len(chunks)} chunks...")
+        try:
+            await db.commit()
+        except Exception as e:
+            logger.exception(f"❌ [INDEX] Commit failed for file {file_id}: {e}")
+            raise
+
+        logger.info(
+            f"🎉 [INDEX] DONE: {len(chunks)} chunks for file {file_id} "
+            f"(backend={self._backend.name})"
+        )
         return len(chunks)
 
     # ── Querying ──────────────────────────────────────────────────────────────
@@ -125,8 +176,10 @@ class SearchService:
         Returns an improved extractive answer (no LLM key required).
         Use stream_answer() for the LLM-powered real-time version.
         """
-        sources, total = await self._retrieve(db, user_id=user_id, question=question,
-                                               file_ids=file_ids, top_k=top_k)
+        sources, total = await self._retrieve(
+            db, user_id=user_id, question=question,
+            file_ids=file_ids, top_k=top_k,
+        )
 
         if not sources:
             return QAResult(
@@ -171,8 +224,10 @@ class SearchService:
         """
         from app.core.config import settings
 
-        sources, total = await self._retrieve(db, user_id=user_id, question=question,
-                                               file_ids=file_ids, top_k=top_k)
+        sources, total = await self._retrieve(
+            db, user_id=user_id, question=question,
+            file_ids=file_ids, top_k=top_k,
+        )
 
         # ── 1. Emit sources first so the UI can show citations immediately ──
         sources_payload = [
@@ -192,7 +247,7 @@ class SearchService:
             yield f"data: {json.dumps({'type': 'done', 'mode': 'no_results'}, ensure_ascii=False)}\n\n"
             return
 
-        # ── 2. Try LLM streaming if key is set ──────────────────────────────
+        # ── 2. Try LLM streaming if key is set ──
         api_key = settings.OPENAI_API_KEY
         if api_key:
             try:
@@ -203,7 +258,7 @@ class SearchService:
             except Exception as exc:
                 logger.warning("LLM streaming failed, falling back to extractive: %s", exc)
 
-        # ── 3. Fallback: improved extractive (emit as a single token) ────────
+        # ── 3. Fallback: improved extractive (emit as a single token) ──
         answer = self._synthesize_extractive(question, sources)
         yield f"data: {json.dumps({'type': 'token', 'text': answer}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'mode': 'extractive'}, ensure_ascii=False)}\n\n"
@@ -319,7 +374,7 @@ class SearchService:
         """Stream tokens from OpenAI Chat API."""
         from app.core.config import settings as _cfg
         if not _cfg.EXTERNAL_APIS_ENABLED:
-            yield f"data: {__import__('json').dumps({'type': 'error', 'text': 'ميزة الإجابة الذكية معطّلة مؤقتاً.'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'text': 'ميزة الإجابة الذكية معطّلة مؤقتاً.'}, ensure_ascii=False)}\n\n"
             return
         import httpx
 
@@ -383,7 +438,6 @@ class SearchService:
 
     async def get_stats(self, db: AsyncSession, *, user_id: int) -> dict:
         """Return indexing stats for the user."""
-        from sqlalchemy import func
         row = (await db.execute(
             select(
                 func.count(DocumentChunk.id).label("total_chunks"),
