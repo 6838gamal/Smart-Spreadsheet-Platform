@@ -79,7 +79,7 @@
         <span x-show="isSelectedFileStalled()" 
               x-cloak
               class="text-[10px] bg-orange-600/20 text-orange-400 border border-orange-600/40 rounded-full px-2 py-0.5 flex items-center gap-1">
-          ⚠️ قد تكون المهمة معلقة
+          ⚠️ المهمة معلقة
         </span>
         
         <!-- عدد المقاطع -->
@@ -233,14 +233,52 @@
       </p>
     </div>
 
-    <!-- ✨ الصف 5: رسالة "المهمة معلقة" -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- ✨ لوحة تشخيص تفصيلية عند التعطل (جديد) -->
+    <!-- ═══════════════════════════════════════════════════════ -->
     <div x-show="isSelectedFileStalled()" 
          x-cloak
-         class="mt-2 p-2 bg-orange-900/20 border border-orange-800/40 rounded-lg">
-      <p class="text-[10px] sm:text-xs text-orange-300 flex items-start gap-1.5">
-        <span>⚠️</span>
-        <span>المهمة تبدو معلقة (لم تُحدّث منذ أكثر من 5 دقائق). جرّب "إعادة التحليل".</span>
-      </p>
+         class="mt-3 p-3 bg-orange-900/20 border border-orange-700/50 rounded-lg space-y-2">
+      
+      <div class="flex items-center gap-2 text-orange-300 font-semibold text-xs">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span>المهمة لا تستجيب</span>
+        <span class="text-orange-400/70 mr-auto text-[10px]"
+              x-text="'آخر نبضة: ' + formatSeconds(getSelectedFileStallSeconds()) + ' مضت'"></span>
+      </div>
+      
+      <div class="text-[11px] text-orange-200/80 space-y-1 pr-5">
+        <p x-show="getSelectedFileStallReason()" x-text="getSelectedFileStallReason()"></p>
+        <p x-show="!getSelectedFileStallReason() && getSelectedFileProgress().stage === 'analysis'">
+          🔍 المرحلة 1 (التحليل) عالقة — قد يكون الملف كبيرًا أو نموذج التحليل بطيء.
+        </p>
+        <p x-show="!getSelectedFileStallReason() && getSelectedFileProgress().stage === 'indexing' && getSelectedFileProgress().current === 0">
+          📇 المرحلة 2 (الفهرسة) لم تبدأ — قد تكون المهمة الخلفية قد توقفت.
+        </p>
+        <p x-show="getSelectedFileProgress().current > 0">
+          📊 تمت معالجة <span x-text="getSelectedFileProgress().current"></span> من 
+          <span x-text="getSelectedFileProgress().total"></span> مقطع قبل التوقف.
+        </p>
+      </div>
+      
+      <div class="flex gap-2 pt-1">
+        <button @click="restartAnalysis()"
+                :disabled="analyzing"
+                class="text-xs bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          إعادة تشغيل المهمة
+        </button>
+        <button @click="forceIndexOnly()"
+                :disabled="analyzing"
+                class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
+          ⚡ فهرسة فقط (تخطي التحليل)
+        </button>
+      </div>
     </div>
   </div>
 
@@ -676,6 +714,7 @@ function searchApp() {
     // ── Polling ──
     pollingTimer: null,
     fastPollingTimer: null,
+    tickTimer: null,   // ✨ مؤقت لتحديث "الوقت المنقضي"
 
     // ══════════════════════════════════════════════════════════
     //  Computed
@@ -778,7 +817,41 @@ function searchApp() {
     isSelectedFileStalled() {
       if (this.selectedFileId === 'all') return false;
       const st = this.fileStatuses[this.selectedFileId];
-      return !!(st && st.is_stalled);
+      if (!st) return false;
+      
+      // من API (is_stalled)
+      if (st.is_stalled) return true;
+      
+      // ✨ watchdog محلي: إذا مرت 90 ثانية بدون تقدم
+      if (this.isIndexing() && (st.progress_current || 0) === 0 && this.indexingStartTime) {
+        const elapsed = (Date.now() - this.indexingStartTime) / 1000;
+        if (elapsed > 90) return true;
+      }
+      
+      if (st.status === 'analyzing' && this.analyzingStartTime) {
+        const elapsed = (Date.now() - this.analyzingStartTime) / 1000;
+        if (elapsed > 90) return true;
+      }
+      
+      return false;
+    },
+
+    getSelectedFileStallSeconds() {
+      const st = this.fileStatuses[this.selectedFileId];
+      if (!st) return 0;
+      if (st.seconds_since_heartbeat) return st.seconds_since_heartbeat;
+      if (this.analyzingStartTime && st.status === 'analyzing') {
+        return (Date.now() - this.analyzingStartTime) / 1000;
+      }
+      if (this.indexingStartTime && st.status === 'indexing') {
+        return (Date.now() - this.indexingStartTime) / 1000;
+      }
+      return 0;
+    },
+
+    getSelectedFileStallReason() {
+      const st = this.fileStatuses[this.selectedFileId];
+      return st?.stall_reason || null;
     },
 
     // ═══════════════════════════════════════════════════════════
@@ -872,6 +945,12 @@ function searchApp() {
       }
     },
 
+    formatSeconds(s) {
+      s = Math.floor(s || 0);
+      if (s < 60) return s + ' ث';
+      return Math.floor(s / 60) + ' د ' + (s % 60) + ' ث';
+    },
+
     getSelectedFileError() {
       return this.fileStatuses[this.selectedFileId]?.error || null;
     },
@@ -911,12 +990,9 @@ function searchApp() {
         this.refreshAllFileStatuses();
       }, 3000);
 
-      // ✨ مؤقت لتحديث "الوقت المنقضي" كل ثانية
-      setInterval(() => {
-        if (this.isIndexing() || this.getSelectedFileStatus() === 'analyzing') {
-          // القوة على Alpine.js لإعادة التقييم
-          this.$nextTick(() => {});
-        }
+      // ✨ tick كل ثانية لتحديث "الوقت المنقضي"
+      this.tickTimer = setInterval(() => {
+        this.$nextTick(() => {});
       }, 1000);
       
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1004,7 +1080,7 @@ function searchApp() {
           // 6. ✨ إذا بدأ ملف جديد الفهرسة (indexing) ولم يكن معروفًا
           if (data.status === 'indexing' && prev !== 'indexing' && prev !== 'analyzing') {
             this.indexingFileIds.add(fileIdStr);
-            if (fileIdStr === String(this.selectedFileId)) {
+            if (fileIdStr === String(this.selectedFileId) && !this.indexingStartTime) {
               this.indexingStartTime = Date.now();
             }
           }
@@ -1096,6 +1172,38 @@ function searchApp() {
         this.showError('⚠️ ' + (e.message || 'فشل بدء الفهرسة'));
         this.indexingFileIds.delete(String(fileId));
         this.indexingStartTime = null;
+      }
+    },
+
+    // ✨ إعادة تشغيل المهمة عند التعطل
+    async restartAnalysis() {
+      if (this.selectedFileId === 'all') return;
+      this.analyzingStartTime = null;
+      this.indexingStartTime = null;
+      this.indexingFileIds.delete(String(this.selectedFileId));
+      this.showToast('🔄 جاري إعادة تشغيل المهمة...');
+      await this.analyzeSelectedFile();
+    },
+
+    // ✨ فهرسة فقط (تخطي التحليل)
+    async forceIndexOnly() {
+      if (this.selectedFileId === 'all') return;
+      const fileId = parseInt(this.selectedFileId);
+      
+      try {
+        this.showToast('⚡ جاري إعادة الفهرسة...');
+        const res = await fetch(`${API_BASE}/index/${fileId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.indexed) {
+          this.showToast(`✅ تمت الفهرسة — ${data.chunks} مقطع`);
+          this.refreshAllFileStatuses();
+          this.refreshCounters();
+        } else {
+          this.showError('⚠️ ' + (data.reason || 'فشلت الفهرسة'));
+        }
+      } catch (e) {
+        this.showError('⚠️ خطأ في الفهرسة: ' + e.message);
       }
     },
 
