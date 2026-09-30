@@ -14,6 +14,11 @@ File pipeline endpoints:
     GET    /api/v1/search/files/{id}/status  — pipeline status (pending/analyzing/indexing/ready/…)
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
+
+✨ تحديث: 
+    - إرجاع حقول التقدم التفصيلي (progress_current/total/percent/step/stage)
+    - إصلاح منطق تحديد الحالة: "failed" لها أولوية على "completed"
+    - إضافة حقل current_step و stage لدعم عرض الخطوة الحالية في الواجهة
 """
 from __future__ import annotations
 import json
@@ -105,12 +110,23 @@ class FileStatusResponse(BaseModel):
     doc_type: str | None = None
     language: str | None = None
     error: str | None = None
-    # ✨ حقول إضافية لدعم شريط التقدم التفصيلي
+
+    # ── حقول تفصيلية إضافية ──
     text_length: int = 0
     pipeline_used: str | None = None
     processing_ms: int | None = None
     updated_at: str | None = None
     is_indexing: bool = False
+
+    # ✨ حقول تتبع التقدم (جديدة)
+    stage: str | None = None              # analysis | indexing | done | failed
+    current_step: str | None = None       # preparing | chunking | embedding | storing | done | failed
+    progress_current: int = 0             # عدد المقاطع المعالجة
+    progress_total: int = 0               # إجمالي المقاطع المتوقع
+    progress_percent: float = 0.0         # نسبة التقدم 0-100
+    stage_started_at: str | None = None   # وقت بدء المرحلة الحالية
+    last_heartbeat_at: str | None = None  # آخر نبضة من المهمة
+    is_stalled: bool = False              # هل المهمة معلقة؟
 
 
 class AnalyzeTriggerResponse(BaseModel):
@@ -151,6 +167,26 @@ async def _get_default_model(db: AsyncSession) -> AIModelRegistry | None:
         ).order_by(AIModelRegistry.is_default.desc()).limit(1)
     )
     return result.scalar_one_or_none()
+
+
+def _safe_enum_value(enum_obj) -> str | None:
+    """Convert enum or any value to a lowercase string safely."""
+    if enum_obj is None:
+        return None
+    val = getattr(enum_obj, "value", None)
+    if val is not None:
+        return str(val).lower()
+    return str(enum_obj).lower()
+
+
+def _iso_or_none(dt) -> str | None:
+    """Convert datetime to ISO string safely."""
+    if dt is None:
+        return None
+    try:
+        return dt.isoformat()
+    except Exception:
+        return None
 
 
 # ── Q&A Endpoints ─────────────────────────────────────────────────────────────
@@ -396,12 +432,13 @@ async def stream_answer(
     if not question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
 
+    # ✨ جلب النموذج قبل إنشاء الـ generator (تفادي استخدام db مغلق)
+    hf_model = None
+    if model_id:
+        hf_model = await _get_model_or_none(model_id, db)
+
     async def event_generator():
         try:
-            hf_model = None
-            if model_id:
-                hf_model = await _get_model_or_none(model_id, db)
-
             sources_found = False
             async for chunk in search_service.stream_answer(
                 db,
@@ -480,13 +517,18 @@ async def stream_chat(
         if analysis and analysis.raw_text:
             context = analysis.raw_text[:3000]
 
+    # ✨ حفظ مرجع النموذج قبل الـ generator
+    _model_name = model.name
+    _model_task_type = model.task_type or "text2text-generation"
+    _model_hf_id = model.hf_model_id
+
     async def event_generator():
         try:
-            yield f"data: {json.dumps({'type': 'start', 'model': model.name}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'model': _model_name}, ensure_ascii=False)}\n\n"
 
             result = await run_task(
-                task_type=model.task_type or "text2text-generation",
-                hf_model_id=model.hf_model_id,
+                task_type=_model_task_type,
+                hf_model_id=_model_hf_id,
                 question=f"Context: {context}\n\nQuestion: {message}\n\nAnswer:" if context else message,
                 context=context,
             )
@@ -499,7 +541,7 @@ async def stream_chat(
                 chunk = answer[i:i+3]
                 yield f"data: {json.dumps({'type': 'token', 'text': chunk}, ensure_ascii=False)}\n\n"
 
-            yield f"data: {json.dumps({'type': 'done', 'model': model.name}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'model': _model_name}, ensure_ascii=False)}\n\n"
 
         except HFModelLoadingError as exc:
             yield f"data: {json.dumps({'type': 'loading', 'estimated_seconds': exc.estimated_seconds}, ensure_ascii=False)}\n\n"
@@ -632,16 +674,6 @@ async def get_available_models(
 
 # ── File Pipeline: Analyze + Index ────────────────────────────────────────────
 
-def _safe_enum_value(enum_obj) -> str | None:
-    """Convert enum or any value to a lowercase string safely."""
-    if enum_obj is None:
-        return None
-    val = getattr(enum_obj, "value", None)
-    if val is not None:
-        return str(val).lower()
-    return str(enum_obj).lower()
-
-
 @router.get("/files/{file_id}/status", response_model=FileStatusResponse)
 async def file_pipeline_status(
     file_id: int,
@@ -668,7 +700,7 @@ async def file_pipeline_status(
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        # 2. Latest analysis (safe)
+        # 2. Latest analysis (safe) + حقول التقدم
         analysis = None
         analysis_status_str = None
         has_text = False
@@ -679,6 +711,16 @@ async def file_pipeline_status(
         pipeline_used = None
         processing_ms = None
         updated_at_iso = None
+
+        # ✨ حقول التقدم
+        stage = None
+        current_step = None
+        progress_current = 0
+        progress_total = 0
+        progress_percent = 0.0
+        stage_started_at_iso = None
+        last_heartbeat_at_iso = None
+        is_stalled = False
 
         try:
             analysis = (await db.execute(
@@ -697,7 +739,23 @@ async def file_pipeline_status(
                 text_length = len(analysis.raw_text) if analysis.raw_text else 0
                 pipeline_used = getattr(analysis, "pipeline_used", None)
                 processing_ms = getattr(analysis, "processing_ms", None)
-                updated_at_iso = analysis.updated_at.isoformat() if getattr(analysis, "updated_at", None) else None
+                updated_at_iso = _iso_or_none(getattr(analysis, "updated_at", None))
+
+                # ✨ حقول التقدم
+                stage = getattr(analysis, "stage", None)
+                current_step = getattr(analysis, "current_step", None)
+                progress_current = getattr(analysis, "progress_current", 0) or 0
+                progress_total = getattr(analysis, "progress_total", 0) or 0
+                progress_percent = getattr(analysis, "progress_percent", 0.0) or 0.0
+                stage_started_at_iso = _iso_or_none(getattr(analysis, "stage_started_at", None))
+                last_heartbeat_at_iso = _iso_or_none(getattr(analysis, "last_heartbeat_at", None))
+
+                # ✨ كشف المهمة المعلقة
+                if hasattr(analysis, "is_stalled"):
+                    try:
+                        is_stalled = bool(analysis.is_stalled)
+                    except Exception:
+                        is_stalled = False
         except Exception as e:
             logger.warning(f"Could not load analysis for file {file_id}: {e}")
 
@@ -719,16 +777,20 @@ async def file_pipeline_status(
         #
         # Status priority (highest to lowest):
         #   1. chunks > 0                             → ready
-        #   2. analysis RUNNING/PROCESSING            → analyzing
-        #   3. analysis COMPLETED + has_text + no chunks → indexing
-        #   4. analysis COMPLETED + no text           → analyzed_not_indexed
-        #   5. analysis FAILED                        → failed
+        #   2. analysis FAILED                        → failed  ← ✨ رُفعت الأولوية
+        #   3. analysis RUNNING/PROCESSING            → analyzing
+        #   4. analysis COMPLETED + has_text + no chunks → indexing
+        #   5. analysis COMPLETED + no text           → analyzed_not_indexed
         #   6. otherwise                              → pending
         #
         is_indexing = False
 
         if chunks > 0:
             status_str = "ready"
+
+        elif analysis_status_str == "failed":
+            # ✨ فشل له أولوية — يظهر للمستخدم بدل "indexing" الأبدي
+            status_str = "failed"
 
         elif analysis_status_str in ("processing", "running"):
             status_str = "analyzing"
@@ -742,11 +804,16 @@ async def file_pipeline_status(
             # Analysis done but no extractable text
             status_str = "analyzed_not_indexed"
 
-        elif analysis_status_str == "failed":
-            status_str = "failed"
-
         else:
             status_str = "pending"
+
+        # ✨ إذا كانت المهمة معلقة لكن status = indexing/analyzing → أبلغ عن ذلك
+        if is_stalled and status_str in ("indexing", "analyzing"):
+            logger.warning(
+                f"⚠️ [status] File {file_id} appears stalled "
+                f"(last heartbeat: {last_heartbeat_at_iso})"
+            )
+            # لا نُغيّر status، لكن نُمرّر is_stalled للمستخدم
 
         return FileStatusResponse(
             file_id=file_id,
@@ -763,6 +830,15 @@ async def file_pipeline_status(
             processing_ms=processing_ms,
             updated_at=updated_at_iso,
             is_indexing=is_indexing,
+            # ✨ حقول التقدم
+            stage=stage,
+            current_step=current_step,
+            progress_current=progress_current,
+            progress_total=progress_total,
+            progress_percent=progress_percent,
+            stage_started_at=stage_started_at_iso,
+            last_heartbeat_at=last_heartbeat_at_iso,
+            is_stalled=is_stalled,
         )
 
     except HTTPException:
@@ -869,15 +945,15 @@ async def list_pending_files(
         a_status = _safe_enum_value(a.status) if a else None
         a_has_text = bool(getattr(a, "raw_text", None)) if a else False
 
-        # ✨ Determine status with "indexing" phase
-        if a_status in ("processing", "running"):
+        # ✨ Determine status with "indexing" phase + failed priority
+        if a_status == "failed":
+            status_str = "failed"
+        elif a_status in ("processing", "running"):
             status_str = "analyzing"
         elif a_status == "completed" and a_has_text:
             status_str = "indexing"
         elif a_status == "completed":
             status_str = "analyzed_not_indexed"
-        elif a_status == "failed":
-            status_str = "failed"
         else:
             status_str = "pending"
 
