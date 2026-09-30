@@ -15,12 +15,15 @@ File pipeline endpoints:
     POST   /api/v1/search/files/{id}/analyze — trigger analyze + index (background)
     GET    /api/v1/search/pending            — list files not yet ready
 
-✨ تحديث:
+✨ تحديث شامل:
     - حقول تقدم تفصيلية (progress_current/total/percent/step/stage)
     - كشف المهمة المعلقة (is_stalled) + سبب التعطل
     - كشف المرحلة العالقة (is_stage_1_stuck / is_stage_2_stuck)
     - أولوية "failed" على "completed" في تحديد الحالة
-    - إرجاع heartbeat ومدة الانتظار
+    - ✨ إصلاح جذري: stage له أولوية مطلقة على analysis_status
+    - ✨ إصلاح has_text: يتحقق من المحتوى الفعلي (strip)
+    - ✨ كشف stage='done' مع chunks=0 → failed (فشل صامت)
+    - ✨ حالة analyzed_not_indexed جديدة مع stage صريح
 """
 from __future__ import annotations
 import json
@@ -122,8 +125,8 @@ class FileStatusResponse(BaseModel):
     is_indexing: bool = False
 
     # ── حقول تتبع التقدم ──
-    stage: str | None = None              # analysis | indexing | done | failed
-    current_step: str | None = None       # preparing | chunking | embedding | storing | done | failed
+    stage: str | None = None              # analysis | indexing | analyzed_not_indexed | done | failed
+    current_step: str | None = None       # preparing | chunking | embedding | storing | no_text | done | failed
     progress_current: int = 0
     progress_total: int = 0
     progress_percent: float = 0.0
@@ -734,11 +737,13 @@ async def file_pipeline_status(
 
             if analysis:
                 analysis_status_str = _safe_enum_value(analysis.status)
-                has_text = bool(getattr(analysis, "raw_text", None))
+                # ✨ إصلاح جذري: has_text يجب أن يتحقق من المحتوى الفعلي
+                raw_text_value = getattr(analysis, "raw_text", None)
+                has_text = bool(raw_text_value and raw_text_value.strip())
                 doc_type = getattr(analysis, "doc_type", None)
                 language = getattr(analysis, "language", None)
                 analysis_error = getattr(analysis, "error_message", None)
-                text_length = len(analysis.raw_text) if analysis.raw_text else 0
+                text_length = len(raw_text_value) if raw_text_value else 0
                 pipeline_used = getattr(analysis, "pipeline_used", None)
                 processing_ms = getattr(analysis, "processing_ms", None)
                 updated_at_iso = _iso_or_none(getattr(analysis, "updated_at", None))
@@ -767,28 +772,60 @@ async def file_pipeline_status(
             logger.warning(f"Could not count chunks for file {file_id}: {e}")
 
         # ═══════════════════════════════════════════════════════════
-        # 4. Determine status (with explicit priority)
+        # 4. Determine status — ✨ stage له أولوية مطلقة
         # ═══════════════════════════════════════════════════════════
-        # Priority:
-        #   1. chunks > 0                       → ready
-        #   2. analysis FAILED                  → failed
-        #   3. analysis RUNNING/PROCESSING      → analyzing
-        #   4. analysis COMPLETED + has_text    → indexing
-        #   5. analysis COMPLETED + no text     → analyzed_not_indexed
-        #   6. otherwise                        → pending
+        #
+        # Priority (الأعلى إلى الأدنى):
+        #   1. chunks > 0                              → ready
+        #   2. analysis FAILED                         → failed
+        #   3. stage == 'failed'                       → failed
+        #   4. stage == 'analyzed_not_indexed'         → analyzed_not_indexed
+        #   5. stage == 'done' + chunks == 0           → failed (فشل صامت)
+        #   6. stage == 'indexing'                     → indexing
+        #   7. analysis RUNNING/PROCESSING             → analyzing
+        #   8. analysis COMPLETED + has_text           → indexing (fallback)
+        #   9. analysis COMPLETED + no text            → analyzed_not_indexed
+        #  10. otherwise                               → pending
+        #
         is_indexing = False
 
         if chunks > 0:
             status_str = "ready"
+
         elif analysis_status_str == "failed":
             status_str = "failed"
-        elif analysis_status_str in ("processing", "running"):
-            status_str = "analyzing"
-        elif analysis_status_str == "completed" and has_text:
+
+        elif stage == "failed":
+            status_str = "failed"
+
+        elif stage == "analyzed_not_indexed":
+            # ✨ حالة جديدة: التحليل انتهى لكن لا نص للفهرسة
+            status_str = "analyzed_not_indexed"
+
+        elif stage == "done" and chunks == 0:
+            # ✨ stage='done' لكن لا chunks → فشل صامت في الفهرسة
+            status_str = "failed"
+            if not analysis_error:
+                analysis_error = (
+                    "Indexing completed but produced 0 chunks. "
+                    "Check chunk_text() output or document content."
+                )
+
+        elif stage == "indexing":
             status_str = "indexing"
             is_indexing = True
+
+        elif analysis_status_str in ("processing", "running"):
+            status_str = "analyzing"
+
+        elif analysis_status_str == "completed" and has_text:
+            # Fallback — إذا لم يكن stage محددًا
+            status_str = "indexing"
+            is_indexing = True
+
         elif analysis_status_str == "completed":
             status_str = "analyzed_not_indexed"
+
         else:
             status_str = "pending"
 
@@ -798,7 +835,6 @@ async def file_pipeline_status(
         seconds_since_heartbeat = 0.0
         if last_heartbeat_dt:
             try:
-                # اجعل last_heartbeat_dt aware إن لم يكن
                 if last_heartbeat_dt.tzinfo is None:
                     last_heartbeat_dt = last_heartbeat_dt.replace(tzinfo=timezone.utc)
                 seconds_since_heartbeat = (
@@ -807,7 +843,6 @@ async def file_pipeline_status(
             except Exception:
                 seconds_since_heartbeat = 0.0
 
-        # thresholds
         STALL_THRESHOLD = 90.0  # ثانية
 
         is_stage_1_stuck = (
@@ -839,7 +874,7 @@ async def file_pipeline_status(
         if is_stalled:
             logger.warning(
                 f"⚠️ [status] File {file_id} appears stalled "
-                f"(stage={stage}, step={current_step}, "
+                f"(status={status_str}, stage={stage}, step={current_step}, "
                 f"progress={progress_current}/{progress_total}, "
                 f"heartbeat={int(seconds_since_heartbeat)}s ago)"
             )
@@ -977,10 +1012,21 @@ async def list_pending_files(
 
         a = latest_analysis.get(f.id)
         a_status = _safe_enum_value(a.status) if a else None
-        a_has_text = bool(getattr(a, "raw_text", None)) if a else False
+        # ✨ إصلاح: has_text يتحقق من المحتوى الفعلي
+        raw = getattr(a, "raw_text", None) if a else None
+        a_has_text = bool(raw and raw.strip())
+        a_stage = getattr(a, "stage", None) if a else None
 
-        if a_status == "failed":
+        # ✨ stage له أولوية
+        if a_status == "failed" or a_stage == "failed":
             status_str = "failed"
+        elif a_stage == "analyzed_not_indexed":
+            status_str = "analyzed_not_indexed"
+        elif a_stage == "done":
+            # stage='done' لكن لا chunks → فشل صامت
+            status_str = "failed"
+        elif a_stage == "indexing":
+            status_str = "indexing"
         elif a_status in ("processing", "running"):
             status_str = "analyzing"
         elif a_status == "completed" and a_has_text:
