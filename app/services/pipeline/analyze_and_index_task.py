@@ -11,11 +11,14 @@ Pipeline stages:
 The frontend sees via /status:
     pending → analyzing → indexing → ready
 
-✨ تحديث:
+✨ تحديث شامل:
     - Heartbeat loop أثناء Stage 1 (لتجنب كشف المهمة كمعلقة)
     - Fallback إلى _quick_text إذا فشل Stage 1
     - إصلاح _mark_analysis_failed لتغيير status إلى FAILED فعليًا
     - تحديث التقدم دوريًا عبر on_progress callback
+    - ✨ Guard no_text → stage='analyzed_not_indexed' (بدل stage='done')
+    - ✨ تحقق chunk_count == 0 بعد index_document → failed
+    - ✨ سجّل آخر خطوة قبل كل عملية (لتتبع دقيق)
 """
 from __future__ import annotations
 
@@ -37,7 +40,7 @@ from app.services.search.search_service import search_service
 logger = logging.getLogger(__name__)
 
 # ⏱️ Timeouts (seconds)
-ANALYSIS_TIMEOUT = 180.0   # 3 دقائق للتحليل (خفّضناها من 300)
+ANALYSIS_TIMEOUT = 180.0   # 3 دقائق للتحليل
 INDEXING_TIMEOUT = 120.0   # 2 دقيقة للفهرسة
 
 # ✨ عدد المقاطع بين كل تحديث تقدم في قاعدة البيانات
@@ -55,7 +58,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
     Full pipeline in background:
         1. Load file metadata
         2. Find or create a DocumentAnalysis record
-        3. Stage 1 — Analysis via handle_analysis_job() (classify + OCR + persist)
+        3. Stage 1 — Analysis via handle_analysis_job()
         4. Stage 2 — Indexing via search_service.index_document()
         5. Safety net — if Stage 2 failed silently, retry indexing
     """
@@ -91,6 +94,7 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
                 analysis
                 and analysis.status == AnalysisStatus.COMPLETED
                 and analysis.raw_text
+                and analysis.raw_text.strip()
             ):
                 chunks_count = await _count_chunks(db, file_id, user_id)
                 if chunks_count > 0:
@@ -237,14 +241,14 @@ async def analyze_and_index_background(file_id: int, user_id: int) -> None:
         if not stage_1_succeeded:
             await _mark_analysis_failed(
                 analysis_id,
-                "analysis failed or produced no text (both main pipeline and fallback)",
+                "analysis failed or produced no text "
+                "(both main pipeline and fallback)",
             )
             return
 
         # ═══════════════════════════════════════════════════════════
-        # 3. Stage 2 — Indexing (search_service.index_document)
+        # 3. Stage 2 — Indexing
         # ═══════════════════════════════════════════════════════════
-        # ✨ تحديث الحالة قبل الفهرسة
         await _update_analysis_stage(
             analysis_id,
             stage="indexing",
@@ -288,6 +292,10 @@ async def _run_stage_2_indexing(
 ) -> None:
     """
     Stage 2 — index the analysis text into DocumentChunk.
+
+    ✨ يُصحّح الحالات التالية:
+        - لا نص → stage='analyzed_not_indexed' (ليس done)
+        - chunk_count == 0 → فشل صريح
     """
     async with AsyncSessionLocal() as db:
         file = await db.get(File, file_id)
@@ -314,17 +322,15 @@ async def _run_stage_2_indexing(
             )
             return
 
-        # ── Guard: must have text ──
+        # ═══════════════════════════════════════════════════════════
+        # ✨ Guard: must have text
+        # إذا لا نص → stage='analyzed_not_indexed' (بدل stage='done')
+        # ═══════════════════════════════════════════════════════════
         if not analysis.raw_text or not analysis.raw_text.strip():
             logger.warning(
                 f"⚠️ [BG] Stage 2 skipped — no raw_text for analysis #{analysis_id}"
             )
-            await _update_analysis_stage(
-                analysis_id,
-                stage="done",
-                step="done",
-                heartbeat=True,
-            )
+            await _mark_analysis_no_text(analysis_id)
             return
 
         # ═══════════════════════════════════════════════════════════
@@ -368,11 +374,29 @@ async def _run_stage_2_indexing(
                 ),
                 timeout=INDEXING_TIMEOUT,
             )
+
+            # ═══════════════════════════════════════════════════════
+            # ✨ تحقق أن chunks أُضيفت فعلًا
+            # إذا 0 → فشل صريح (بدل stage='done' كاذب)
+            # ═══════════════════════════════════════════════════════
+            if chunk_count == 0:
+                logger.error(
+                    f"❌ [BG] Stage 2 returned 0 chunks for file {file_id} "
+                    f"— indexing may have failed silently"
+                )
+                await _mark_analysis_failed(
+                    analysis_id,
+                    "indexing completed but produced 0 chunks — "
+                    "check chunk_text() output or document content",
+                )
+                return
+
             logger.info(
                 f"🎉 [BG] Stage 2 (indexing) complete — "
                 f"{chunk_count} chunks stored for file {file_id}"
             )
 
+            # ✨ النجاح الحقيقي: stage='done' + chunks > 0
             await _update_analysis_stage(
                 analysis_id,
                 stage="done",
@@ -536,6 +560,39 @@ async def _mark_analysis_failed(analysis_id: int, error_msg: str) -> None:
     except Exception as e:
         logger.warning(
             f"⚠️ [BG] Could not mark analysis #{analysis_id} as failed: {e}"
+        )
+
+
+async def _mark_analysis_no_text(analysis_id: int) -> None:
+    """
+    ✨ حالة جديدة: التحليل انتهى لكن لا نص للفهرسة.
+
+    تُستخدم بدل stage='done' عندما لا يوجد raw_text.
+    هذا يسمح للواجهة بعرض حالة "يحتاج فهرسة" بدل "جاري الفهرسة" الأبدية.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            analysis = await db.get(DocumentAnalysis, analysis_id)
+            if analysis:
+                # لا نغيّر status (يبقى COMPLETED) لكن نضع stage صريح
+                analysis.stage = "analyzed_not_indexed"
+                analysis.current_step = "no_text"
+                analysis.progress_current = 0
+                analysis.progress_total = 0
+                analysis.progress_percent = 0.0
+                analysis.error_message = (
+                    "No text extracted from document — cannot index."
+                )
+                analysis.last_heartbeat_at = utcnow()
+                await db.commit()
+                logger.info(
+                    f"📝 [BG] Marked analysis #{analysis_id} as "
+                    f"analyzed_not_indexed (no text)"
+                )
+    except Exception as e:
+        logger.warning(
+            f"⚠️ [BG] Could not mark analysis #{analysis_id} as "
+            f"analyzed_not_indexed: {e}"
         )
 
 
