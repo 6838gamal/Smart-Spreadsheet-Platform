@@ -233,6 +233,16 @@
       </p>
     </div>
 
+    <!-- الصف 5: رسالة "يحتاج فهرسة" (analyzed_not_indexed) -->
+    <div x-show="getSelectedFileStatus() === 'analyzed_not_indexed'" 
+         x-cloak
+         class="mt-2 p-2 bg-blue-900/20 border border-blue-800/40 rounded-lg">
+      <p class="text-[10px] sm:text-xs text-blue-300 flex items-start gap-1.5">
+        <span>📄</span>
+        <span>تم التحليل لكن لم يُستخرج أي نص قابل للفهرسة. جرّب "فهرسة الآن" أو تحقق من محتوى الملف.</span>
+      </p>
+    </div>
+
     <!-- ═══════════════════════════════════════════════════════ -->
     <!-- ✨ لوحة تشخيص تفصيلية عند التعطل (جديد) -->
     <!-- ═══════════════════════════════════════════════════════ -->
@@ -714,7 +724,7 @@ function searchApp() {
     // ── Polling ──
     pollingTimer: null,
     fastPollingTimer: null,
-    tickTimer: null,   // ✨ مؤقت لتحديث "الوقت المنقضي"
+    tickTimer: null,
 
     // ══════════════════════════════════════════════════════════
     //  Computed
@@ -813,16 +823,13 @@ function searchApp() {
       return this.indexingFileIds.has(String(fileId));
     },
 
-    // ✨ هل الملف المحدد يبدو معلقًا؟
     isSelectedFileStalled() {
       if (this.selectedFileId === 'all') return false;
       const st = this.fileStatuses[this.selectedFileId];
       if (!st) return false;
       
-      // من API (is_stalled)
       if (st.is_stalled) return true;
       
-      // ✨ watchdog محلي: إذا مرت 90 ثانية بدون تقدم
       if (this.isIndexing() && (st.progress_current || 0) === 0 && this.indexingStartTime) {
         const elapsed = (Date.now() - this.indexingStartTime) / 1000;
         if (elapsed > 90) return true;
@@ -854,10 +861,6 @@ function searchApp() {
       return st?.stall_reason || null;
     },
 
-    // ═══════════════════════════════════════════════════════════
-    //  ✨ Progress helpers — التقدم التفصيلي
-    // ═══════════════════════════════════════════════════════════
-
     getSelectedFileProgress() {
       const st = this.fileStatuses[this.selectedFileId] || {};
       return {
@@ -873,7 +876,6 @@ function searchApp() {
 
     getIndexingPercent() {
       const p = this.getSelectedFileProgress();
-      // إذا لا توجد بيانات تقدم، استخدم حركة لا نهائية (0% + شريط متحرك)
       if (p.total === 0) return 0;
       return Math.min(100, Math.max(0, p.percent));
     },
@@ -985,7 +987,19 @@ function searchApp() {
       this.updateModelName();
       this.loadAvailableModels();
       
-      this.refreshAllFileStatuses();
+      // ✨ التحميل الأول ثم ضبط المؤقت إذا كان الملف قيد الفهرسة
+      this.refreshAllFileStatuses().then(() => {
+        if (this.selectedFileId !== 'all') {
+          const st = this.fileStatuses[this.selectedFileId];
+          if (st && st.status === 'indexing' && !this.indexingStartTime) {
+            this.indexingStartTime = Date.now();
+          }
+          if (st && st.status === 'analyzing' && !this.analyzingStartTime) {
+            this.analyzingStartTime = Date.now();
+          }
+        }
+      });
+      
       this.pollingTimer = setInterval(() => {
         this.refreshAllFileStatuses();
       }, 3000);
@@ -1028,7 +1042,7 @@ function searchApp() {
           
           // ═══ ✨ اكتشاف الانتقالات ═══
           
-          // 1. من analyzing → indexing (بدء الفهرسة!)
+          // 1. من analyzing → indexing
           if (prev === 'analyzing' && data.status === 'indexing') {
             this.showToast(`📇 اكتمل التحليل — بدأت الفهرسة...`);
             this.indexingFileIds.add(fileIdStr);
@@ -1039,19 +1053,18 @@ function searchApp() {
             this.startFastPolling();
           }
           
-          // 2. من indexing → ready (اكتملت الفهرسة!)
+          // 2. من indexing → ready
           if ((prev === 'indexing' || this.isFileIndexing(fileIdStr)) 
               && data.status === 'ready') {
             this.showToast(`✅ تمت الفهرسة — ${data.chunks} مقطع جاهز`);
             this.indexingFileIds.delete(fileIdStr);
             this.refreshCounters();
-            
             if (fileIdStr === String(this.selectedFileId)) {
               this.indexingStartTime = null;
             }
           }
           
-          // 3. من analyzing → ready (عملية كاملة)
+          // 3. من analyzing → ready
           if (prev === 'analyzing' && data.status === 'ready') {
             this.showToast(`✅ تم تحليل "${f.original_name}" — جاهز للدردشة`);
             this.refreshCounters();
@@ -1062,7 +1075,7 @@ function searchApp() {
             }
           }
           
-          // 4. فشل (من أي حالة سابقة غير failed)
+          // 4. فشل
           if (prev && prev !== 'failed' && data.status === 'failed') {
             this.showToast(`❌ فشل تحليل "${f.original_name}"`);
             this.indexingFileIds.delete(fileIdStr);
@@ -1072,17 +1085,31 @@ function searchApp() {
             }
           }
           
-          // 5. إذا status = analyzed_not_indexed ولم نكن نعرفه → أضفه لقائمة الفهرسة
+          // 5. analyzed_not_indexed → أضفه للفهرسة إذا كنا ننتظر
           if (data.status === 'analyzed_not_indexed' && this.analyzing) {
             this.indexingFileIds.add(fileIdStr);
           }
 
-          // 6. ✨ إذا بدأ ملف جديد الفهرسة (indexing) ولم يكن معروفًا
+          // 6. بدء الفهرسة بدون analyzing سابق
           if (data.status === 'indexing' && prev !== 'indexing' && prev !== 'analyzing') {
             this.indexingFileIds.add(fileIdStr);
             if (fileIdStr === String(this.selectedFileId) && !this.indexingStartTime) {
               this.indexingStartTime = Date.now();
             }
+          }
+          
+          // 7. ✨ watchdog: إذا كانت الحالة indexing والملف محدد، اضبط المؤقت
+          if (data.status === 'indexing' 
+              && fileIdStr === String(this.selectedFileId) 
+              && !this.indexingStartTime) {
+            this.indexingStartTime = Date.now();
+          }
+          
+          // 8. ✨ watchdog: إذا كانت الحالة analyzing والملف محدد
+          if (data.status === 'analyzing' 
+              && fileIdStr === String(this.selectedFileId) 
+              && !this.analyzingStartTime) {
+            this.analyzingStartTime = Date.now();
           }
           
           const file = this.files.find(x => x.id === f.id);
@@ -1175,7 +1202,6 @@ function searchApp() {
       }
     },
 
-    // ✨ إعادة تشغيل المهمة عند التعطل
     async restartAnalysis() {
       if (this.selectedFileId === 'all') return;
       this.analyzingStartTime = null;
@@ -1185,7 +1211,6 @@ function searchApp() {
       await this.analyzeSelectedFile();
     },
 
-    // ✨ فهرسة فقط (تخطي التحليل)
     async forceIndexOnly() {
       if (this.selectedFileId === 'all') return;
       const fileId = parseInt(this.selectedFileId);
@@ -1272,6 +1297,15 @@ function searchApp() {
       this.quickFileSelect = this.selectedFileId;
       this.analyzingStartTime = null;
       this.indexingStartTime = null;
+      
+      // ✨ اضبط المؤقت من الحالة الحالية
+      if (this.selectedFileId !== 'all') {
+        const st = this.fileStatuses[this.selectedFileId];
+        if (st) {
+          if (st.status === 'analyzing') this.analyzingStartTime = Date.now();
+          if (st.status === 'indexing') this.indexingStartTime = Date.now();
+        }
+      }
     },
 
     askExample(question) {
