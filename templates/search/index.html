@@ -49,7 +49,7 @@
                 'bg-amber-500 animate-pulse': getSelectedFileStatus() === 'analyzing',
                 'bg-zinc-500': getSelectedFileStatus() === 'pending',
                 'bg-blue-500 animate-pulse': getSelectedFileStatus() === 'analyzed_not_indexed',
-                'bg-cyan-500 animate-pulse': isIndexing(),
+                'bg-cyan-500 animate-pulse': getSelectedFileStatus() === 'indexing' || isIndexing(),
                 'bg-red-500': getSelectedFileStatus() === 'failed',
               }"></span>
         
@@ -66,7 +66,7 @@
         </span>
         
         <!-- شارة "جاري الفهرسة" -->
-        <span x-show="isIndexing()" 
+        <span x-show="isIndexing() || getSelectedFileStatus() === 'indexing'" 
               class="text-[10px] bg-cyan-600/20 text-cyan-400 border border-cyan-600/40 rounded-full px-2 py-0.5 flex items-center gap-1 animate-pulse">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -94,15 +94,20 @@
           <span x-text="getSelectedFileStatus() === 'failed' ? 'إعادة المحاولة' : 'تحليل الملف'"></span>
         </button>
 
-        <button x-show="getSelectedFileStatus() === 'analyzed_not_indexed' && !isIndexing()"
+        <!-- ✅ زر "فهرسة الآن" — يظهر لحالة analyzed_not_indexed أو indexing -->
+        <button x-show="(getSelectedFileStatus() === 'analyzed_not_indexed' || 
+                        getSelectedFileStatus() === 'indexing')"
                 @click="indexSelectedFile()"
-                :disabled="analyzing"
+                :disabled="analyzing || isFileIndexing(selectedFileId)"
+                :class="isFileIndexing(selectedFileId) ? 'opacity-60 cursor-wait' : ''"
                 class="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg px-3 py-1.5 flex items-center gap-1">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-3.5 h-3.5" 
+               :class="isFileIndexing(selectedFileId) ? 'animate-spin' : ''"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
-          فهرسة الآن
+          <span x-text="isFileIndexing(selectedFileId) ? 'جاري الفهرسة...' : 'فهرسة الآن'"></span>
         </button>
 
         <button x-show="getSelectedFileStatus() === 'ready'"
@@ -153,7 +158,7 @@
     <!-- ═══════════════════════════════════════════════════════ -->
     <!--  شريط التقدم — المرحلة 2: الفهرسة (Indexing) -->
     <!-- ═══════════════════════════════════════════════════════ -->
-    <div x-show="isIndexing()" 
+    <div x-show="isIndexing() || getSelectedFileStatus() === 'indexing'" 
          x-cloak
          class="mt-3 space-y-1.5">
       
@@ -603,8 +608,8 @@ function searchApp() {
     loading: false,
     analyzing: false,
     analyzingStartTime: null,
-    indexingStartTime: null,      // ✨ جديد
-    indexingFileIds: new Set(),   // ✨ جديد - لتتبع الملفات قيد الفهرسة
+    indexingStartTime: null,
+    indexingFileIds: new Set(),
     error: null,
     autoScroll: true,
     
@@ -670,18 +675,21 @@ function searchApp() {
       return {
         'ready': '✏️ اكتب سؤالك هنا...',
         'analyzing': '⏳ جاري التحليل — انتظر...',
+        'indexing': '📇 جاري الفهرسة — انتظر...',
         'pending': '⏸️ الملف غير مفهرس — اضغط "تحليل"',
         'analyzed_not_indexed': '📄 يحتاج فهرسة — اضغط "فهرسة الآن"',
         'failed': '❌ فشل التحليل — اضغط "إعادة المحاولة"',
       }[status] || '✏️ اكتب سؤالك هنا...';
     },
 
+    // ✅ محدّثة — تدعم indexing
     statusEmoji(fileId) {
       if (this.isFileIndexing(fileId)) return '📇';
       const s = this.getFileStatus(fileId);
       return {
         ready: '✅',
         analyzing: '⏳',
+        indexing: '📇',
         pending: '⏸️',
         analyzed_not_indexed: '📄',
         failed: '❌',
@@ -709,6 +717,7 @@ function searchApp() {
       return this.getFileChunks(this.selectedFileId);
     },
 
+    // ✅ محدّثة — تدعم indexing
     getSelectedFileLabel() {
       if (this.isIndexing()) return '📇 جاري فهرسة المقاطع...';
       
@@ -716,21 +725,25 @@ function searchApp() {
       return {
         ready: '✅ الملف جاهز للدردشة',
         analyzing: '⏳ جاري تحليل الملف...',
+        indexing: '📇 جاري فهرسة المقاطع...',
         pending: '⏸️ الملف بانتظار التحليل',
         analyzed_not_indexed: '📄 تم التحليل، يحتاج فهرسة',
         failed: '❌ فشل تحليل الملف',
       }[s] || '—';
     },
 
-    // ✨ هل الملف المحدد قيد الفهرسة؟
     isIndexing() {
       if (this.selectedFileId === 'all') return false;
       return this.isFileIndexing(this.selectedFileId);
     },
 
-    // ✨ هل ملف معين قيد الفهرسة؟
+    // ✅ محدّثة — تتحقق من Set محلي + حالة API
     isFileIndexing(fileId) {
-      return this.indexingFileIds.has(String(fileId));
+      // 1. Set محلي (للانتقالات السريعة)
+      if (this.indexingFileIds.has(String(fileId))) return true;
+      // 2. تحقق من حالة الـ API مباشرة
+      const s = this.getFileStatus(fileId);
+      return s === 'indexing';
     },
 
     getAnalyzingMessage() {
@@ -749,14 +762,12 @@ function searchApp() {
       return Math.floor(seconds / 60) + ' د ' + (seconds % 60) + ' ث';
     },
 
-    // ✨ رسالة الفهرسة
     getIndexingMessage() {
       const chunks = this.getSelectedFileChunks();
       if (chunks === 0) return 'جاري تقطيع النص وفهرسته...';
       return `تم فهرسة ${chunks} مقطع حتى الآن...`;
     },
 
-    // ✨ وقت الفهرسة المنقضي
     getIndexingElapsed() {
       if (!this.indexingStartTime) return '';
       const seconds = Math.floor((Date.now() - this.indexingStartTime) / 1000);
@@ -768,6 +779,7 @@ function searchApp() {
       return this.fileStatuses[this.selectedFileId]?.error || null;
     },
 
+    // ✅ محدّثة — تدعم indexing
     getChatDisabledReason() {
       if (!this.hasFiles) return 'لا توجد ملفات';
       if (this.selectedFileId === 'all' && !this.hasIndexedFiles) return 'لا ملفات مفهرسة';
@@ -775,6 +787,7 @@ function searchApp() {
         if (this.isIndexing()) return '📇 قيد الفهرسة';
         const s = this.getSelectedFileStatus();
         if (s === 'analyzing') return '⏳ قيد التحليل';
+        if (s === 'indexing') return '📇 قيد الفهرسة';
         if (s === 'pending') return '⏸️ غير مفهرس';
         if (s === 'analyzed_not_indexed') return '📄 يحتاج فهرسة';
         if (s === 'failed') return '❌ فشل';
@@ -822,6 +835,7 @@ function searchApp() {
     //  File Status
     // ══════════════════════════════════════════════════════════
 
+    // ✅ محدّثة — تدعم "indexing" في اكتشاف الانتقالات
     async refreshAllFileStatuses() {
       const tasks = this.files.map(async (f) => {
         try {
@@ -833,10 +847,15 @@ function searchApp() {
           this.fileStatuses[f.id] = data;
           const fileIdStr = String(f.id);
           
-          // ═══ ✨ اكتشاف الانتقالات ═══
+          // ═══ اكتشاف الانتقالات ═══
           
-          // 1. من analyzing → analyzed_not_indexed (بدء الفهرسة!)
-          if (prev === 'analyzing' && data.status === 'analyzed_not_indexed') {
+          // 1. من analyzing → indexing (بدء الفهرسة!)
+          //    ✅ يدعم الآن "indexing" و "analyzed_not_indexed"
+          const becameIndexing =
+            data.status === 'indexing' ||
+            data.status === 'analyzed_not_indexed';
+
+          if (prev === 'analyzing' && becameIndexing) {
             this.showToast(`📇 اكتمل التحليل — بدأت الفهرسة...`);
             this.indexingFileIds.add(fileIdStr);
             
@@ -844,13 +863,25 @@ function searchApp() {
               this.analyzingStartTime = null;
               this.indexingStartTime = Date.now();
             }
-            // ابدأ polling سريع للفهرسة
+            this.startFastPolling();
+          }
+
+          // 1.b — إذا كان الملف جديدًا (prev === undefined) وحالته indexing
+          if (!prev && becameIndexing) {
+            this.indexingFileIds.add(fileIdStr);
+            if (fileIdStr === String(this.selectedFileId)) {
+              this.indexingStartTime = Date.now();
+            }
             this.startFastPolling();
           }
           
-          // 2. من analyzed_not_indexed → ready (اكتملت الفهرسة!)
-          if ((prev === 'analyzed_not_indexed' || this.isFileIndexing(fileIdStr)) 
-              && data.status === 'ready') {
+          // 2. اكتملت الفهرسة → ready
+          if (
+            (prev === 'indexing' ||
+             prev === 'analyzed_not_indexed' ||
+             this.isFileIndexing(fileIdStr)) &&
+            data.status === 'ready'
+          ) {
             this.showToast(`✅ تمت الفهرسة — ${data.chunks} مقطع جاهز`);
             this.indexingFileIds.delete(fileIdStr);
             this.refreshCounters();
@@ -883,8 +914,9 @@ function searchApp() {
             }
           }
           
-          // 5. إذا status = analyzed_not_indexed ولم نكن نعرفه → أضفه لقائمة الفهرسة
-          if (data.status === 'analyzed_not_indexed' && this.analyzing) {
+          // 5. إذا status = analyzed_not_indexed أو indexing ولم نكن نعرفه
+          if ((data.status === 'analyzed_not_indexed' || data.status === 'indexing') 
+              && this.analyzing) {
             this.indexingFileIds.add(fileIdStr);
           }
           
@@ -920,7 +952,6 @@ function searchApp() {
       try {
         this.analyzing = true;
         this.analyzingStartTime = Date.now();
-        // أضف للتتبع (سيُفهرس لاحقاً)
         this.indexingFileIds.add(String(fileId));
         
         const res = await fetch(`${API_BASE}/files/${fileId}/analyze`, {
@@ -950,7 +981,6 @@ function searchApp() {
       }
     },
 
-    // ✨ فهرسة مباشرة (لزر "فهرسة الآن")
     async indexSelectedFile() {
       if (this.selectedFileId === 'all') return;
       
